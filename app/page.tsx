@@ -66,7 +66,7 @@ const EQUIPMENT_OPTIONS = [
   { value: "mobile_crane", label: "이동식 크레인" },
 ];
 
-function cn(...classes) {
+function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
