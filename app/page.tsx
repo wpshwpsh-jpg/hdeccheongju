@@ -639,7 +639,7 @@ export default function MonthlyCalendarTextEntrySite() {
   const [arrowPreview, setArrowPreview] = useState(null);
   const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", name: "", content: "", elderly: "o" });
   const [soloCompanyFilter, setSoloCompanyFilter] = useState("");
-  const imageAreaRef = useRef(null);
+  const imageAreaRef = useRef<HTMLDivElement | null>(null);
   const lastTouchTimeRef = useRef(0);
   const touchGestureRef = useRef({ moved: false, startX: 0, startY: 0 });
   const [testResults] = useState(runSelfTests);
