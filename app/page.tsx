@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import {
   CalendarDays,
@@ -70,19 +70,19 @@ function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-function Card({ className = "", children }) {
+function Card({ className = "", children }: { className?: string; children?: ReactNode }) {
   return <div className={cn("rounded-[24px] border border-slate-200 bg-white shadow-sm", className)}>{children}</div>;
 }
 
-function CardHeader({ className = "", children }) {
+function CardHeader({ className = "", children }: { className?: string; children?: ReactNode }) {
   return <div className={cn("px-4 pt-4 sm:px-5 sm:pt-5", className)}>{children}</div>;
 }
 
-function CardContent({ className = "", children }) {
+function CardContent({ className = "", children }: { className?: string; children?: ReactNode }) {
   return <div className={cn("px-4 pb-4 sm:px-5 sm:pb-5", className)}>{children}</div>;
 }
 
-function CardTitle({ className = "", children }) {
+function CardTitle({ className = "", children }: { className?: string; children?: ReactNode }) {
   return <div className={cn("text-base font-semibold text-slate-900 sm:text-lg", className)}>{children}</div>;
 }
 
@@ -122,7 +122,7 @@ function TextArea({ className = "", ...props }) {
   return <textarea className={cn("min-h-[140px] w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200", className)} {...props} />;
 }
 
-function Badge({ className = "", children }) {
+function Badge({ className = "", children }: { className?: string; children?: ReactNode }) {
   return <span className={cn("inline-flex items-center rounded-full bg-slate-100 px-2 py-0 text-[10px] font-medium text-slate-700", className)}>{children}</span>;
 }
 
@@ -386,7 +386,7 @@ function EquipmentIcon({ type, className = "h-6 w-6" }) {
   }
 }
 
-function MobileListCard({ title, children, action }) {
+function MobileListCard({ title, children, action }: { title: ReactNode; children?: ReactNode; action?: ReactNode }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:hidden">
       <div className="mb-3 flex items-start justify-between gap-3">
