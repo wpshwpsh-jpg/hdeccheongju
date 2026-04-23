@@ -972,15 +972,39 @@ export default function MonthlyCalendarTextEntrySite() {
   };
 
   const handleAddSectionWork = () => {
-    if (!canEditDabs || !sectionInput.building || !sectionInput.content) return;
-    const currentRows = dabsData[selectedDate]?.[activeDabsKey]?.rows || {};
-    const nextRows = { ...currentRows, [sectionInput.building]: [...(currentRows[sectionInput.building] || []), { id: createLocalId("section"), company: currentUser?.companyName || "", content: sectionInput.content }] };
-    const nextData = { ...dabsData, [selectedDate]: { ...(dabsData[selectedDate] || {}), [activeDabsKey]: { rows: nextRows } } };
-    setDabsData(nextData);
-    saveDabsData(nextData);
-    setSectionInput({ building: "", content: "" });
-    setDabsMessage("저장되었습니다.");
+  if (!canEditDabs || !sectionInput.building || !sectionInput.content) return;
+
+  const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const nextRows = {
+    ...currentRows,
+    [sectionInput.building]: [
+      ...(currentRows[sectionInput.building] || []),
+      {
+        id: createLocalId("section"),
+        company: currentUser?.companyName || "",
+        content: sectionInput.content,
+      },
+    ],
   };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      [activeDabsKey]: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+  saveDabsData(nextData);
+  setSectionInput({ building: "", content: "" });
+  setDabsMessage("저장되었습니다.");
+};
 
   const handleAddMaterial = () => {
     const { gate, material, vehicle, location, time } = materialsInput;
