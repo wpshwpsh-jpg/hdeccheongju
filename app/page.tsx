@@ -653,8 +653,32 @@ export default function MonthlyCalendarTextEntrySite() {
         }
         setCurrentUser(userData);
         setCurrentPage("menu");
-        unsubscribeUsers = onSnapshot(collection(db, "users"), (snapshot) => setUsers(snapshot.docs.map((item) => ({ uid: item.id, ...item.data() }))));
-        unsubscribeEntries = onSnapshot(query(collection(db, "entries"), orderBy("date", "asc"), orderBy("startTime", "asc")), (snapshot) => setEntries(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
+        unsubscribeUsers = onSnapshot(
+  collection(db, "users"),
+  (snapshot) =>
+    setUsers(
+      snapshot.docs.map(
+        (item) =>
+          ({
+            uid: item.id,
+            ...(item.data() as Omit<UserItem, "uid">),
+          }) satisfies UserItem
+      )
+    )
+);
+        unsubscribeEntries = onSnapshot(
+  query(collection(db, "entries"), orderBy("date", "asc"), orderBy("startTime", "asc")),
+  (snapshot) =>
+    setEntries(
+      snapshot.docs.map(
+        (item) =>
+          ({
+            id: item.id,
+            ...(item.data() as Omit<EntryItem, "id">),
+          }) satisfies EntryItem
+      )
+    )
+);
       } catch {
         setCurrentUser(null);
         setUsers([]);
