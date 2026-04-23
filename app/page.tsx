@@ -413,26 +413,100 @@ function getEquipmentLabel(type: string) {
   return EQUIPMENT_OPTIONS.find((item) => item.value === type)?.label || "장비";
 }
 
-function EquipmentIcon({ type, className = "h-6 w-6" }) {
-  const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
-  const wrap = (children) => <svg viewBox="0 0 24 24" className={className} aria-hidden="true">{children}</svg>;
+function EquipmentIcon({
+  type,
+  className = "h-6 w-6",
+}: {
+  type: string;
+  className?: string;
+}) {
+  const common = {
+    fill: "none" as const,
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+
+  const wrap = (children: ReactNode) => (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      {children}
+    </svg>
+  );
+
   switch (type) {
     case "concrete_pump_truck":
-      return wrap(<><path {...common} d="M2 16h13M4 16V9h4v7M8 11l5-4 2 1-3 3m2-2 2 8" /><circle cx="6" cy="18" r="2" fill="currentColor" /><circle cx="15" cy="18" r="2" fill="currentColor" /></>);
+      return wrap(
+        <>
+          <path {...common} d="M2 16h13M4 16V9h4v7M8 11l5-4 2 1-3 3m2-2 2 8" />
+          <circle cx="6" cy="18" r="2" fill="currentColor" />
+          <circle cx="15" cy="18" r="2" fill="currentColor" />
+        </>
+      );
     case "concrete_mixer_truck":
-      return wrap(<><path {...common} d="M2 16h15M4 16V10h4v6M10 10h5l2 3v3" /><circle cx="6" cy="18" r="2" fill="currentColor" /><circle cx="14" cy="18" r="2" fill="currentColor" /><path {...common} d="M10.5 9.5 14 8l2 3-3.5 1.5Z" /></>);
+      return wrap(
+        <>
+          <path {...common} d="M2 16h15M4 16V10h4v6M10 10h5l2 3v3" />
+          <circle cx="6" cy="18" r="2" fill="currentColor" />
+          <circle cx="14" cy="18" r="2" fill="currentColor" />
+          <path {...common} d="M10.5 9.5 14 8l2 3-3.5 1.5Z" />
+        </>
+      );
     case "excavator":
-      return wrap(<><path {...common} d="M13 14h5v2h-5m-8 0h6M7 16v-2l3-2 2-5 3 1-1 4" /><path {...common} d="M14 7l3 2-2 4" /><path {...common} d="M8 12l-2 3 2 1" /><circle cx="7" cy="18" r="2" fill="currentColor" /><circle cx="11" cy="18" r="2" fill="currentColor" /></>);
+      return wrap(
+        <>
+          <path {...common} d="M13 14h5v2h-5m-8 0h6M7 16v-2l3-2 2-5 3 1-1 4" />
+          <path {...common} d="M14 7l3 2-2 4" />
+          <path {...common} d="M8 12l-2 3 2 1" />
+          <circle cx="7" cy="18" r="2" fill="currentColor" />
+          <circle cx="11" cy="18" r="2" fill="currentColor" />
+        </>
+      );
     case "roller":
-      return wrap(<><circle cx="7" cy="15" r="4" {...common} /><path {...common} d="M11 15h4m0 0v-4h4v6h-3" /><circle cx="18" cy="17" r="2" fill="currentColor" /></>);
+      return wrap(
+        <>
+          <circle cx="7" cy="15" r="4" {...common} />
+          <path {...common} d="M11 15h4m0 0v-4h4v6h-3" />
+          <circle cx="18" cy="17" r="2" fill="currentColor" />
+        </>
+      );
     case "boom_lift_truck":
-      return wrap(<><path {...common} d="M2 16h11M4 16v-3h5v3M6 13l7-5 2 2" /><path {...common} d="M15 10l3-3h2v2l-3 3" /><circle cx="6" cy="18" r="2" fill="currentColor" /><circle cx="13" cy="18" r="2" fill="currentColor" /></>);
+      return wrap(
+        <>
+          <path {...common} d="M2 16h11M4 16v-3h5v3M6 13l7-5 2 2" />
+          <path {...common} d="M15 10l3-3h2v2l-3 3" />
+          <circle cx="6" cy="18" r="2" fill="currentColor" />
+          <circle cx="13" cy="18" r="2" fill="currentColor" />
+        </>
+      );
     case "scissor_lift":
-      return wrap(<><path {...common} d="M5 18h10M6 6h8v3H6Z" /><path {...common} d="m7 15 6-6m-6 0 6 6" /><path {...common} d="M6 18v-2h8v2" /><circle cx="7" cy="20" r="1" fill="currentColor" /><circle cx="13" cy="20" r="1" fill="currentColor" /></>);
+      return wrap(
+        <>
+          <path {...common} d="M5 18h10M6 6h8v3H6Z" />
+          <path {...common} d="m7 15 6-6m-6 0 6 6" />
+          <path {...common} d="M6 18v-2h8v2" />
+          <circle cx="7" cy="20" r="1" fill="currentColor" />
+          <circle cx="13" cy="20" r="1" fill="currentColor" />
+        </>
+      );
     case "forklift":
-      return wrap(<><path {...common} d="M5 6v8m0 0h4m-4 0v4m10-8v6" /><path {...common} d="M9 10h4a3 3 0 0 1 3 3v1H9Z" /><circle cx="10" cy="18" r="2" fill="currentColor" /><circle cx="16" cy="18" r="2" fill="currentColor" /></>);
+      return wrap(
+        <>
+          <path {...common} d="M5 6v8m0 0h4m-4 0v4m10-8v6" />
+          <path {...common} d="M9 10h4a3 3 0 0 1 3 3v1H9Z" />
+          <circle cx="10" cy="18" r="2" fill="currentColor" />
+          <circle cx="16" cy="18" r="2" fill="currentColor" />
+        </>
+      );
     case "mobile_crane":
-      return wrap(<><path {...common} d="M3 16h11M5 16v-3h4v3M9 13l6-5 3 2" /><path {...common} d="M18 10v5m0 0-1.5 2M18 15l1.5 2" /><circle cx="6" cy="18" r="2" fill="currentColor" /><circle cx="13" cy="18" r="2" fill="currentColor" /></>);
+      return wrap(
+        <>
+          <path {...common} d="M3 16h11M5 16v-3h4v3M9 13l6-5 3 2" />
+          <path {...common} d="M18 10v5m0 0-1.5 2M18 15l1.5 2" />
+          <circle cx="6" cy="18" r="2" fill="currentColor" />
+          <circle cx="13" cy="18" r="2" fill="currentColor" />
+        </>
+      );
     default:
       return wrap(<rect x="5" y="5" width="14" height="14" {...common} />);
   }
