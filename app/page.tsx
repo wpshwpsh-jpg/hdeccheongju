@@ -389,6 +389,33 @@ type EntryItem = {
   createdAt?: string | null;
 };
 
+type DabsRowItem = {
+  id: string;
+  company?: string;
+  content?: string;
+  name?: string;
+  elderly?: string;
+  gate?: string;
+  material?: string;
+  vehicle?: string;
+  location?: string;
+  time?: string;
+};
+
+type DabsTabValue =
+  | string
+  | {
+      rows?: Record<string, DabsRowItem[]>;
+      list?: DabsRowItem[];
+    };
+
+type DabsDateValue = {
+  soloWorker?: {
+    rows?: Record<string, DabsRowItem[]>;
+  };
+  [key: string]: DabsTabValue | { rows?: Record<string, DabsRowItem[]> } | undefined;
+};
+
 function runSelfTests() {
   const results = [];
   results.push({ name: "09:00 종료시간은 11:00", pass: getEndTime("09:00") === "11:00" });
@@ -583,9 +610,26 @@ export default function MonthlyCalendarTextEntrySite() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [currentPage, setCurrentPage] = useState("menu");
   const [dabsTabIndex, setDabsTabIndex] = useState(0);
-  const [dabsData, setDabsData] = useState({});
-  const [dabsImages, setDabsImages] = useState({});
-  const [dabsOverlays, setDabsOverlays] = useState({});
+  const [dabsData, setDabsData] = useState<Record<string, DabsDateValue>>({});
+  const [dabsImages, setDabsImages] = useState<Record<string, string>>({});
+  const [dabsOverlays, setDabsOverlays] = useState<
+  Record<
+    string,
+    Record<
+      string,
+      {
+        markers?: DabsRowItem[];
+        arrows?: Array<{
+          id: string;
+          startX: number;
+          startY: number;
+          endX: number;
+          endY: number;
+        }>;
+      }
+    >
+  >
+>({});
   const [dabsDraft, setDabsDraft] = useState("");
   const [dabsMessage, setDabsMessage] = useState("");
   const [sectionInput, setSectionInput] = useState({ building: "", content: "" });
@@ -747,10 +791,13 @@ export default function MonthlyCalendarTextEntrySite() {
 
   const activeDabsTab = dabsTabs[dabsTabIndex] || dabsTabs[0];
   const activeDabsKey = activeDabsTab.key;
-  const soloRows = useMemo(() => dabsData[selectedDate]?.soloWorker?.rows || {}, [dabsData, selectedDate]);
+  const soloRows = useMemo<Record<string, DabsRowItem[]>>(
+  () => dabsData[selectedDate]?.soloWorker?.rows || {},
+  [dabsData, selectedDate]
+);
 
   useEffect(() => {
-    const nextValue = dabsData?.[selectedDate]?.[activeDabsKey];
+    const nextValue = dabsData[selectedDate]?.[activeDabsKey];
     setDabsDraft(typeof nextValue === "string" ? nextValue : "");
     setDabsMessage("");
     setArrowStart(null);
