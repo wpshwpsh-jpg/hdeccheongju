@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import React, { useEffect, useMemo, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { motion } from "framer-motion";
 import {
   CalendarDays,
@@ -86,18 +86,33 @@ function CardTitle({ className = "", children }: { className?: string; children?
   return <div className={cn("text-base font-semibold text-slate-900 sm:text-lg", className)}>{children}</div>;
 }
 
-function Button({ className = "", variant = "default", size = "default", type = "button", children, ...props }) {
+function Button({
+  className = "",
+  variant = "default",
+  size = "default",
+  type = "button",
+  children,
+  ...props
+}: {
+  className?: string;
+  variant?: "default" | "outline" | "ghost" | "secondary";
+  size?: "default" | "icon" | "sm";
+  type?: "button" | "submit" | "reset";
+  children?: ReactNode;
+} & ButtonHTMLAttributes<HTMLButtonElement>) {
   const variantClass = {
     default: "bg-slate-900 text-white hover:bg-slate-800 border-slate-900",
     outline: "bg-white text-slate-700 hover:bg-slate-50 border-slate-300",
     ghost: "bg-transparent text-slate-600 hover:bg-slate-100 border-transparent",
     secondary: "bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200",
   }[variant];
+
   const sizeClass = {
     default: "h-10 px-4",
     icon: "h-10 w-10 p-0",
     sm: "h-8 px-2",
   }[size];
+
   return (
     <button
       type={type}
@@ -114,12 +129,38 @@ function Button({ className = "", variant = "default", size = "default", type = 
   );
 }
 
-function Input({ className = "", ...props }) {
-  return <input className={cn("h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200", className)} {...props} />;
+function Input({
+  className = "",
+  ...props
+}: {
+  className?: string;
+} & InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      className={cn(
+        "h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200",
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
-function TextArea({ className = "", ...props }) {
-  return <textarea className={cn("min-h-[140px] w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200", className)} {...props} />;
+function TextArea({
+  className = "",
+  ...props
+}: {
+  className?: string;
+} & TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      className={cn(
+        "min-h-[140px] w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200",
+        className
+      )}
+      {...props}
+    />
+  );
 }
 
 function Badge({ className = "", children }: { className?: string; children?: ReactNode }) {
