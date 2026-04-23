@@ -1314,7 +1314,7 @@ export default function MonthlyCalendarTextEntrySite() {
     );
   };
 
-  const renderOverlayImage = (selectedImage, isImageTab) => {
+  const renderOverlayImage = (selectedImage: string | undefined, isImageTab: boolean) => {
     const overlayBundle = getOverlayBundle();
     const markers = overlayBundle.markers || [];
     const arrows = overlayBundle.arrows || [];
