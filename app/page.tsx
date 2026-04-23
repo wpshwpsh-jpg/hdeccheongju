@@ -167,24 +167,24 @@ function Badge({ className = "", children }: { className?: string; children?: Re
   return <span className={cn("inline-flex items-center rounded-full bg-slate-100 px-2 py-0 text-[10px] font-medium text-slate-700", className)}>{children}</span>;
 }
 
-function formatDateKey(date) {
+function formatDateKey(date: Date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
-function formatMonthDay(dateKey) {
+function formatMonthDay(dateKey: string) {
   if (!dateKey) return "-";
   const [, month, day] = dateKey.split("-");
   return `${Number(month)}월 ${Number(day)}일`;
 }
 
-function formatShortDate(date) {
+function formatShortDate(date: Date) {
   return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
-function getMonthGrid(currentDate) {
+function getMonthGrid(currentDate: Date) {
   const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   const start = new Date(firstDay);
   start.setDate(start.getDate() - start.getDay());
@@ -204,7 +204,7 @@ function getTimeOptions() {
   return options;
 }
 
-function getEndTime(startTime) {
+function getEndTime(startTime: string) {
   const [hour, minute] = startTime.split(":").map(Number);
   const totalMinutes = hour * 60 + minute + 120;
   const endHour = Math.floor((totalMinutes % (24 * 60)) / 60);
@@ -212,21 +212,21 @@ function getEndTime(startTime) {
   return `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
 }
 
-function isTimeOverlapping(startA, endA, startB, endB) {
-  const toMinutes = (time) => {
+function isTimeOverlapping(startA: string, endA: string, startB: string, endB: string) {
+  const toMinutes = (time: string) => {
     const [hour, minute] = time.split(":").map(Number);
     return hour * 60 + minute;
   };
   return toMinutes(startA) < toMinutes(endB) && toMinutes(startB) < toMinutes(endA);
 }
 
-function getRoleLabel(role) {
+function getRoleLabel(role: string) {
   if (role === "master") return "마스터";
   if (role === "admin") return "관리자";
   return "일반";
 }
 
-function getStatusLabel(status) {
+function getStatusLabel(status: string) {
   if (status === "approved") return "승인완료";
   if (status === "rejected") return "반려";
   return "승인대기";
