@@ -246,7 +246,7 @@ function readClientEnv(name: string) {
   return "";
 }
 
-function getDemoMasterUser() {
+function getDemoMasterUser(): UserItem {
   return {
     uid: "demo-master",
     email: DEMO_MASTER_ID,
@@ -258,7 +258,7 @@ function getDemoMasterUser() {
   };
 }
 
-function loadDemoUsers() {
+function loadDemoUsers(): UserItem[] {
   if (typeof window === "undefined") return [getDemoMasterUser()];
   try {
     const raw = window.localStorage.getItem(DEMO_USERS_KEY);
@@ -278,7 +278,7 @@ function saveDemoUsers(users: Array<{ uid: string } & Record<string, unknown>>) 
   );
 }
 
-function loadDemoEntries() {
+function loadDemoEntries(): EntryItem[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(DEMO_ENTRIES_KEY);
@@ -363,6 +363,31 @@ function getFirebaseServices() {
 }
 
 const firebaseServices = getFirebaseServices();
+
+type UserItem = {
+  uid: string;
+  email?: string;
+  password?: string;
+  companyName?: string;
+  name?: string;
+  role?: string;
+  status?: string;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  createdAt?: string | null;
+};
+
+type EntryItem = {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  companyName?: string;
+  createdByUid?: string;
+  createdByName?: string;
+  createdByRole?: string;
+  createdAt?: string | null;
+};
 
 function runSelfTests() {
   const results = [];
@@ -536,8 +561,8 @@ export default function MonthlyCalendarTextEntrySite() {
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentUser, setCurrentUser] = useState(null);
-  const [users, setUsers] = useState([]);
-  const [entries, setEntries] = useState([]);
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const [entries, setEntries] = useState<EntryItem[]>([]);
   const [selectedDate, setSelectedDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
