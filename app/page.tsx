@@ -232,9 +232,17 @@ function getStatusLabel(status: string) {
   return "승인대기";
 }
 
-function readClientEnv(name) {
-  if (typeof process !== "undefined" && process?.env && typeof process.env[name] !== "undefined") return process.env[name];
-  if (typeof globalThis !== "undefined" && globalThis.__FIREBASE_CONFIG__ && typeof globalThis.__FIREBASE_CONFIG__[name] !== "undefined") return globalThis.__FIREBASE_CONFIG__[name];
+function readClientEnv(name: string) {
+  if (typeof process !== "undefined" && process?.env && typeof process.env[name] !== "undefined") {
+    return process.env[name];
+  }
+  if (
+    typeof globalThis !== "undefined" &&
+    (globalThis as { __FIREBASE_CONFIG__?: Record<string, string> }).__FIREBASE_CONFIG__ &&
+    typeof (globalThis as { __FIREBASE_CONFIG__?: Record<string, string> }).__FIREBASE_CONFIG__?.[name] !== "undefined"
+  ) {
+    return (globalThis as { __FIREBASE_CONFIG__?: Record<string, string> }).__FIREBASE_CONFIG__?.[name] || "";
+  }
   return "";
 }
 
