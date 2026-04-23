@@ -1007,16 +1007,38 @@ export default function MonthlyCalendarTextEntrySite() {
 };
 
   const handleAddMaterial = () => {
-    const { gate, material, vehicle, location, time } = materialsInput;
-    if (!canEditDabs || !material || !vehicle || !location) return;
-    const list = dabsData[selectedDate]?.[activeDabsKey]?.list || [];
-    const newItem = { id: createLocalId("material"), gate, material, vehicle, location, time, company: currentUser?.companyName || "" };
-    const nextData = { ...dabsData, [selectedDate]: { ...(dabsData[selectedDate] || {}), [activeDabsKey]: { list: [...list, newItem] } } };
-    setDabsData(nextData);
-    saveDabsData(nextData);
-    setMaterialsInput({ gate: "1", material: "", vehicle: "", location: "", time: "06" });
-    setDabsMessage("저장되었습니다.");
+  const { gate, material, vehicle, location, time } = materialsInput;
+  if (!canEditDabs || !material || !vehicle || !location) return;
+
+  const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
+  const list =
+    typeof currentTabValue === "object" && currentTabValue && "list" in currentTabValue
+      ? currentTabValue.list || []
+      : [];
+
+  const newItem = {
+    id: createLocalId("material"),
+    gate,
+    material,
+    vehicle,
+    location,
+    time,
+    company: currentUser?.companyName || "",
   };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      [activeDabsKey]: { list: [...list, newItem] },
+    },
+  };
+
+  setDabsData(nextData);
+  saveDabsData(nextData);
+  setMaterialsInput({ gate: "1", material: "", vehicle: "", location: "", time: "06" });
+  setDabsMessage("저장되었습니다.");
+};
 
   const handleDeleteDabsItem = (itemId, building = null) => {
     if (!canDeleteDabsItem) return;
