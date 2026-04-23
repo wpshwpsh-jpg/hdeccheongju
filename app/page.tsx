@@ -1160,14 +1160,22 @@ export default function MonthlyCalendarTextEntrySite() {
     setImagePopup({ open: true, x: point.x, y: point.y, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
   };
 
-  const openMarkerPopupByTouch = (touch: Touch) => {
-    if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
-    const point = getRelativePoint(touch.clientX, touch.clientY);
-    if (!point) return;
-    lastTouchTimeRef.current = Date.now();
-    vibrateBriefly();
-    setImagePopup({ open: true, x: point.x, y: point.y, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
-  };
+  const openMarkerPopupByTouch = (touch: { clientX: number; clientY: number }) => {
+  if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
+  const point = getRelativePoint(touch.clientX, touch.clientY);
+  if (!point) return;
+  lastTouchTimeRef.current = Date.now();
+  vibrateBriefly();
+  setImagePopup({
+    open: true,
+    x: point.x,
+    y: point.y,
+    note: "",
+    equipmentType: "concrete_pump_truck",
+    building: "",
+    targetKey: "highRisk",
+  });
+};
 
   const cancelMarkerPopup = () => {
     if (imagePopup.targetKey === "equipmentFlow") {
