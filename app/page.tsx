@@ -270,9 +270,12 @@ function loadDemoUsers() {
   }
 }
 
-function saveDemoUsers(users) {
+function saveDemoUsers(users: Array<{ uid: string } & Record<string, unknown>>) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(DEMO_USERS_KEY, JSON.stringify(users.filter((user) => String(user.uid) !== "demo-master")));
+  window.localStorage.setItem(
+    DEMO_USERS_KEY,
+    JSON.stringify(users.filter((user) => String(user.uid) !== "demo-master"))
+  );
 }
 
 function loadDemoEntries() {
@@ -286,7 +289,7 @@ function loadDemoEntries() {
   }
 }
 
-function saveDemoEntries(entries) {
+function saveDemoEntries(entries: Array<Record<string, unknown>>) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(DEMO_ENTRIES_KEY, JSON.stringify(entries));
 }
@@ -302,7 +305,7 @@ function loadDabsData() {
   }
 }
 
-function saveDabsData(data) {
+function saveDabsData(data: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(DABS_STORAGE_KEY, JSON.stringify(data));
 }
@@ -318,7 +321,7 @@ function loadDabsImages() {
   }
 }
 
-function saveDabsImages(data) {
+function saveDabsImages(data: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(DABS_IMAGE_STORAGE_KEY, JSON.stringify(data));
 }
@@ -334,7 +337,7 @@ function loadDabsOverlays() {
   }
 }
 
-function saveDabsOverlays(data) {
+function saveDabsOverlays(data: Record<string, unknown>) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(DABS_OVERLAY_STORAGE_KEY, JSON.stringify(data));
 }
