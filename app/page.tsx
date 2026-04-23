@@ -560,7 +560,7 @@ export default function MonthlyCalendarTextEntrySite() {
   }, []);
 
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState<UserItem | null>(null);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [entries, setEntries] = useState<EntryItem[]>([]);
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -644,7 +644,7 @@ export default function MonthlyCalendarTextEntrySite() {
           setIsAuthReady(true);
           return;
         }
-        const userData = { uid: firebaseUser.uid, ...snap.data() };
+        const userData: UserItem = { uid: firebaseUser.uid, ...(snap.data() as Partial<UserItem>) };
         if (userData.status !== "approved") {
           await signOut(auth);
           setLoginMessage("승인 완료된 계정만 로그인할 수 있습니다.");
@@ -757,7 +757,7 @@ export default function MonthlyCalendarTextEntrySite() {
     await addDoc(collection(db, "entries"), { date: selectedDate, startTime: effectiveSelectedTime, endTime: effectiveEndTime, companyName: currentUser.companyName, createdByUid: currentUser.uid, createdByName: currentUser.name, createdByRole: currentUser.role, createdAt: serverTimestamp() });
   };
 
-  const deleteEntry = async (entryId) => {
+  const deleteEntry = async (entryId: string) => {
     if (!currentUser) return;
     const canDelete = currentUser.role === "master" || currentUser.role === "admin";
     if (!canDelete) return setDeleteNoticeOpen(true);
@@ -847,7 +847,7 @@ export default function MonthlyCalendarTextEntrySite() {
     }
   };
 
-  const approveUser = async (uid) => {
+  const approveUser = async (uid: string) => {
     if (!currentUser) return;
     if (isDemoMode) {
       const demoUsers = loadDemoUsers();
@@ -868,7 +868,7 @@ export default function MonthlyCalendarTextEntrySite() {
     await updateDoc(doc(db, "users", uid), { status: "approved", approvedAt: serverTimestamp(), approvedBy: currentUser.uid });
   };
 
-  const rejectUser = async (uid) => {
+  const rejectUser = async (uid: string) => {
     if (!currentUser) return;
     if (isDemoMode) {
       const demoUsers = loadDemoUsers();
