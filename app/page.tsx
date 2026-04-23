@@ -402,6 +402,12 @@ export default function MonthlyCalendarTextEntrySite() {
   const { auth, db, isConfigured } = firebaseServices;
   const isDemoMode = !isConfigured;
 
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [currentUser, setCurrentUser] = useState(null);
   const [users, setUsers] = useState([]);
@@ -1037,7 +1043,7 @@ export default function MonthlyCalendarTextEntrySite() {
       <div className="w-full max-w-5xl space-y-4 sm:space-y-6">
         <div className="text-center">
           <div className="text-sm font-medium text-slate-500">회원 전용 포털</div>
-          {isDemoMode && <div className="mt-3 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">데모 로그인: GH45 / 2706</div>}
+          {mounted && isDemoMode && <div className="mt-3 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">데모 로그인: GH45 / 2706</div>}
           <h1 className="mt-2 text-2xl font-bold text-slate-900 sm:text-3xl">힐스테이트 어울림 청주사직</h1>
           <p className="mt-2 text-sm text-slate-500">로그인 또는 회원가입 후 메뉴를 선택해 이동할 수 있습니다.</p>
         </div>
@@ -1166,6 +1172,8 @@ export default function MonthlyCalendarTextEntrySite() {
       {activeTab === "approval" && <div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2"><LayoutGrid className="h-5 w-5" />가입 승인 전용 탭</CardTitle></CardHeader><CardContent>{!canManageApprovals ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">가입 승인 관리는 관리자 또는 마스터만 접근할 수 있습니다.</div> : pendingUsers.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">현재 승인 대기 중인 계정이 없습니다.</div> : <div className="space-y-3">{pendingUsers.map((user) => { const canApproveThisUser = user.role === "admin" ? canApproveAdmin : canApproveGeneral; return <div key={user.uid} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"><div className="space-y-1"><div className="text-base font-semibold text-slate-900">{user.name} ({user.email || user.uid})</div><div className="text-sm text-slate-600">업체명: {user.companyName}</div><div className="text-sm text-slate-600">신청 권한: {getRoleLabel(user.role)}</div><div className="text-xs text-slate-500">상태: {getStatusLabel(user.status)}</div></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => rejectUser(user.uid)} disabled={!canApproveThisUser}>반려</Button><Button onClick={() => approveUser(user.uid)} disabled={!canApproveThisUser}>승인</Button></div></div>{!canApproveThisUser && <div className="mt-3 text-xs text-red-500">이 계정은 현재 로그인한 권한으로 승인할 수 없습니다.</div>}</div>; })}</div>}</CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>승인된 회원 목록</CardTitle></CardHeader><CardContent className="space-y-3">{approvedUsers.map((user) => <div key={user.uid} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm shadow-sm"><div className="font-semibold text-slate-900">{user.name} ({user.email || user.uid})</div><div className="text-slate-600">{user.companyName}</div><div className="mt-1 text-xs text-slate-500">{getRoleLabel(user.role)} · {getStatusLabel(user.status)}</div></div>)}</CardContent></Card></div>}
     </div>
   );
+
+  if (!mounted) return null;
 
   return (
     <div className="min-h-screen bg-slate-50 p-3 sm:p-4 md:p-8">
