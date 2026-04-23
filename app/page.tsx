@@ -377,7 +377,7 @@ function runSelfTests() {
   return results;
 }
 
-function getCompanyColor(company) {
+function getCompanyColor(company: string) {
   const palette = [
     { bg: "bg-rose-50/95", border: "border-rose-300", text: "text-rose-800" },
     { bg: "bg-amber-50/95", border: "border-amber-300", text: "text-amber-800" },
@@ -394,7 +394,7 @@ function getCompanyColor(company) {
   return palette[hash % palette.length];
 }
 
-function groupSoloWorkersByCompany(list) {
+function groupSoloWorkersByCompany(list: Array<{ company?: string; name?: string }>) {
   const sorted = [...list].sort((a, b) => {
     const companyCompare = String(a.company || "").localeCompare(String(b.company || ""), "ko");
     if (companyCompare !== 0) return companyCompare;
@@ -409,7 +409,7 @@ function groupSoloWorkersByCompany(list) {
   return Array.from(map.entries());
 }
 
-function getEquipmentLabel(type) {
+function getEquipmentLabel(type: string) {
   return EQUIPMENT_OPTIONS.find((item) => item.value === type)?.label || "장비";
 }
 
