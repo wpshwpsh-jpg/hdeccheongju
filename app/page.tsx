@@ -635,8 +635,10 @@ export default function MonthlyCalendarTextEntrySite() {
   const [sectionInput, setSectionInput] = useState({ building: "", content: "" });
   const [materialsInput, setMaterialsInput] = useState({ gate: "1", material: "", vehicle: "", location: "", time: "06" });
   const [imagePopup, setImagePopup] = useState({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
-  const [arrowStart, setArrowStart] = useState(null);
-  const [arrowPreview, setArrowPreview] = useState(null);
+  const [arrowStart, setArrowStart] = useState<{ x: number; y: number } | null>(null);
+  const [arrowPreview, setArrowPreview] = useState<
+  { startX: number; startY: number; endX: number; endY: number } | null
+>(null);
   const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", name: "", content: "", elderly: "o" });
   const [soloCompanyFilter, setSoloCompanyFilter] = useState("");
   const imageAreaRef = useRef<HTMLDivElement | null>(null);
@@ -1040,22 +1042,53 @@ export default function MonthlyCalendarTextEntrySite() {
   setDabsMessage("저장되었습니다.");
 };
 
-  const handleDeleteDabsItem = (itemId, building = null) => {
-    if (!canDeleteDabsItem) return;
-    if (activeDabsKey === "section1" || activeDabsKey === "section2") {
-      const currentRows = dabsData[selectedDate]?.[activeDabsKey]?.rows || {};
-      const nextRows = { ...currentRows };
-      if (building) nextRows[building] = (nextRows[building] || []).filter((item) => item.id !== itemId);
-      const nextData = { ...dabsData, [selectedDate]: { ...(dabsData[selectedDate] || {}), [activeDabsKey]: { rows: nextRows } } };
-      setDabsData(nextData);
-      saveDabsData(nextData);
-      return;
+  const handleDeleteDabsItem = (itemId: string, building: string | null = null) => {
+  if (!canDeleteDabsItem) return;
+
+  if (activeDabsKey === "section1" || activeDabsKey === "section2") {
+    const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
+    const currentRows =
+      typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+        ? currentTabValue.rows || {}
+        : {};
+
+    const nextRows = { ...currentRows };
+    if (building) {
+      nextRows[building] = (nextRows[building] || []).filter((item) => item.id !== itemId);
     }
-    const currentValue = dabsData[selectedDate]?.[activeDabsKey] || {};
-    const nextData = { ...dabsData, [selectedDate]: { ...(dabsData[selectedDate] || {}), [activeDabsKey]: { ...currentValue, list: (currentValue.list || []).filter((item) => item.id !== itemId) } } };
+
+    const nextData = {
+      ...dabsData,
+      [selectedDate]: {
+        ...(dabsData[selectedDate] || {}),
+        [activeDabsKey]: { rows: nextRows },
+      },
+    };
+
     setDabsData(nextData);
     saveDabsData(nextData);
+    return;
+  }
+
+  const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
+  const currentList =
+    typeof currentTabValue === "object" && currentTabValue && "list" in currentTabValue
+      ? currentTabValue.list || []
+      : [];
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      [activeDabsKey]: {
+        list: currentList.filter((item) => item.id !== itemId),
+      },
+    },
   };
+
+  setDabsData(nextData);
+  saveDabsData(nextData);
+};
 
   const handleAddSoloWorker = () => {
     if (!canEditDabs || !soloWorkerInput.building || !soloWorkerInput.name.trim() || !soloWorkerInput.content.trim()) return;
@@ -1067,49 +1100,67 @@ export default function MonthlyCalendarTextEntrySite() {
     setSoloWorkerInput({ building: "", name: "", content: "", elderly: "o" });
   };
 
-  const handleDeleteSoloWorker = (itemId, building) => {
-    if (!canDeleteDabsItem) return;
-    const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
-    const nextRows = { ...currentRows, [building]: (currentRows[building] || []).filter((item) => item.id !== itemId) };
-    const nextData = { ...dabsData, [selectedDate]: { ...(dabsData[selectedDate] || {}), soloWorker: { rows: nextRows } } };
-    setDabsData(nextData);
-    saveDabsData(nextData);
+  const handleDeleteSoloWorker = (itemId: string, building: string) => {
+  if (!canDeleteDabsItem) return;
+  const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
+  const nextRows = {
+    ...currentRows,
+    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
   };
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      soloWorker: { rows: nextRows },
+    },
+  };
+  setDabsData(nextData);
+  saveDabsData(nextData);
+};
 
   const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
 
-  const handleDeleteOverlayItem = (itemId) => {
-    if (!canDeleteDabsItem) return;
-    const currentValue = getOverlayBundle();
-    const nextData = { ...dabsOverlays, [selectedDate]: { ...(dabsOverlays[selectedDate] || {}), [activeDabsKey]: { markers: (currentValue.markers || []).filter((item) => item.id !== itemId), arrows: (currentValue.arrows || []).filter((item) => item.id !== itemId) } } };
-    setDabsOverlays(nextData);
-    saveDabsOverlays(nextData);
+  const handleDeleteOverlayItem = (itemId: string) => {
+  if (!canDeleteDabsItem) return;
+  const currentValue = getOverlayBundle();
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      [activeDabsKey]: {
+        markers: (currentValue.markers || []).filter((item) => item.id !== itemId),
+        arrows: (currentValue.arrows || []).filter((item) => item.id !== itemId),
+      },
+    },
   };
+  setDabsOverlays(nextData);
+  saveDabsOverlays(nextData);
+};
 
-  const handleHighRiskImageUpload = (event) => {
-    if (!canUploadDabsImage) return setDabsMessage("사진 업로드는 마스터, 관리자만 가능합니다.");
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const imageValue = typeof reader.result === "string" ? reader.result : "";
-      const nextImages = { ...dabsImages, highRisk: imageValue, equipmentFlow: imageValue };
-      setDabsImages(nextImages);
-      saveDabsImages(nextImages);
-      setDabsMessage("사진이 저장되었습니다.");
-    };
-    reader.readAsDataURL(file);
-    event.target.value = "";
+  const handleHighRiskImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  if (!canUploadDabsImage) return setDabsMessage("사진 업로드는 마스터, 관리자만 가능합니다.");
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const imageValue = typeof reader.result === "string" ? reader.result : "";
+    const nextImages = { ...dabsImages, highRisk: imageValue, equipmentFlow: imageValue };
+    setDabsImages(nextImages);
+    saveDabsImages(nextImages);
+    setDabsMessage("사진이 저장되었습니다.");
   };
+  reader.readAsDataURL(file);
+  event.target.value = "";
+};
 
-  const openMarkerPopup = (event) => {
+  const openMarkerPopup = (event: React.MouseEvent<HTMLDivElement>) => {
     if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
     const point = getRelativePoint(event.clientX, event.clientY);
     if (!point) return;
     setImagePopup({ open: true, x: point.x, y: point.y, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
   };
 
-  const openMarkerPopupByTouch = (touch) => {
+  const openMarkerPopupByTouch = (touch: Touch) => {
     if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
     const point = getRelativePoint(touch.clientX, touch.clientY);
     if (!point) return;
@@ -1145,7 +1196,7 @@ export default function MonthlyCalendarTextEntrySite() {
     setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
   };
 
-  const completeEquipmentArrow = (endX, endY) => {
+  const completeEquipmentArrow = (endX: number, endY: number) => {
     if (!arrowStart) return;
     const currentValue = getOverlayBundle("equipmentFlow");
     const arrow = { id: createLocalId("arrow"), startX: arrowStart.x, startY: arrowStart.y, endX, endY };
@@ -1158,7 +1209,7 @@ export default function MonthlyCalendarTextEntrySite() {
     vibrateBriefly();
   };
 
-  const handleEquipmentClick = (event) => {
+  const handleEquipmentClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (Date.now() - lastTouchTimeRef.current < 500) return;
     if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !canEditDabs) return;
     const point = getRelativePoint(event.clientX, event.clientY);
@@ -1171,14 +1222,14 @@ export default function MonthlyCalendarTextEntrySite() {
     completeEquipmentArrow(point.x, point.y);
   };
 
-  const handleEquipmentMouseMove = (event) => {
+  const handleEquipmentMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !arrowStart) return;
     const point = getRelativePoint(event.clientX, event.clientY);
     if (!point) return;
     setArrowPreview({ startX: arrowStart.x, startY: arrowStart.y, endX: point.x, endY: point.y });
   };
 
-  const handleOverlayTouchStart = (event) => {
+  const handleOverlayTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
     const touch = event.touches?.[0];
     if (!touch) return;
     if (activeDabsKey === "highRisk") {
@@ -1200,7 +1251,7 @@ export default function MonthlyCalendarTextEntrySite() {
     touchGestureRef.current = { moved: false, startX: touch.clientX, startY: touch.clientY };
   };
 
-  const handleOverlayTouchMove = (event) => {
+  const handleOverlayTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
     const touch = event.touches?.[0];
     if (!touch) return;
     const gesture = touchGestureRef.current;
@@ -1211,7 +1262,7 @@ export default function MonthlyCalendarTextEntrySite() {
     setArrowPreview({ startX: arrowStart.x, startY: arrowStart.y, endX: point.x, endY: point.y });
   };
 
-  const handleOverlayTouchEnd = (event) => {
+  const handleOverlayTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
     const touch = event.changedTouches?.[0];
     if (!touch) return;
     const point = getRelativePoint(touch.clientX, touch.clientY);
@@ -1393,13 +1444,19 @@ export default function MonthlyCalendarTextEntrySite() {
   };
 
   const renderDabsPage = () => {
-    const selectedTabValue = dabsData?.[selectedDate]?.[activeDabsKey];
+    const selectedTabValue = dabsData[selectedDate]?.[activeDabsKey];
     const isImageTab = activeDabsKey === "highRisk" || activeDabsKey === "equipmentFlow";
     const isSectionTab = activeDabsKey === "section1" || activeDabsKey === "section2";
     const isMaterialTab = activeDabsKey === "materialsAfter1" || activeDabsKey === "materialsAfter2";
     const activeColumns = activeDabsKey === "section1" ? SECTION1_COLUMNS : SECTION2_COLUMNS;
-    const sectionRows = selectedTabValue?.rows || {};
-    const materialList = selectedTabValue?.list || [];
+    const sectionRows =
+  typeof selectedTabValue === "object" && selectedTabValue && "rows" in selectedTabValue
+    ? selectedTabValue.rows || {}
+    : {};
+    const materialList =
+  typeof selectedTabValue === "object" && selectedTabValue && "list" in selectedTabValue
+    ? selectedTabValue.list || []
+    : [];
     return (
       <div className="space-y-4 sm:space-y-6">
         {renderTopBar()}
