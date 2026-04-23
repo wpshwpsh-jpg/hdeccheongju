@@ -402,6 +402,24 @@ type DabsRowItem = {
   time?: string;
 };
 
+type OverlayMarkerItem = {
+  id: string;
+  x: number;
+  y: number;
+  building?: string;
+  company?: string;
+  note?: string;
+  equipmentType?: string;
+};
+
+type OverlayArrowItem = {
+  id: string;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+};
+
 type DabsTabValue =
   | string
   | {
@@ -618,14 +636,8 @@ export default function MonthlyCalendarTextEntrySite() {
     Record<
       string,
       {
-        markers?: DabsRowItem[];
-        arrows?: Array<{
-          id: string;
-          startX: number;
-          startY: number;
-          endX: number;
-          endY: number;
-        }>;
+        markers?: OverlayMarkerItem[];
+        arrows?: OverlayArrowItem[];
       }
     >
   >
