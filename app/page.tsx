@@ -1305,7 +1305,7 @@ export default function MonthlyCalendarTextEntrySite() {
           <CardContent className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
             <div className="text-left sm:text-right">
               <div className="text-sm font-semibold text-slate-900">{currentUser.name}</div>
-              <div className="text-xs text-slate-500">{currentUser.companyName} · {getRoleLabel(currentUser.role)}</div>
+              <div className="text-xs text-slate-500">{currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}</div>
             </div>
             <Button variant="outline" onClick={handleLogout}><LogOut className="mr-2 h-4 w-4" />로그아웃</Button>
           </CardContent>
