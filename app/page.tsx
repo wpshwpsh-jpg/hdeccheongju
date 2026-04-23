@@ -804,11 +804,14 @@ export default function MonthlyCalendarTextEntrySite() {
     setArrowPreview(null);
   }, [selectedDate, activeDabsKey, dabsData]);
 
-  const getRelativePoint = (clientX, clientY) => {
-    if (!imageAreaRef.current) return null;
-    const rect = imageAreaRef.current.getBoundingClientRect();
-    return { x: ((clientX - rect.left) / rect.width) * 100, y: ((clientY - rect.top) / rect.height) * 100 };
+  const getRelativePoint = (clientX: number, clientY: number) => {
+  if (!imageAreaRef.current) return null;
+  const rect = imageAreaRef.current.getBoundingClientRect();
+  return {
+    x: ((clientX - rect.left) / rect.width) * 100,
+    y: ((clientY - rect.top) / rect.height) * 100,
   };
+};
 
   const vibrateBriefly = () => {
     if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") navigator.vibrate(25);
