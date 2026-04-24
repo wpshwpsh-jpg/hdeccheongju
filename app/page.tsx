@@ -929,7 +929,26 @@ const handlePasswordReset = async () => {
     if (!auth || !db) return setSignupMessage("Firebase 설정이 없어 회원가입을 진행할 수 없습니다.");
     try {
       const credential = await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, "users", credential.user.uid), { email, companyName, name, role: signupRole, status: "pending", createdAt: serverTimestamp(), approvedAt: null, approvedBy: null });
+
+const userRef = doc(db, "users", credential.user.uid);
+const existingUser = await getDoc(userRef);
+
+if (existingUser.exists()) {
+  await signOut(auth);
+  setSignupMessage("이미 가입 신청된 계정입니다. 로그인하거나 관리자에게 문의하세요.");
+  return;
+}
+
+await setDoc(userRef, {
+  email,
+  companyName,
+  name,
+  role: signupRole,
+  status: "pending",
+  createdAt: serverTimestamp(),
+  approvedAt: null,
+  approvedBy: null,
+});
       await signOut(auth);
       setSignupId("");
       setSignupPassword("");
