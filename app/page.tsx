@@ -756,10 +756,13 @@ const isDemoMode = !isConfigured;
   ];
 
   const menuItems = [
-    { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
-    { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
-    { key: "soloWorker", title: "단독작업자", description: "단독작업자 관리 페이지로 이동", icon: Users },
-  ];
+  { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
+  { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
+  { key: "soloWorker", title: "단독작업자", description: "단독작업자 관리 페이지로 이동", icon: Users },
+  ...(canManageApprovals
+    ? [{ key: "approval", title: "회원 승인 관리", description: "가입 신청 승인/반려 관리", icon: UserPlus }]
+    : []),
+];
 
   const todayPlusOne = useMemo(() => {
     const d = new Date();
@@ -1475,7 +1478,10 @@ const cancelApprovalUser = async (uid: string) => {
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
       {!isConfigured && <Card className="border-amber-300 bg-amber-50"><CardContent className="p-4"><div className="text-sm font-medium text-amber-900">Firebase 환경변수가 설정되지 않았습니다.</div><div className="mt-1 text-xs text-amber-800">Firebase 미설정 상태입니다. 현재는 데모 모드로 로그인할 수 있습니다: GH45 / 2706</div></CardContent></Card>}
-      <div className="grid gap-4 md:grid-cols-3 md:gap-6">{menuItems.map((item) => { const Icon = item.icon; return <button key={item.key} onClick={() => setCurrentPage(item.key)} className="rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md sm:p-6"><div className="flex items-center gap-3"><div className="rounded-2xl bg-slate-100 p-3 text-slate-700"><Icon className="h-6 w-6" /></div><div><div className="text-base font-semibold text-slate-900 sm:text-lg">{item.title}</div><div className="mt-1 text-sm text-slate-500">{item.description}</div></div></div></button>; })}</div>
+      <div className="grid gap-4 md:grid-cols-3 md:gap-6">{menuItems.map((item) => { const Icon = item.icon; return <button key={item.key} onClick={() => {
+  if (item.key === "approval") setActiveTab("approval");
+  setCurrentPage(item.key);
+}} className="rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md sm:p-6"><div className="flex items-center gap-3"><div className="rounded-2xl bg-slate-100 p-3 text-slate-700"><Icon className="h-6 w-6" /></div><div><div className="text-base font-semibold text-slate-900 sm:text-lg">{item.title}</div><div className="mt-1 text-sm text-slate-500">{item.description}</div></div></div></button>; })}</div>
     </div>
   );
 
@@ -1625,7 +1631,17 @@ const cancelApprovalUser = async (uid: string) => {
   return (
     <div className="min-h-screen bg-slate-50 p-3 sm:p-4 md:p-8">
       <div className="mx-auto max-w-6xl space-y-4 sm:space-y-6">
-        {!currentUser ? renderAuthScreen() : currentPage === "menu" ? renderMenuScreen() : currentPage === "dabs" ? renderDabsPage() : currentPage === "soloWorker" ? renderSoloWorkerPage() : renderEducationPage()}
+        {!currentUser
+  ? renderAuthScreen()
+  : currentPage === "menu"
+    ? renderMenuScreen()
+    : currentPage === "dabs"
+      ? renderDabsPage()
+      : currentPage === "soloWorker"
+        ? renderSoloWorkerPage()
+        : currentPage === "approval"
+          ? renderEducationPage()
+          : renderEducationPage()}
       </div>
     </div>
   );
