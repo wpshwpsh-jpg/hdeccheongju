@@ -1442,7 +1442,7 @@ export default function MonthlyCalendarTextEntrySite() {
     </div>
   );
 
-  const renderMaterialsMobileCards = (list) => (
+  const renderMaterialsMobileCards = (list: DabsRowItem[]) => (
     <div className="space-y-3 lg:hidden">
       {MATERIAL_TIMES.map((time) => {
         const row = list.filter((item) => item.time === time);
