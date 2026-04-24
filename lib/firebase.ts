@@ -21,7 +21,5 @@ export function getFirebaseServices() {
   const auth = getAuth(app);
   const db = getFirestore(app);
 
-  console.log("🔥 Firebase init:", { auth, db });
-
-  return { auth, db };
+  return { auth, db, isConfigured: true };
 }
