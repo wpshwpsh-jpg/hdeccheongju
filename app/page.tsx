@@ -948,13 +948,22 @@ await setDoc(doc(db, "users", credential.user.uid), {
   approvedAt: null,
   approvedBy: null,
 });
-      await signOut(auth);
-      setSignupId("");
-      setSignupPassword("");
-      setSignupCompanyName("");
-      setSignupName("");
-      setSignupRole("general");
-      setSignupMessage(signupRole === "admin" ? "관리자 계정 가입 신청이 접수되었습니다. 마스터 승인이 필요합니다." : "일반 계정 가입 신청이 접수되었습니다. 마스터 또는 관리자의 승인이 필요합니다.");
+
+// 🔥 성공 메시지
+setSignupMessage(
+  signupRole === "admin"
+    ? "관리자 계정 가입 신청이 완료되었습니다. 마스터 승인을 기다리세요."
+    : "회원가입 신청이 완료되었습니다. 승인 후 로그인 가능합니다."
+);
+
+// 🔥 입력값 초기화
+setSignupId("");
+setSignupPassword("");
+setSignupCompanyName("");
+setSignupName("");
+setSignupRole("general");
+
+await signOut(auth);
     } catch (error: any) {
   console.log("SIGNUP ERROR:", error.code);
 
