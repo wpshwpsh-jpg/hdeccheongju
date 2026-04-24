@@ -464,18 +464,21 @@ function getCompanyColor(company: string) {
   return palette[hash % palette.length];
 }
 
-function groupSoloWorkersByCompany(list: Array<{ company?: string; name?: string }>) {
+function groupSoloWorkersByCompany(list: DabsRowItem[]): Array<[string, DabsRowItem[]]> {
   const sorted = [...list].sort((a, b) => {
     const companyCompare = String(a.company || "").localeCompare(String(b.company || ""), "ko");
     if (companyCompare !== 0) return companyCompare;
     return String(a.name || "").localeCompare(String(b.name || ""), "ko");
   });
-  const map = new Map();
+
+  const map = new Map<string, DabsRowItem[]>();
+
   sorted.forEach((item) => {
     const key = item.company || "-";
     if (!map.has(key)) map.set(key, []);
-    map.get(key).push(item);
+    map.get(key)?.push(item);
   });
+
   return Array.from(map.entries());
 }
 
