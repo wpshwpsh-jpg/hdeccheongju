@@ -1047,11 +1047,7 @@ const cancelApprovalUser = async (uid: string) => {
   const canCancel = targetUser.role === "admin" ? canApproveAdmin : canApproveGeneral;
   if (!canCancel) return;
 
-  await updateDoc(doc(db, "users", uid), {
-    status: "rejected",
-    approvedAt: null,
-    approvedBy: currentUser.uid,
-  });
+  await deleteDoc(doc(db, "users", uid));
 };
 
   const handleSaveDabsText = () => {
