@@ -1492,7 +1492,7 @@ const cancelApprovalUser = async (uid: string) => {
             </CardContent>
           </Card>
         </div>
-        <Card><CardHeader className="pb-2"><CardTitle className="text-sm">내장 테스트</CardTitle></CardHeader><CardContent className="space-y-1 text-xs text-slate-600">{testResults.map((test) => <div key={test.name} className={test.pass ? "text-emerald-700" : "text-red-600"}>{test.pass ? "✓" : "✗"} {test.name}</div>)}</CardContent></Card>
+     
       </div>
     </div>
   );
