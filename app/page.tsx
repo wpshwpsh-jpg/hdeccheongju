@@ -932,20 +932,12 @@ const saveSoloWorkersToFirestore = async (
   }
 
   try {
-    const docRef = await addDoc(collection(db, "entries"), {
-      ...newEntryData,
-      createdAt: serverTimestamp(),
-    });
+    await addDoc(collection(db, "entries"), {
+  ...newEntryData,
+  createdAt: serverTimestamp(),
+});
 
-    setEntries((prev) => [
-      ...prev,
-      {
-        id: docRef.id,
-        ...newEntryData,
-      },
-    ]);
-
-    setEntryMessage("일정이 등록되었습니다.");
+setEntryMessage("일정이 등록되었습니다.");
   } catch (error) {
     console.log("ENTRY ADD ERROR:", error);
     setEntryMessage("일정 등록 중 오류가 발생했습니다.");
@@ -953,18 +945,42 @@ const saveSoloWorkersToFirestore = async (
 };
 
   const deleteEntry = async (entryId: string) => {
-    if (!currentUser) return;
-    const canDelete = currentUser.role === "master" || currentUser.role === "admin";
-    if (!canDelete) return setDeleteNoticeOpen(true);
-    if (isDemoMode) {
-      const nextEntries = loadDemoEntries().filter((entry) => entry.id !== entryId);
-      saveDemoEntries(nextEntries);
-      setEntries(nextEntries);
-      return;
-    }
-    if (!db) return;
+  setEntryMessage("");
+
+  if (!currentUser) {
+    setEntryMessage("로그인 후 삭제할 수 있습니다.");
+    return;
+  }
+
+  const canDelete = currentUser.role === "master" || currentUser.role === "admin";
+
+  if (!canDelete) {
+    setDeleteNoticeOpen(true);
+    setEntryMessage("삭제 권한이 없습니다.");
+    return;
+  }
+
+  if (isDemoMode) {
+    const nextEntries = loadDemoEntries().filter((entry) => entry.id !== entryId);
+    saveDemoEntries(nextEntries);
+    setEntries(nextEntries);
+    setEntryMessage("일정이 삭제되었습니다.");
+    return;
+  }
+
+  if (!db) {
+    setEntryMessage("Firebase 연결이 없습니다.");
+    return;
+  }
+
+  try {
     await deleteDoc(doc(db, "entries", entryId));
-  };
+setEntryMessage("일정이 삭제되었습니다.");
+  } catch (error: any) {
+  console.log("ENTRY DELETE ERROR:", error);
+  setEntryMessage(error?.message || "일정 삭제 중 오류가 발생했습니다.");
+}
+};
 
   const handleLogin = async () => {
     if (isDemoMode) {
@@ -1792,7 +1808,19 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
   <div className="text-sm text-slate-600">{entryMessage}</div>
 )}
 
-<div className="mt-2 text-xs text-slate-400">시간 중복 불가</div></CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>선택 일자 등록 목록</CardTitle></CardHeader><CardContent className="space-y-3"><div><div className="text-sm text-slate-500">현재 선택 일자</div><div className="text-xl font-bold text-slate-900">{formatMonthDay(selectedDate)}</div></div>{dayEntries.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">등록된 일정이 없습니다.</div> : dayEntries.map((entry) => <motion.div key={entry.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-4"><div><div className="text-base font-semibold text-slate-900">{entry.companyName}</div><div className="mt-1 text-sm text-slate-600">{formatMonthDay(entry.date)}</div><div className="mt-1 text-sm text-slate-600">{entry.startTime} ~ {entry.endTime}</div><div className="mt-1 text-xs text-slate-500">작성자: {entry.createdByName || "-"} ({getRoleLabel(entry.createdByRole || "general")})</div></div><Button variant="ghost" size="icon" onClick={() => deleteEntry(entry.id)} disabled={!currentUser}><Trash2 className="h-4 w-4" /></Button></div></motion.div>)}</CardContent></Card></div></div>}
+<div className="mt-2 text-xs text-slate-400">시간 중복 불가</div></CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>선택 일자 등록 목록</CardTitle></CardHeader><CardContent className="space-y-3"><div><div className="text-sm text-slate-500">현재 선택 일자</div><div className="text-xl font-bold text-slate-900">{formatMonthDay(selectedDate)}</div></div>{dayEntries.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">등록된 일정이 없습니다.</div> : dayEntries.map((entry) => <motion.div key={entry.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-4"><div><div className="text-base font-semibold text-slate-900">{entry.companyName}</div><div className="mt-1 text-sm text-slate-600">{formatMonthDay(entry.date)}</div><div className="mt-1 text-sm text-slate-600">{entry.startTime} ~ {entry.endTime}</div><div className="mt-1 text-xs text-slate-500">작성자: {entry.createdByName || "-"} ({getRoleLabel(entry.createdByRole || "general")})</div></div><button
+  type="button"
+  onClick={(e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    deleteEntry(entry.id);
+  }}
+  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-slate-500 hover:bg-slate-100 hover:text-red-600 disabled:opacity-50"
+  disabled={!currentUser}
+  title="일정 삭제"
+>
+  <Trash2 className="h-4 w-4" />
+</button></div></motion.div>)}</CardContent></Card></div></div>}
       {activeTab === "approval" && <div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2"><LayoutGrid className="h-5 w-5" />가입 승인 전용 탭</CardTitle></CardHeader><CardContent>{!canManageApprovals ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">가입 승인 관리는 관리자 또는 마스터만 접근할 수 있습니다.</div> : pendingUsers.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">현재 승인 대기 중인 계정이 없습니다.</div> : <div className="space-y-3">{pendingUsers.map((user) => { const canApproveThisUser = user.role === "admin" ? canApproveAdmin : canApproveGeneral; return <div key={user.uid} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"><div className="space-y-1"><div className="text-base font-semibold text-slate-900">{user.name} ({user.email || user.uid})</div><div className="text-sm text-slate-600">업체명: {user.companyName}</div><div className="text-sm text-slate-600">신청 권한: {getRoleLabel(user.role || "general")}</div><div className="text-xs text-slate-500">상태: {getStatusLabel(user.status || "pending")}</div></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => rejectUser(user.uid)} disabled={!canApproveThisUser}>반려</Button><Button onClick={() => approveUser(user.uid)} disabled={!canApproveThisUser}>승인</Button></div></div>{!canApproveThisUser && <div className="mt-3 text-xs text-red-500">이 계정은 현재 로그인한 권한으로 승인할 수 없습니다.</div>}</div>; })}</div>}</CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>승인된 회원 목록</CardTitle></CardHeader><CardContent className="space-y-3">{approvedUsers.map((user) => {
   const canCancelThisUser = user.role === "admin" ? canApproveAdmin : canApproveGeneral;
 
