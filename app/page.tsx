@@ -336,34 +336,6 @@ function createLocalId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function getFirebaseServices() {
-  const firebaseConfig = {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!,
-    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
-  };
-
-  // 🔥 여기 추가 (중요)
-  console.log("FIREBASE CONFIG:", firebaseConfig);
-
-  const isConfigured = Boolean(firebaseConfig.apiKey);
-
-  // 🔥 여기 추가 (중요)
-  console.log("isConfigured:", isConfigured);
-
-  if (!isConfigured) {
-    return { auth: null, db: null, isConfigured: false };
-  }
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-
-  return { auth, db, isConfigured: true };
-}
 
 const firebaseServices = getFirebaseServices();
 
@@ -602,7 +574,8 @@ function MobileListCard({ title, children, action }: { title: ReactNode; childre
 
 export default function MonthlyCalendarTextEntrySite() {
   const { auth, db } = getFirebaseServices();
-  const isDemoMode = !isConfigured;
+  const { auth, db, isConfigured } = getFirebaseServices();
+const isDemoMode = !isConfigured;
 
   const [mounted, setMounted] = useState(false);
 
