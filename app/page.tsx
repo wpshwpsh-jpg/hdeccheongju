@@ -21,6 +21,7 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
@@ -888,6 +889,32 @@ export default function MonthlyCalendarTextEntrySite() {
     }
   };
 
+const handlePasswordReset = async () => {
+  const email = loginId.trim();
+
+  if (isDemoMode) {
+    setLoginMessage("데모 모드에서는 사용할 수 없습니다.");
+    return;
+  }
+
+  if (!auth) {
+    setLoginMessage("Firebase 설정이 없습니다.");
+    return;
+  }
+
+  if (!email) {
+    setLoginMessage("아이디(이메일)를 먼저 입력하세요.");
+    return;
+  }
+
+  try {
+    await sendPasswordResetEmail(auth, email);
+    setLoginMessage("비밀번호 재설정 메일을 보냈습니다.");
+  } catch {
+    setLoginMessage("이메일을 확인하세요.");
+  }
+};
+
   const handleLogout = async () => {
     if (isDemoMode) {
       setCurrentUser(null);
@@ -1400,6 +1427,9 @@ export default function MonthlyCalendarTextEntrySite() {
                 <div className="space-y-2"><label className="text-xs font-medium text-slate-600">아이디</label><Input value={loginId} onChange={(e) => setLoginId(e.target.value)} placeholder={isDemoMode ? "GH45" : "이메일 입력"} className="h-9" /></div>
                 <div className="space-y-2"><label className="text-xs font-medium text-slate-600">비밀번호</label><Input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder={isDemoMode ? "2706" : "비밀번호 입력"} className="h-9" /></div>
                 <Button className="h-9 w-full px-4 md:w-auto" onClick={handleLogin}>로그인</Button>
+<Button variant="outline" onClick={handlePasswordReset}>
+  비밀번호 재설정
+</Button>
               </div>
               {loginMessage && <div className="text-sm text-slate-600">{loginMessage}</div>}
               {!isAuthReady && <div className="text-xs text-slate-400">로그인 상태 확인 중...</div>}
