@@ -1,5 +1,7 @@
 "use client";
 
+import { getFirebaseServices } from "@/lib/firebase";
+
 import React, { useEffect, useMemo, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { motion } from "framer-motion";
 import {
@@ -599,7 +601,7 @@ function MobileListCard({ title, children, action }: { title: ReactNode; childre
 }
 
 export default function MonthlyCalendarTextEntrySite() {
-  const { auth, db, isConfigured } = firebaseServices;
+  const { auth, db } = getFirebaseServices();
   const isDemoMode = !isConfigured;
 
   const [mounted, setMounted] = useState(false);
