@@ -357,7 +357,7 @@ function getFirebaseServices() {
     messagingSenderId: readClientEnv("NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID"),
     appId: readClientEnv("NEXT_PUBLIC_FIREBASE_APP_ID"),
   };
-  const isConfigured = Object.values(firebaseConfig).every(Boolean);
+  const isConfigured = Boolean(firebaseConfig.apiKey);
   if (!isConfigured) return { auth: null, db: null, isConfigured: false };
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   return { auth: getAuth(app), db: getFirestore(app), isConfigured: true };
@@ -1656,3 +1656,9 @@ const cancelApprovalUser = async (uid: string) => {
     </div>
   );
 }
+
+console.log("ENV CHECK", {
+  apiKey: readClientEnv("NEXT_PUBLIC_FIREBASE_API_KEY"),
+  authDomain: readClientEnv("NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"),
+  projectId: readClientEnv("NEXT_PUBLIC_FIREBASE_PROJECT_ID"),
+});
