@@ -1642,3 +1642,6 @@ const cancelApprovalUser = async (uid: string) => {
     </div>
   );
 }
+
+console.log("FIREBASE CONFIG:", firebaseConfig);
+console.log("isConfigured:", isConfigured);
