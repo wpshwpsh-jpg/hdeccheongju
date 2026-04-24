@@ -21,6 +21,7 @@ import {
 import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   createUserWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
   getAuth,
   onAuthStateChanged,
   sendPasswordResetEmail,
@@ -928,18 +929,16 @@ const handlePasswordReset = async () => {
     }
     if (!auth || !db) return setSignupMessage("Firebase 설정이 없어 회원가입을 진행할 수 없습니다.");
     try {
-      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      const methods = await fetchSignInMethodsForEmail(auth, email);
 
-const userRef = doc(db, "users", credential.user.uid);
-const existingUser = await getDoc(userRef);
-
-if (existingUser.exists()) {
-  await signOut(auth);
-  setSignupMessage("이미 가입 신청된 계정입니다. 로그인하거나 관리자에게 문의하세요.");
+if (methods.length > 0) {
+  setSignupMessage("이미 가입된 이메일입니다. 왼쪽 로그인 창에서 로그인하세요.");
   return;
 }
 
-await setDoc(userRef, {
+const credential = await createUserWithEmailAndPassword(auth, email, password);
+
+await setDoc(doc(db, "users", credential.user.uid), {
   email,
   companyName,
   name,
