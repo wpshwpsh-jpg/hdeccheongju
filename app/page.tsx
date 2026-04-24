@@ -937,9 +937,19 @@ const handlePasswordReset = async () => {
       setSignupName("");
       setSignupRole("general");
       setSignupMessage(signupRole === "admin" ? "관리자 계정 가입 신청이 접수되었습니다. 마스터 승인이 필요합니다." : "일반 계정 가입 신청이 접수되었습니다. 마스터 또는 관리자의 승인이 필요합니다.");
-    } catch {
-      setSignupMessage("회원가입 중 오류가 발생했습니다. 이메일 중복 여부를 확인하세요.");
-    }
+    } catch (error: any) {
+  console.log("SIGNUP ERROR:", error.code);
+
+  if (error.code === "auth/email-already-in-use") {
+    setSignupMessage("이미 사용 중인 이메일입니다.");
+  } else if (error.code === "auth/weak-password") {
+    setSignupMessage("비밀번호는 6자 이상이어야 합니다.");
+  } else if (error.code === "auth/invalid-email") {
+    setSignupMessage("이메일 형식이 올바르지 않습니다.");
+  } else {
+    setSignupMessage("회원가입 중 오류가 발생했습니다.");
+  }
+}
   };
 
   const approveUser = async (uid: string) => {
