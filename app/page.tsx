@@ -233,20 +233,6 @@ function getStatusLabel(status: string) {
   return "승인대기";
 }
 
-function readClientEnv(name: string) {
-  if (typeof process !== "undefined" && process?.env && typeof process.env[name] !== "undefined") {
-    return process.env[name];
-  }
-  if (
-    typeof globalThis !== "undefined" &&
-    (globalThis as { __FIREBASE_CONFIG__?: Record<string, string> }).__FIREBASE_CONFIG__ &&
-    typeof (globalThis as { __FIREBASE_CONFIG__?: Record<string, string> }).__FIREBASE_CONFIG__?.[name] !== "undefined"
-  ) {
-    return (globalThis as { __FIREBASE_CONFIG__?: Record<string, string> }).__FIREBASE_CONFIG__?.[name] || "";
-  }
-  return "";
-}
-
 function getDemoMasterUser(): UserItem {
   return {
     uid: "demo-master",
@@ -350,13 +336,13 @@ function createLocalId(prefix: string) {
 
 function getFirebaseServices() {
   const firebaseConfig = {
-    apiKey: readClientEnv("NEXT_PUBLIC_FIREBASE_API_KEY"),
-    authDomain: readClientEnv("NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"),
-    projectId: readClientEnv("NEXT_PUBLIC_FIREBASE_PROJECT_ID"),
-    storageBucket: readClientEnv("NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET"),
-    messagingSenderId: readClientEnv("NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID"),
-    appId: readClientEnv("NEXT_PUBLIC_FIREBASE_APP_ID"),
-  };
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
+};
   const isConfigured = Boolean(firebaseConfig.apiKey);
   if (!isConfigured) return { auth: null, db: null, isConfigured: false };
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
@@ -1656,9 +1642,3 @@ const cancelApprovalUser = async (uid: string) => {
     </div>
   );
 }
-
-console.log("ENV CHECK", {
-  apiKey: readClientEnv("NEXT_PUBLIC_FIREBASE_API_KEY"),
-  authDomain: readClientEnv("NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN"),
-  projectId: readClientEnv("NEXT_PUBLIC_FIREBASE_PROJECT_ID"),
-});
