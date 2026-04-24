@@ -638,10 +638,43 @@ const isDemoMode = !isConfigured;
   const [testResults] = useState(runSelfTests);
 
   useEffect(() => {
-    setDabsData(loadDabsData());
-    setDabsImages(loadDabsImages());
-    setDabsOverlays(loadDabsOverlays());
-  }, []);
+  if (isDemoMode || !db || !currentUser) return;
+
+  const unsubscribeDabs = onSnapshot(doc(db, "dabsMeetings", selectedDate), (snap) => {
+    if (!snap.exists()) return;
+
+    const data = snap.data() as DabsDateValue;
+
+    setDabsData((prev) => ({
+      ...prev,
+      [selectedDate]: {
+        ...(prev[selectedDate] || {}),
+        ...data,
+      },
+    }));
+  });
+
+  const unsubscribeSolo = onSnapshot(doc(db, "soloWorkers", selectedDate), (snap) => {
+    if (!snap.exists()) return;
+
+    const data = snap.data() as { rows?: Record<string, DabsRowItem[]> };
+
+    setDabsData((prev) => ({
+      ...prev,
+      [selectedDate]: {
+        ...(prev[selectedDate] || {}),
+        soloWorker: {
+          rows: data.rows || {},
+        },
+      },
+    }));
+  });
+
+  return () => {
+    unsubscribeDabs();
+    unsubscribeSolo();
+  };
+}, [db, isDemoMode, currentUser, selectedDate]);
 
   useEffect(() => {
     if (isDemoMode) {
@@ -750,6 +783,37 @@ const isDemoMode = !isConfigured;
   const canEditDabs = Boolean(currentUser && currentUser.status === "approved");
   const canUploadDabsImage = currentUser?.role === "master" || currentUser?.role === "admin";
   const canDeleteDabsItem = currentUser?.role === "master" || currentUser?.role === "admin";
+
+const saveDabsMeetingToFirestore = async (dateKey: string, dateData: DabsDateValue) => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  await setDoc(
+    doc(db, "dabsMeetings", dateKey),
+    {
+      date: dateKey,
+      ...dateData,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+};
+
+const saveSoloWorkersToFirestore = async (
+  dateKey: string,
+  rows: Record<string, DabsRowItem[]>
+) => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  await setDoc(
+    doc(db, "soloWorkers", dateKey),
+    {
+      date: dateKey,
+      rows,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+};
 
   const tabs = [
     { key: "calendar", label: "일정 관리", icon: CalendarDays },
@@ -1059,15 +1123,24 @@ const cancelApprovalUser = async (uid: string) => {
   await deleteDoc(doc(db, "users", uid));
 };
 
-  const handleSaveDabsText = () => {
-    if (!canEditDabs) return setDabsMessage("승인된 계정만 저장할 수 있습니다.");
-    const nextData = { ...dabsData, [selectedDate]: { ...(dabsData[selectedDate] || {}), [activeDabsKey]: dabsDraft } };
-    setDabsData(nextData);
-    saveDabsData(nextData);
-    setDabsMessage("저장되었습니다.");
+  const handleSaveDabsText = async () => {
+  if (!canEditDabs) return setDabsMessage("승인된 계정만 저장할 수 있습니다.");
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      [activeDabsKey]: dabsDraft,
+    },
   };
 
-  const handleAddSectionWork = () => {
+  setDabsData(nextData);
+  saveDabsData(nextData);
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+  setDabsMessage("저장되었습니다.");
+};
+
+  const handleAddSectionWork = async () => {
   if (!canEditDabs || !sectionInput.building || !sectionInput.content) return;
 
   const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
@@ -1098,11 +1171,12 @@ const cancelApprovalUser = async (uid: string) => {
 
   setDabsData(nextData);
   saveDabsData(nextData);
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
   setSectionInput({ building: "", content: "" });
   setDabsMessage("저장되었습니다.");
 };
 
-  const handleAddMaterial = () => {
+  const handleAddMaterial = async () => {
   const { gate, material, vehicle, location, time } = materialsInput;
   if (!canEditDabs || !material || !vehicle || !location) return;
 
@@ -1132,11 +1206,12 @@ const cancelApprovalUser = async (uid: string) => {
 
   setDabsData(nextData);
   saveDabsData(nextData);
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
   setMaterialsInput({ gate: "1", material: "", vehicle: "", location: "", time: "06" });
   setDabsMessage("저장되었습니다.");
 };
 
-  const handleDeleteDabsItem = (itemId: string, building: string | null = null) => {
+  const handleDeleteDabsItem = async (itemId: string, building: string | null = null) => {
   if (!canDeleteDabsItem) return;
 
   if (activeDabsKey === "section1" || activeDabsKey === "section2") {
@@ -1147,6 +1222,7 @@ const cancelApprovalUser = async (uid: string) => {
         : {};
 
     const nextRows = { ...currentRows };
+
     if (building) {
       nextRows[building] = (nextRows[building] || []).filter((item) => item.id !== itemId);
     }
@@ -1161,6 +1237,7 @@ const cancelApprovalUser = async (uid: string) => {
 
     setDabsData(nextData);
     saveDabsData(nextData);
+    await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
     return;
   }
 
@@ -1182,25 +1259,28 @@ const cancelApprovalUser = async (uid: string) => {
 
   setDabsData(nextData);
   saveDabsData(nextData);
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
 };
 
-  const handleAddSoloWorker = () => {
-    if (!canEditDabs || !soloWorkerInput.building || !soloWorkerInput.name.trim() || !soloWorkerInput.content.trim()) return;
-    const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
-    const nextRows = { ...currentRows, [soloWorkerInput.building]: [...(currentRows[soloWorkerInput.building] || []), { id: createLocalId("solo-worker"), company: currentUser?.companyName || "", name: soloWorkerInput.name.trim(), content: soloWorkerInput.content.trim(), elderly: soloWorkerInput.elderly }] };
-    const nextData = { ...dabsData, [selectedDate]: { ...(dabsData[selectedDate] || {}), soloWorker: { rows: nextRows } } };
-    setDabsData(nextData);
-    saveDabsData(nextData);
-    setSoloWorkerInput({ building: "", name: "", content: "", elderly: "o" });
-  };
+  const handleAddSoloWorker = async () => {
+  if (!canEditDabs || !soloWorkerInput.building || !soloWorkerInput.name.trim() || !soloWorkerInput.content.trim()) return;
 
-  const handleDeleteSoloWorker = (itemId: string, building: string) => {
-  if (!canDeleteDabsItem) return;
   const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
+
   const nextRows = {
     ...currentRows,
-    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
+    [soloWorkerInput.building]: [
+      ...(currentRows[soloWorkerInput.building] || []),
+      {
+        id: createLocalId("solo-worker"),
+        company: currentUser?.companyName || "",
+        name: soloWorkerInput.name.trim(),
+        content: soloWorkerInput.content.trim(),
+        elderly: soloWorkerInput.elderly,
+      },
+    ],
   };
+
   const nextData = {
     ...dabsData,
     [selectedDate]: {
@@ -1208,11 +1288,37 @@ const cancelApprovalUser = async (uid: string) => {
       soloWorker: { rows: nextRows },
     },
   };
+
   setDabsData(nextData);
   saveDabsData(nextData);
+  await saveSoloWorkersToFirestore(selectedDate, nextRows);
+  setSoloWorkerInput({ building: "", name: "", content: "", elderly: "o" });
 };
 
-  const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
+  const handleDeleteSoloWorker = async (itemId: string, building: string) => {
+  if (!canDeleteDabsItem) return;
+
+  const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
+
+  const nextRows = {
+    ...currentRows,
+    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      soloWorker: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+  saveDabsData(nextData);
+  await saveSoloWorkersToFirestore(selectedDate, nextRows);
+};
+
+const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
 
   const handleDeleteOverlayItem = (itemId: string) => {
   if (!canDeleteDabsItem) return;
