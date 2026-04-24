@@ -573,7 +573,6 @@ function MobileListCard({ title, children, action }: { title: ReactNode; childre
 }
 
 export default function MonthlyCalendarTextEntrySite() {
-  const { auth, db } = getFirebaseServices();
   const { auth, db, isConfigured } = getFirebaseServices();
 const isDemoMode = !isConfigured;
 
