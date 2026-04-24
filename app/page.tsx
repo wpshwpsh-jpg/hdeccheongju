@@ -1430,7 +1430,10 @@ export default function MonthlyCalendarTextEntrySite() {
     </div>
   );
 
-  const renderSectionMobileCards = (columns, rows) => (
+  const renderSectionMobileCards = (
+  columns: string[],
+  rows: Record<string, DabsRowItem[]>
+) => (
     <div className="space-y-3 lg:hidden">
       {columns.map((col) => {
         const list = rows[col] || [];
