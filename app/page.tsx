@@ -644,7 +644,13 @@ const [editMaterialPopup, setEditMaterialPopup] = useState({
   vehicle: "",
   location: "",
 });
-  const [soloCompanyFilter, setSoloCompanyFilter] = useState("");
+  const [loadSourceDate, setLoadSourceDate] = useState(() => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return formatDateKey(d);
+});
+
+const [soloCompanyFilter, setSoloCompanyFilter] = useState("");
   const imageAreaRef = useRef<HTMLDivElement | null>(null);
   const lastTouchTimeRef = useRef(0);
   const touchGestureRef = useRef({ moved: false, startX: 0, startY: 0 });
@@ -1671,7 +1677,105 @@ const handleUpdateMaterial = async () => {
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
 };
 
-  const handleAddSoloWorker = async () => {
+const handleLoadPreviousCompanyData = async (targetKey: "section1" | "section2" | "soloWorker") => {
+  if (!currentUser?.companyName) return;
+
+  if (!loadSourceDate || loadSourceDate === selectedDate) {
+    setDabsMessage("불러올 날짜를 확인하세요.");
+    return;
+  }
+
+  if (!db) {
+    setDabsMessage("Firebase 연결이 없습니다.");
+    return;
+  }
+
+  const companyName = currentUser.companyName;
+
+  if (targetKey === "soloWorker") {
+    const sourceSnap = await getDoc(doc(db, "soloWorkers", loadSourceDate));
+    const sourceRows = sourceSnap.exists()
+      ? ((sourceSnap.data() as { rows?: Record<string, DabsRowItem[]> }).rows || {})
+      : {};
+
+    const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
+    const nextRows = { ...currentRows };
+
+    Object.entries(sourceRows).forEach(([building, list]) => {
+      const myItems = (list || []).filter((item) => item.company === companyName);
+      if (myItems.length === 0) return;
+
+      nextRows[building] = [
+        ...(nextRows[building] || []),
+        ...myItems.map((item) => ({
+          ...item,
+          id: createLocalId("solo-worker"),
+          createdByUid: currentUser.uid,
+          createdByName: currentUser.name,
+        })),
+      ];
+    });
+
+    const nextData = {
+      ...dabsData,
+      [selectedDate]: {
+        ...(dabsData[selectedDate] || {}),
+        soloWorker: { rows: nextRows },
+      },
+    };
+
+    setDabsData(nextData);
+    await saveSoloWorkersToFirestore(selectedDate, nextRows);
+    setDabsMessage(`${formatMonthDay(loadSourceDate)} 단독작업자 데이터를 불러왔습니다.`);
+    return;
+  }
+
+  const sourceSnap = await getDoc(doc(db, "dabsMeetings", loadSourceDate));
+  const sourceData = sourceSnap.exists() ? (sourceSnap.data() as DabsDateValue) : {};
+  const sourceTabValue = sourceData[targetKey];
+
+  const sourceRows =
+    typeof sourceTabValue === "object" && sourceTabValue && "rows" in sourceTabValue
+      ? sourceTabValue.rows || {}
+      : {};
+
+  const currentTabValue = dabsData[selectedDate]?.[targetKey];
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const nextRows = { ...currentRows };
+
+  Object.entries(sourceRows).forEach(([building, list]) => {
+    const myItems = (list || []).filter((item) => item.company === companyName);
+    if (myItems.length === 0) return;
+
+    nextRows[building] = [
+      ...(nextRows[building] || []),
+      ...myItems.map((item) => ({
+        ...item,
+        id: createLocalId("section"),
+        createdByUid: currentUser.uid,
+        createdByName: currentUser.name,
+      })),
+    ];
+  });
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      [targetKey]: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+  setDabsMessage(`${formatMonthDay(loadSourceDate)} 데이터를 불러왔습니다.`);
+};
+
+const handleAddSoloWorker = async () => {
   if (!canEditDabs || !soloWorkerInput.building || !soloWorkerInput.name.trim() || !soloWorkerInput.content.trim()) return;
 
   const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
@@ -1681,14 +1785,14 @@ const handleUpdateMaterial = async () => {
     [soloWorkerInput.building]: [
       ...(currentRows[soloWorkerInput.building] || []),
       {
-  id: createLocalId("solo-worker"),
-  company: currentUser?.companyName || "",
-  name: soloWorkerInput.name.trim(),
-  content: soloWorkerInput.content.trim(),
-  elderly: soloWorkerInput.elderly,
-  createdByUid: currentUser?.uid,
-  createdByName: currentUser?.name,
-},
+        id: createLocalId("solo-worker"),
+        company: currentUser?.companyName || "",
+        name: soloWorkerInput.name.trim(),
+        content: soloWorkerInput.content.trim(),
+        elderly: soloWorkerInput.elderly,
+        createdByUid: currentUser?.uid,
+        createdByName: currentUser?.name,
+      },
     ],
   };
 
@@ -1701,7 +1805,6 @@ const handleUpdateMaterial = async () => {
   };
 
   setDabsData(nextData);
-  
   await saveSoloWorkersToFirestore(selectedDate, nextRows);
   setSoloWorkerInput({ building: "", name: "", content: "", elderly: "x" });
 };
@@ -3404,7 +3507,26 @@ const posY = marker.y;
     첫 번째 클릭은 시작점, 두 번째 클릭은 종료점입니다. 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요. 수정 시에도 화살표를 다시 지정한 뒤 상자 위치를 선택합니다.
   </div>
 )}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}<div className="-mx-2 md:mx-0">{renderOverlayImage(activeDabsKey === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow, isImageTab)}</div></>}
-                {isSectionTab && <><div className="grid gap-3 md:grid-cols-[220px_1fr_auto]"><select value={sectionInput.building} onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{activeColumns.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={sectionInput.content} onChange={(e) => setSectionInput({ ...sectionInput, content: e.target.value })} placeholder="작업내용 입력" /><Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div>{renderSectionMobileCards(activeColumns, sectionRows)}<div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-slate-200 px-3 py-2 text-left w-[9%]">동</th><th className="border border-slate-200 px-3 py-2 text-left w-[18%]">업체명</th><th className="border border-slate-200 px-3 py-2 text-left">작업내용</th></tr></thead><tbody>{activeColumns.map((col) => { const list = sectionRows[col] || []; return <tr key={col}><td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{col}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`company-${item.id}`} className="mb-2">{item.company}</div>)}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`content-${item.id}`} className="mb-2 flex items-center justify-between gap-2"><span className="whitespace-pre-wrap break-all leading-relaxed">
+                {isSectionTab && <>
+  <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
+    <div className="space-y-2">
+      <label className="text-xs font-medium text-slate-600">이전 날짜 선택</label>
+      <Input
+        type="date"
+        value={loadSourceDate}
+        onChange={(e) => setLoadSourceDate(e.target.value)}
+        className="h-9"
+      />
+    </div>
+    <Button
+      variant="outline"
+      onClick={() => handleLoadPreviousCompanyData(activeDabsKey as "section1" | "section2")}
+    >
+      내 업체 작업 불러오기
+    </Button>
+  </div>
+
+  <div className="grid gap-3 md:grid-cols-[220px_1fr_auto]"><select value={sectionInput.building} onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{activeColumns.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={sectionInput.content} onChange={(e) => setSectionInput({ ...sectionInput, content: e.target.value })} placeholder="작업내용 입력" /><Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div>{renderSectionMobileCards(activeColumns, sectionRows)}<div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-slate-200 px-3 py-2 text-left w-[9%]">동</th><th className="border border-slate-200 px-3 py-2 text-left w-[18%]">업체명</th><th className="border border-slate-200 px-3 py-2 text-left">작업내용</th></tr></thead><tbody>{activeColumns.map((col) => { const list = sectionRows[col] || []; return <tr key={col}><td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{col}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`company-${item.id}`} className="mb-2">{item.company}</div>)}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`content-${item.id}`} className="mb-2 flex items-center justify-between gap-2"><span className="whitespace-pre-wrap break-all leading-relaxed">
   {item.content}
 </span>
 
@@ -3611,7 +3733,30 @@ const posY = marker.y;
         </div>
       )}
 
-      <Card><CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />단독작업자</CardTitle><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setCurrentPage("menu")}>메뉴로 돌아가기</Button></div></CardHeader><CardContent className="space-y-6"><Card className="border-slate-200 shadow-none"><CardHeader><CardTitle className="text-base">단독작업자</CardTitle></CardHeader><CardContent className="space-y-4"><div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">선택 날짜: {formatMonthDay(selectedDate)}</div><div className="grid gap-3 xl:grid-cols-[150px_150px_1fr_120px_auto]"><select value={soloWorkerInput.building} onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{SOLO_WORKER_COLUMNS.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={soloWorkerInput.name} onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, name: e.target.value })} placeholder="성명 입력" /><Input value={soloWorkerInput.content} onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, content: e.target.value })} placeholder="작업 내용 입력" /><select value={soloWorkerInput.elderly} onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, elderly: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="o">고령자 o</option><option value="x">고령자 x</option></select><Button onClick={handleAddSoloWorker} disabled={!canEditDabs} className="w-full xl:w-auto">추가</Button></div><div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input className="pl-9" value={soloCompanyFilter} onChange={(e) => setSoloCompanyFilter(e.target.value)} placeholder="업체명 검색" /></div><div className="text-xs text-slate-500">고령자 o는 강조 표시되며, 업체별 색상이 자동 적용됩니다.</div></div>{renderSoloWorkerMobileCards()}{renderSoloWorkerDesktopTable()}</CardContent></Card><Card className="border-slate-200 shadow-none"><CardHeader><CardTitle className="text-base">하단 달력</CardTitle></CardHeader><CardContent><div className="grid grid-cols-7 gap-1 text-xs">{weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}{monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}</div></CardContent></Card></CardContent></Card>
+      <Card><CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />단독작업자</CardTitle><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setCurrentPage("menu")}>메뉴로 돌아가기</Button></div></CardHeader><CardContent className="space-y-6"><Card className="border-slate-200 shadow-none"><CardHeader><CardTitle className="text-base">단독작업자</CardTitle></CardHeader><CardContent className="space-y-4"><div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+  선택 날짜: {formatMonthDay(selectedDate)}
+</div>
+
+<div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
+  <div className="space-y-2">
+    <label className="text-xs font-medium text-slate-600">이전 날짜 선택</label>
+    <Input
+      type="date"
+      value={loadSourceDate}
+      onChange={(e) => setLoadSourceDate(e.target.value)}
+      className="h-9"
+    />
+  </div>
+  <Button
+    variant="outline"
+    onClick={() => handleLoadPreviousCompanyData("soloWorker")}
+  >
+    내 업체 단독작업자 불러오기
+  </Button>
+</div>
+
+<div className="grid gap-3 xl:grid-cols-[150px_150px_1fr_120px_auto]"><select value={soloWorkerInput.building} onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{SOLO_WORKER_COLUMNS.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={soloWorkerInput.name} onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, name: e.target.value })} placeholder="성명 입력" /><Input value={soloWorkerInput.content} onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, content: e.target.value })} placeholder="작업 내용 입력" /><select value={soloWorkerInput.elderly} onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, elderly: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="o">고령자 o</option><option value="x">고령자 x</option></select><Button onClick={handleAddSoloWorker} disabled={!canEditDabs} className="w-full xl:w-auto">추가</Button></div><div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input className="pl-9" value={soloCompanyFilter} onChange={(e) => setSoloCompanyFilter(e.target.value)} placeholder="업체명 검색" /></div><div className="text-xs text-slate-500">고령자 o는 강조 표시되며, 업체별 색상이 자동 적용됩니다.</div></div>{dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
+{renderSoloWorkerMobileCards()}{renderSoloWorkerDesktopTable()}</CardContent></Card><Card className="border-slate-200 shadow-none"><CardHeader><CardTitle className="text-base">하단 달력</CardTitle></CardHeader><CardContent><div className="grid grid-cols-7 gap-1 text-xs">{weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}{monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}</div></CardContent></Card></CardContent></Card>
     </div>
   );
 
