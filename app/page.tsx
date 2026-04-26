@@ -44,6 +44,7 @@ import {
 } from "firebase/firestore";
 
 import {
+  deleteObject,
   getDownloadURL,
   getStorage,
   ref as storageRef,
@@ -1563,10 +1564,25 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
   }
 
   try {
-    const imageRef = storageRef(storage, `dabsImages/shared-${Date.now()}-${file.name}`);
-    await uploadBytes(imageRef, file);
+  const imageDocRef = doc(db, "dabsImages", "shared");
+  const oldImageSnap = await getDoc(imageDocRef);
+  const oldStoragePath = oldImageSnap.exists()
+    ? String(oldImageSnap.data().storagePath || "")
+    : "";
 
-    const imageUrl = await getDownloadURL(imageRef);
+  if (oldStoragePath) {
+    try {
+      await deleteObject(storageRef(storage, oldStoragePath));
+    } catch (error) {
+      console.log("OLD IMAGE DELETE SKIPPED:", error);
+    }
+  }
+
+  const newStoragePath = `dabsImages/shared-${Date.now()}-${file.name}`;
+  const imageRef = storageRef(storage, newStoragePath);
+  await uploadBytes(imageRef, file);
+
+  const imageUrl = await getDownloadURL(imageRef);
 
     const nextImages = {
       highRisk: imageUrl,
@@ -1577,15 +1593,16 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
     saveDabsImages(nextImages);
 
     await setDoc(
-      doc(db, "dabsImages", "shared"),
-      {
-        ...nextImages,
-        updatedAt: serverTimestamp(),
-        updatedByUid: currentUser?.uid,
-        updatedByName: currentUser?.name,
-      },
-      { merge: true }
-    );
+  doc(db, "dabsImages", "shared"),
+  {
+    ...nextImages,
+    storagePath: newStoragePath,
+    updatedAt: serverTimestamp(),
+    updatedByUid: currentUser?.uid,
+    updatedByName: currentUser?.name,
+  },
+  { merge: true }
+);
 
     setDabsMessage("사진이 저장되었습니다.");
   } catch (error) {
