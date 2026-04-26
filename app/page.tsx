@@ -1733,7 +1733,7 @@ setArrowStart(null);
     </div>
 
     <h1 className="mt-1 truncate text-lg font-bold tracking-tight text-slate-900 md:text-xl lg:text-2xl">
-      힐스테이트 어울림 청주사직
+      HS 어울림 청주사직
     </h1>
 
     <p className="mt-1 hidden text-sm text-slate-500 sm:block">
@@ -1856,7 +1856,7 @@ setArrowStart(null);
         <div className="text-center">
           <div className="text-sm font-medium text-slate-500">회원 전용 포털</div>
           {mounted && isDemoMode && <div className="mt-3 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">데모 로그인: GH45 / 2706</div>}
-          <h1 className="mt-2 text-2xl font-bold text-slate-900 lg:text-3xl">힐스테이트 어울림 청주사직</h1>
+          <h1 className="mt-2 text-2xl font-bold text-slate-900 lg:text-3xl">HS 어울림 청주사직</h1>
           <p className="mt-2 text-sm text-slate-500">로그인 또는 회원가입 후 메뉴를 선택해 이동할 수 있습니다.</p>
         </div>
         <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
