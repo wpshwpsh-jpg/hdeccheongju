@@ -1724,14 +1724,14 @@ setArrowStart(null);
   initial={{ opacity: 0, y: 12 }}
   animate={{ opacity: 1, y: 0 }}
   transition={{ duration: 0.35 }}
-  className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+  className="relative flex flex-col gap-1 md:flex-row md:items-center md:justify-between"
 >
   <div className="pr-40 md:pr-0">
     <div className="flex items-center gap-2 text-slate-600">
       <CalendarDays className="h-5 w-5" />
-      <span className="text-sm">회원 승인형 메뉴 시스템</span>
+      <span className="text-sm">현장 안전정보 통합 시스템</span>
     </div>
-    <h1 className="mt-2 text-xl font-bold tracking-tight text-slate-900 lg:text-2xl">
+    <h1 className="mt-1 text-base font-bold tracking-tight text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis lg:text-2xl">
       힐스테이트 어울림 청주사직
     </h1>
     <p className="mt-1 hidden text-sm text-slate-500 sm:block">
@@ -1740,7 +1740,7 @@ setArrowStart(null);
   </div>
 
   <Card className="absolute right-0 top-0 w-[128px] rounded-xl border-0 shadow-sm md:static md:w-auto md:rounded-2xl">
-    <CardContent className="flex flex-col gap-1 p-1.5 md:flex-row md:items-center md:gap-3 md:p-3">
+    <CardContent className="flex flex-col gap-0.5 p-1 md:flex-row md:items-center md:gap-2 md:p-2">
       <div className="text-right">
         <div className="truncate text-xs font-semibold text-slate-900 md:text-sm">
           {currentUser.name}
