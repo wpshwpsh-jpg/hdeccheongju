@@ -1741,27 +1741,27 @@ setArrowStart(null);
     </p>
   </div>
 
-  <Card className="w-[132px] shrink-0 rounded-xl border-0 shadow-sm md:w-auto md:rounded-2xl">
-    <CardContent className="flex flex-col gap-1 p-2 md:flex-row md:items-center md:gap-3 md:p-3">
-      <div className="text-right">
-        <div className="truncate text-xs font-semibold text-slate-900 md:text-sm">
-          {currentUser.name}
-        </div>
-        <div className="truncate text-[10px] text-slate-500 md:text-xs">
-          {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}
-        </div>
+  <Card className="w-[190px] shrink-0 rounded-xl border-0 shadow-sm md:w-auto md:rounded-2xl">
+  <CardContent className="flex items-center justify-between gap-2 p-2 md:gap-3 md:p-3">
+    <div className="min-w-0 text-right">
+      <div className="truncate text-xs font-semibold text-slate-900 md:text-sm">
+        {currentUser.name}
       </div>
+      <div className="truncate text-[10px] text-slate-500 md:text-xs">
+        {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}
+      </div>
+    </div>
 
-      <Button
-        variant="outline"
-        onClick={handleLogout}
-        className="h-7 w-full whitespace-nowrap rounded-lg px-2 text-[11px] leading-none md:h-10 md:w-auto md:rounded-2xl md:px-4 md:text-sm"
-      >
-        <LogOut className="mr-1 h-3 w-3 md:mr-2 md:h-4 md:w-4" />
-        로그아웃
-      </Button>
-    </CardContent>
-  </Card>
+    <Button
+      variant="outline"
+      onClick={handleLogout}
+      className="h-8 shrink-0 whitespace-nowrap rounded-lg px-2 text-[11px] leading-none md:h-10 md:rounded-2xl md:px-4 md:text-sm"
+    >
+      <LogOut className="mr-1 h-3 w-3 md:mr-2 md:h-4 md:w-4" />
+      로그아웃
+    </Button>
+  </CardContent>
+</Card>
 </motion.div>
     );
   };
