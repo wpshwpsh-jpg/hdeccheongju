@@ -1291,37 +1291,18 @@ const cancelApprovalUser = async (uid: string) => {
 
   const companyName = currentUser?.companyName || "";
 
-  const existingIndex = list.findIndex(
-    (item) =>
-      item.company === companyName &&
-      item.gate === gate &&
-      item.time === time
-  );
-
-  const nextList =
-    existingIndex >= 0
-      ? list.map((item, index) =>
-          index === existingIndex
-            ? {
-                ...item,
-                material: `${item.material || ""}/${material}`,
-                vehicle: `${item.vehicle || ""}/${vehicle}`,
-                location: `${item.location || ""}/${location}`,
-              }
-            : item
-        )
-      : [
-          ...list,
-          {
-            id: createLocalId("material"),
-            gate,
-            material,
-            vehicle,
-            location,
-            time,
-            company: companyName,
-          },
-        ];
+  const nextList = [
+    ...list,
+    {
+      id: createLocalId("material"),
+      gate,
+      material,
+      vehicle,
+      location,
+      time,
+      company: companyName,
+    },
+  ];
 
   const nextData = {
     ...dabsData,
