@@ -1739,8 +1739,8 @@ setArrowStart(null);
 </p>
   </div>
 
-  <Card className="absolute right-0 top-0 w-[130px] rounded-2xl border-0 shadow-sm md:static md:w-auto">
-    <CardContent className="flex flex-col gap-1 p-2 md:flex-row md:items-center md:gap-3 md:p-3">
+  <Card className="absolute right-0 top-0 w-[116px] rounded-xl border-0 shadow-sm md:static md:w-auto md:rounded-2xl">
+    <CardContent className="flex flex-col gap-1 p-1.5 md:flex-row md:items-center md:gap-3 md:p-3">
       <div className="text-right">
         <div className="truncate text-xs font-semibold text-slate-900 md:text-sm">
           {currentUser.name}
@@ -1752,7 +1752,7 @@ setArrowStart(null);
       <Button
         variant="outline"
         onClick={handleLogout}
-        className="h-7 w-full rounded-xl px-2 text-xs md:h-10 md:w-auto md:rounded-2xl md:px-4 md:text-sm"
+        className="h-6 w-full rounded-lg px-1.5 text-[11px] md:h-10 md:w-auto md:rounded-2xl md:px-4 md:text-sm"
       >
         <LogOut className="mr-1 h-3 w-3 md:mr-2 md:h-4 md:w-4" />
         로그아웃
@@ -1962,7 +1962,7 @@ setArrowStart(null);
         <Card>
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />DAB&apos;s회의</CardTitle><Button variant="outline" onClick={() => setCurrentPage("menu")}>메뉴로 돌아가기</Button></CardHeader>
           <CardContent className="space-y-5">
-            <div className="sticky bottom-2 z-40 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-lg backdrop-blur lg:static lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+            <div className="fixed bottom-3 left-1/2 z-50 flex w-[calc(100%-24px)] max-w-md -translate-x-1/2 flex-wrap justify-center gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-xl backdrop-blur lg:static lg:w-auto lg:max-w-none lg:translate-x-0 lg:justify-start lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
   {dabsTabs.map((tab, index) => (
     <button
       key={tab.key}
@@ -2113,7 +2113,7 @@ setArrowStart(null);
 
   return (
     <div className="min-h-screen bg-slate-50 p-2 sm:p-4 md:p-8">
-      <div className="mx-auto max-w-6xl space-y-3 sm:space-y-6">
+      <div className="min-h-screen bg-slate-50 p-2 pb-28 sm:p-4 md:p-8">
         {!currentUser
   ? renderAuthScreen()
   : currentPage === "menu"
