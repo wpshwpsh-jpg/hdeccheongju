@@ -1780,7 +1780,6 @@ setArrowStart(null);
         onTouchMove={activeDabsKey === "equipmentFlow" ? handleOverlayTouchMove : undefined}
         onTouchEnd={isImageTab ? handleOverlayTouchEnd : undefined}
       >
-        >
   {selectedImage ? <img src={selectedImage} alt={activeDabsTab.label} className="block h-full w-full object-cover md:h-auto" /> : <div className="flex h-64 items-center justify-center text-sm text-slate-400">등록된 사진이 없습니다.</div>}
   {selectedImage && (
           <>
