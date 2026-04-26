@@ -1726,7 +1726,7 @@ setArrowStart(null);
   transition={{ duration: 0.35 }}
   className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
 >
-  <div className="pr-36 md:pr-0">
+  <div className="pr-40 md:pr-0">
     <div className="flex items-center gap-2 text-slate-600">
       <CalendarDays className="h-5 w-5" />
       <span className="text-sm">회원 승인형 메뉴 시스템</span>
@@ -1739,7 +1739,7 @@ setArrowStart(null);
 </p>
   </div>
 
-  <Card className="absolute right-0 top-0 w-[108px] rounded-xl border-0 shadow-sm md:static md:w-auto md:rounded-2xl">
+  <Card className="absolute right-0 top-0 w-[128px] rounded-xl border-0 shadow-sm md:static md:w-auto md:rounded-2xl">
     <CardContent className="flex flex-col gap-1 p-1.5 md:flex-row md:items-center md:gap-3 md:p-3">
       <div className="text-right">
         <div className="truncate text-xs font-semibold text-slate-900 md:text-sm">
@@ -1752,7 +1752,7 @@ setArrowStart(null);
       <Button
         variant="outline"
         onClick={handleLogout}
-        className="h-6 w-full rounded-lg px-1 text-[10px] leading-none md:h-10 md:w-auto md:rounded-2xl md:px-4 md:text-sm"
+        className="h-6 w-full whitespace-nowrap rounded-lg px-1 text-[10px] leading-none md:h-10 md:w-auto md:rounded-2xl md:px-4 md:text-sm"
       >
         <LogOut className="mr-0.5 h-3 w-3 md:mr-2 md:h-4 md:w-4" />
         로그아웃
