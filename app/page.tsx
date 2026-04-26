@@ -1724,23 +1724,25 @@ setArrowStart(null);
   initial={{ opacity: 0, y: 12 }}
   animate={{ opacity: 1, y: 0 }}
   transition={{ duration: 0.35 }}
-  className="relative flex flex-col gap-1 md:flex-row md:items-center md:justify-between"
+  className="grid grid-cols-[1fr_auto] items-start gap-2 md:flex md:items-center md:justify-between"
 >
-  <div className="pr-40 md:pr-0">
-    <div className="flex items-center gap-2 text-slate-600">
-      <CalendarDays className="h-5 w-5" />
-      <span className="text-sm">현장 안전정보 통합 시스템</span>
+  <div className="min-w-0">
+    <div className="flex items-center gap-1.5 text-slate-600">
+      <CalendarDays className="h-4 w-4 shrink-0 md:h-5 md:w-5" />
+      <span className="truncate text-xs md:text-sm">현장 안전정보 통합 시스템</span>
     </div>
-    <h1 className="mt-1 text-base font-bold tracking-tight text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis lg:text-2xl">
+
+    <h1 className="mt-1 truncate text-lg font-bold tracking-tight text-slate-900 md:text-xl lg:text-2xl">
       힐스테이트 어울림 청주사직
     </h1>
+
     <p className="mt-1 hidden text-sm text-slate-500 sm:block">
-  로그인 후 원하는 메뉴를 선택해 이동하세요.
-</p>
+      로그인 후 원하는 메뉴를 선택해 이동하세요.
+    </p>
   </div>
 
-  <Card className="absolute right-0 top-0 w-[128px] rounded-xl border-0 shadow-sm md:static md:w-auto md:rounded-2xl">
-    <CardContent className="flex flex-col gap-0.5 p-1 md:flex-row md:items-center md:gap-2 md:p-2">
+  <Card className="w-[132px] shrink-0 rounded-xl border-0 shadow-sm md:w-auto md:rounded-2xl">
+    <CardContent className="flex flex-col gap-1 p-2 md:flex-row md:items-center md:gap-3 md:p-3">
       <div className="text-right">
         <div className="truncate text-xs font-semibold text-slate-900 md:text-sm">
           {currentUser.name}
@@ -1749,12 +1751,13 @@ setArrowStart(null);
           {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}
         </div>
       </div>
+
       <Button
         variant="outline"
         onClick={handleLogout}
-        className="h-6 w-full whitespace-nowrap rounded-lg px-1 text-[10px] leading-none md:h-10 md:w-auto md:rounded-2xl md:px-4 md:text-sm"
+        className="h-7 w-full whitespace-nowrap rounded-lg px-2 text-[11px] leading-none md:h-10 md:w-auto md:rounded-2xl md:px-4 md:text-sm"
       >
-        <LogOut className="mr-0.5 h-3 w-3 md:mr-2 md:h-4 md:w-4" />
+        <LogOut className="mr-1 h-3 w-3 md:mr-2 md:h-4 md:w-4" />
         로그아웃
       </Button>
     </CardContent>
