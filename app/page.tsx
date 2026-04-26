@@ -564,6 +564,14 @@ const storage = isConfigured ? getStorage() : null;
   const [activeTab, setActiveTab] = useState("calendar");
   const [deleteNoticeOpen, setDeleteNoticeOpen] = useState(false);
 const [entryMessage, setEntryMessage] = useState("");
+
+const [editEntryPopup, setEditEntryPopup] = useState({
+  open: false,
+  entryId: "",
+  date: "",
+  startTime: "09:00",
+  companyName: "",
+});
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [currentPage, setCurrentPage] = useState("menu");
   const [dabsTabIndex, setDabsTabIndex] = useState(0);
@@ -1075,6 +1083,105 @@ setEntryMessage("일정이 등록되었습니다.");
   } catch (error: any) {
     console.log("ENTRY DELETE ERROR:", error);
     setEntryMessage(error?.message || "일정 삭제 중 오류가 발생했습니다.");
+  }
+};
+
+const handleUpdateEntry = async () => {
+  if (!currentUser) {
+    setEntryMessage("로그인 후 수정할 수 있습니다.");
+    return;
+  }
+
+  if (!editEntryPopup.companyName.trim()) {
+    setEntryMessage("업체명을 입력하세요.");
+    return;
+  }
+
+  const targetEntry = entries.find((entry) => entry.id === editEntryPopup.entryId);
+
+  if (!targetEntry) {
+    setEntryMessage("수정할 일정을 찾을 수 없습니다.");
+    return;
+  }
+
+  if (!canDeleteOwnItem(targetEntry)) {
+    setDeleteNoticeOpen(true);
+    setEntryMessage("본인이 입력한 일정만 수정할 수 있습니다.");
+    return;
+  }
+
+  const nextEndTime = getEndTime(editEntryPopup.startTime);
+
+  const isDuplicateTime = entries.some((entry) => {
+    if (entry.id === editEntryPopup.entryId) return false;
+    if (entry.date !== editEntryPopup.date) return false;
+
+    return isTimeOverlapping(
+      editEntryPopup.startTime,
+      nextEndTime,
+      entry.startTime,
+      entry.endTime
+    );
+  });
+
+  if (isDuplicateTime) {
+    setEntryMessage("이미 등록된 시간과 겹칩니다.");
+    return;
+  }
+
+  if (isDemoMode) {
+    const nextEntries = loadDemoEntries().map((entry) =>
+      entry.id === editEntryPopup.entryId
+        ? {
+            ...entry,
+            date: editEntryPopup.date,
+            startTime: editEntryPopup.startTime,
+            endTime: nextEndTime,
+            companyName: editEntryPopup.companyName.trim(),
+          }
+        : entry
+    );
+
+    saveDemoEntries(nextEntries);
+    setEntries(nextEntries);
+    setSelectedDate(editEntryPopup.date);
+    setEditEntryPopup({
+      open: false,
+      entryId: "",
+      date: "",
+      startTime: "09:00",
+      companyName: "",
+    });
+    setEntryMessage("일정이 수정되었습니다.");
+    return;
+  }
+
+  if (!db) {
+    setEntryMessage("Firebase 연결이 없습니다.");
+    return;
+  }
+
+  try {
+    await updateDoc(doc(db, "entries", editEntryPopup.entryId), {
+      date: editEntryPopup.date,
+      startTime: editEntryPopup.startTime,
+      endTime: nextEndTime,
+      companyName: editEntryPopup.companyName.trim(),
+    });
+
+    setSelectedDate(editEntryPopup.date);
+    setEditEntryPopup({
+      open: false,
+      entryId: "",
+      date: "",
+      startTime: "09:00",
+      companyName: "",
+    });
+
+    setEntryMessage("일정이 수정되었습니다.");
+  } catch (error: any) {
+    console.log("ENTRY UPDATE ERROR:", error);
+    setEntryMessage(error?.message || "일정 수정 중 오류가 발생했습니다.");
   }
 };
 
@@ -3537,6 +3644,84 @@ const posY = marker.y;
   const renderEducationPage = () => (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
+{editEntryPopup.open && (
+  <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="text-base font-semibold text-slate-900">교육일정 수정</div>
+
+      <div className="mt-4 space-y-2">
+        <label className="text-xs font-medium text-slate-600">일자 선택</label>
+        <Input
+          type="date"
+          value={editEntryPopup.date}
+          onChange={(e) =>
+            setEditEntryPopup((prev) => ({
+              ...prev,
+              date: e.target.value,
+            }))
+          }
+          className="h-9"
+        />
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <label className="text-xs font-medium text-slate-600">업체명</label>
+        <Input
+          value={editEntryPopup.companyName}
+          onChange={(e) =>
+            setEditEntryPopup((prev) => ({
+              ...prev,
+              companyName: e.target.value,
+            }))
+          }
+          placeholder="업체명 입력"
+        />
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <label className="text-xs font-medium text-slate-600">시간 선택</label>
+        <select
+          value={editEntryPopup.startTime}
+          onChange={(e) =>
+            setEditEntryPopup((prev) => ({
+              ...prev,
+              startTime: e.target.value,
+            }))
+          }
+          className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+        >
+          {timeOptions.map((time) => (
+            <option key={time} value={time}>
+              {time} ~ {getEndTime(time)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button
+          variant="outline"
+          className="w-full lg:w-auto"
+          onClick={() =>
+            setEditEntryPopup({
+              open: false,
+              entryId: "",
+              date: "",
+              startTime: "09:00",
+              companyName: "",
+            })
+          }
+        >
+          취소
+        </Button>
+
+        <Button className="w-full lg:w-auto" onClick={handleUpdateEntry}>
+          저장
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
       {deleteNoticeOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"><div className="text-lg font-semibold text-slate-900">안내</div><div className="mt-3 text-sm text-slate-600">삭제는 관리자에게 요청</div><div className="mt-6 flex justify-end"><Button onClick={() => setDeleteNoticeOpen(false)}>확인</Button></div></div></div>}
       <div className="flex flex-wrap justify-between gap-3"><Button variant="outline" onClick={() => setCurrentPage("menu")}>메뉴로 돌아가기</Button></div>
       <Card className="rounded-[24px] border-0 shadow-sm"><CardContent className="p-3"><div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{tabs.map((tab) => { const Icon = tab.icon; const isActive = activeTab === tab.key; return <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={cn("flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition", isActive ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}><Icon className="h-4 w-4" />{tab.label}{tab.key === "approval" && pendingUsers.length > 0 && <span className={cn("rounded-full px-2 py-0.5 text-xs", isActive ? "bg-white/20 text-white" : "bg-white text-slate-700")}>{pendingUsers.length}</span>}</button>; })}</div></CardContent></Card>
@@ -3556,19 +3741,41 @@ const posY = marker.y;
   <div className="text-sm text-slate-600">{entryMessage}</div>
 )}
 
-<div className="mt-2 text-xs text-slate-400">시간 중복 불가</div></CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>선택 일자 등록 목록</CardTitle></CardHeader><CardContent className="space-y-3"><div><div className="text-sm text-slate-500">현재 선택 일자</div><div className="text-xl font-bold text-slate-900">{formatMonthDay(selectedDate)}</div></div>{dayEntries.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">등록된 일정이 없습니다.</div> : dayEntries.map((entry) => <motion.div key={entry.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-4"><div><div className="text-base font-semibold text-slate-900">{entry.companyName}</div><div className="mt-1 text-sm text-slate-600">{formatMonthDay(entry.date)}</div><div className="mt-1 text-sm text-slate-600">{entry.startTime} ~ {entry.endTime}</div><div className="mt-1 text-xs text-slate-500">작성자: {entry.createdByName || "-"} ({getRoleLabel(entry.createdByRole || "general")})</div></div><button
-  type="button"
-  onClick={(e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    deleteEntry(entry.id);
-  }}
-  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-slate-500 hover:bg-slate-100 hover:text-red-600 disabled:opacity-50"
-  disabled={!canDeleteOwnItem(entry)}
-  title="일정 삭제"
->
-  <Trash2 className="h-4 w-4" />
-</button></div></motion.div>)}</CardContent></Card></div></div>}
+<div className="mt-2 text-xs text-slate-400">시간 중복 불가</div></CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>선택 일자 등록 목록</CardTitle></CardHeader><CardContent className="space-y-3"><div><div className="text-sm text-slate-500">현재 선택 일자</div><div className="text-xl font-bold text-slate-900">{formatMonthDay(selectedDate)}</div></div>{dayEntries.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">등록된 일정이 없습니다.</div> : dayEntries.map((entry) => <motion.div key={entry.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-4"><div><div className="text-base font-semibold text-slate-900">{entry.companyName}</div><div className="mt-1 text-sm text-slate-600">{formatMonthDay(entry.date)}</div><div className="mt-1 text-sm text-slate-600">{entry.startTime} ~ {entry.endTime}</div><div className="mt-1 text-xs text-slate-500">작성자: {entry.createdByName || "-"} ({getRoleLabel(entry.createdByRole || "general")})</div></div><div className="flex shrink-0 gap-1">
+  <button
+    type="button"
+    onClick={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setEditEntryPopup({
+        open: true,
+        entryId: entry.id,
+        date: entry.date,
+        startTime: entry.startTime,
+        companyName: entry.companyName || "",
+      });
+    }}
+    className="inline-flex h-10 items-center justify-center rounded-2xl px-3 text-xs font-semibold text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+    disabled={!canDeleteOwnItem(entry)}
+    title="일정 수정"
+  >
+    수정
+  </button>
+
+  <button
+    type="button"
+    onClick={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteEntry(entry.id);
+    }}
+    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-slate-500 hover:bg-slate-100 hover:text-red-600 disabled:opacity-50"
+    disabled={!canDeleteOwnItem(entry)}
+    title="일정 삭제"
+  >
+    <Trash2 className="h-4 w-4" />
+  </button>
+</div></div></motion.div>)}</CardContent></Card></div></div>}
       {activeTab === "approval" && <div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2"><LayoutGrid className="h-5 w-5" />가입 승인 전용 탭</CardTitle></CardHeader><CardContent>{!canManageApprovals ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">가입 승인 관리는 관리자 또는 마스터만 접근할 수 있습니다.</div> : pendingUsers.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">현재 승인 대기 중인 계정이 없습니다.</div> : <div className="space-y-3">{pendingUsers.map((user) => { const canApproveThisUser = user.role === "admin" ? canApproveAdmin : canApproveGeneral; return <div key={user.uid} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"><div className="space-y-1"><div className="text-base font-semibold text-slate-900">{user.name} ({user.email || user.uid})</div><div className="text-sm text-slate-600">업체명: {user.companyName}</div><div className="text-sm text-slate-600">신청 권한: {getRoleLabel(user.role || "general")}</div><div className="text-xs text-slate-500">상태: {getStatusLabel(user.status || "pending")}</div></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => rejectUser(user.uid)} disabled={!canApproveThisUser}>반려</Button><Button onClick={() => approveUser(user.uid)} disabled={!canApproveThisUser}>승인</Button></div></div>{!canApproveThisUser && <div className="mt-3 text-xs text-red-500">이 계정은 현재 로그인한 권한으로 승인할 수 없습니다.</div>}</div>; })}</div>}</CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>승인된 회원 목록</CardTitle></CardHeader><CardContent className="space-y-3">{approvedUsers.map((user) => {
   const canCancelThisUser = user.role === "admin" ? canApproveAdmin : canApproveGeneral;
 
