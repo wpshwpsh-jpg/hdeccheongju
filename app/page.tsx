@@ -738,17 +738,27 @@ const [entryMessage, setEntryMessage] = useState("");
     )
 );
         unsubscribeEntries = onSnapshot(
-  query(collection(db, "entries"), orderBy("date", "asc"), orderBy("startTime", "asc")),
+  collection(db, "entries"),
   (snapshot) =>
     setEntries(
-      snapshot.docs.map(
-        (item) =>
-          ({
-            id: item.id,
-            ...(item.data() as Omit<EntryItem, "id">),
-          }) satisfies EntryItem
-      )
-    )
+      snapshot.docs
+        .map(
+          (item) =>
+            ({
+              id: item.id,
+              ...(item.data() as Omit<EntryItem, "id">),
+            }) satisfies EntryItem
+        )
+        .sort((a, b) => {
+          const dateCompare = String(a.date).localeCompare(String(b.date));
+          if (dateCompare !== 0) return dateCompare;
+          return String(a.startTime).localeCompare(String(b.startTime));
+        })
+    ),
+  (error) => {
+    console.log("ENTRIES SNAPSHOT ERROR:", error);
+    setLoginMessage("일정 데이터를 불러오지 못했습니다.");
+  }
 );
       } catch {
         setCurrentUser(null);
