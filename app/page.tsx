@@ -2222,7 +2222,10 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
   const point = getRelativePoint(event.clientX, event.clientY);
   if (!point) return;
 
-  if (pendingEquipmentMarker) {
+  if (
+  pendingEquipmentMarker &&
+  !(moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow")
+) {
     if (
       isOverlayBoxTooClose(
         "equipmentFlow",
@@ -2334,7 +2337,10 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
     }
     if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !canEditDabs) return;
 
-if (pendingEquipmentMarker) {
+if (
+  pendingEquipmentMarker &&
+  !(moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow")
+) {
   if (
     isOverlayBoxTooClose(
       "equipmentFlow",
