@@ -1236,16 +1236,32 @@ const cancelApprovalUser = async (uid: string) => {
       ? currentTabValue.rows || {}
       : {};
 
+  const companyName = currentUser?.companyName || "";
+  const buildingRows = currentRows[sectionInput.building] || [];
+  const existingIndex = buildingRows.findIndex((item) => item.company === companyName);
+
+  const nextBuildingRows =
+    existingIndex >= 0
+      ? buildingRows.map((item, index) =>
+          index === existingIndex
+            ? {
+                ...item,
+                content: `${item.content || ""}/${sectionInput.content}`,
+              }
+            : item
+        )
+      : [
+          ...buildingRows,
+          {
+            id: createLocalId("section"),
+            company: companyName,
+            content: sectionInput.content,
+          },
+        ];
+
   const nextRows = {
     ...currentRows,
-    [sectionInput.building]: [
-      ...(currentRows[sectionInput.building] || []),
-      {
-        id: createLocalId("section"),
-        company: currentUser?.companyName || "",
-        content: sectionInput.content,
-      },
-    ],
+    [sectionInput.building]: nextBuildingRows,
   };
 
   const nextData = {
@@ -1273,21 +1289,45 @@ const cancelApprovalUser = async (uid: string) => {
       ? currentTabValue.list || []
       : [];
 
-  const newItem = {
-    id: createLocalId("material"),
-    gate,
-    material,
-    vehicle,
-    location,
-    time,
-    company: currentUser?.companyName || "",
-  };
+  const companyName = currentUser?.companyName || "";
+
+  const existingIndex = list.findIndex(
+    (item) =>
+      item.company === companyName &&
+      item.gate === gate &&
+      item.time === time
+  );
+
+  const nextList =
+    existingIndex >= 0
+      ? list.map((item, index) =>
+          index === existingIndex
+            ? {
+                ...item,
+                material: `${item.material || ""}/${material}`,
+                vehicle: `${item.vehicle || ""}/${vehicle}`,
+                location: `${item.location || ""}/${location}`,
+              }
+            : item
+        )
+      : [
+          ...list,
+          {
+            id: createLocalId("material"),
+            gate,
+            material,
+            vehicle,
+            location,
+            time,
+            company: companyName,
+          },
+        ];
 
   const nextData = {
     ...dabsData,
     [selectedDate]: {
       ...(dabsData[selectedDate] || {}),
-      [activeDabsKey]: { list: [...list, newItem] },
+      [activeDabsKey]: { list: nextList },
     },
   };
 
