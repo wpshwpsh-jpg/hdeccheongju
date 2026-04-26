@@ -1962,7 +1962,22 @@ setArrowStart(null);
         <Card>
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />DAB&apos;s회의</CardTitle><Button variant="outline" onClick={() => setCurrentPage("menu")}>메뉴로 돌아가기</Button></CardHeader>
           <CardContent className="space-y-5">
-            <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{dabsTabs.map((tab, index) => <button key={tab.key} onClick={() => setDabsTabIndex(index)} className={cn("shrink-0 rounded-2xl px-3 py-2 text-sm font-medium transition lg:px-4", dabsTabIndex === index ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}>{tab.label}</button>)}</div>
+            <div className="flex flex-wrap gap-2 pb-1">
+  {dabsTabs.map((tab, index) => (
+    <button
+      key={tab.key}
+      onClick={() => setDabsTabIndex(index)}
+      className={cn(
+        "rounded-2xl px-3 py-2 text-sm font-medium transition lg:px-4",
+        dabsTabIndex === index
+          ? "bg-slate-900 text-white"
+          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+      )}
+    >
+      {tab.label}
+    </button>
+  ))}
+</div>
             <Card className="border-slate-200 shadow-none">
               <CardHeader><CardTitle className="text-base">{activeDabsTab.label}</CardTitle></CardHeader>
               <CardContent className="space-y-4">
