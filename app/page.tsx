@@ -619,9 +619,18 @@ const [moveOverlayTarget, setMoveOverlayTarget] = useState<{
 } | null>(null);
 
 const [arrowStart, setArrowStart] = useState<{ x: number; y: number } | null>(null);
-  const [arrowPreview, setArrowPreview] = useState<
+const [arrowPreview, setArrowPreview] = useState<
   { startX: number; startY: number; endX: number; endY: number } | null
 >(null);
+
+const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
+  arrowId: string;
+  company: string;
+  note: string;
+  equipmentType: string;
+  createdByUid?: string;
+  createdByName?: string;
+} | null>(null);
   const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", name: "", content: "", elderly: "x" });
   const [editSoloPopup, setEditSoloPopup] = useState({
   open: false,
@@ -943,13 +952,14 @@ const saveDabsOverlaysToFirestore = async (
   [dabsData, selectedDate]
 );
 
-  useEffect(() => {
-    const nextValue = dabsData[selectedDate]?.[activeDabsKey];
-    setDabsDraft(typeof nextValue === "string" ? nextValue : "");
-    setDabsMessage("");
-    setArrowStart(null);
-    setArrowPreview(null);
-  }, [selectedDate, activeDabsKey, dabsData]);
+ useEffect(() => {
+  const nextValue = dabsData[selectedDate]?.[activeDabsKey];
+  setDabsDraft(typeof nextValue === "string" ? nextValue : "");
+  setDabsMessage("");
+  setArrowStart(null);
+  setArrowPreview(null);
+  setPendingEquipmentMarker(null);
+}, [selectedDate, activeDabsKey, dabsData]);
 
   const getRelativePoint = (clientX: number, clientY: number) => {
   if (!imageAreaRef.current) return null;
@@ -1737,20 +1747,22 @@ const handleUpdateOverlayInfo = async () => {
 
   const currentValue = getOverlayBundle(editOverlayPopup.targetKey);
 
-  const nextMarkers = (currentValue.markers || []).map((marker) =>
-    marker.id === editOverlayPopup.itemId
-      ? {
-          ...marker,
-          company: editOverlayPopup.company.trim(),
-          note: editOverlayPopup.note.trim(),
-          building: editOverlayPopup.targetKey === "highRisk" ? editOverlayPopup.building : "",
-          equipmentType:
-            editOverlayPopup.targetKey === "equipmentFlow"
-              ? editOverlayPopup.equipmentType
-              : "",
-        }
-      : marker
-  );
+  const nextMarkers =
+  editOverlayPopup.targetKey === "equipmentFlow"
+    ? (currentValue.markers || []).filter(
+        (marker) => marker.id !== editOverlayPopup.itemId
+      )
+    : (currentValue.markers || []).map((marker) =>
+        marker.id === editOverlayPopup.itemId
+          ? {
+              ...marker,
+              company: editOverlayPopup.company.trim(),
+              note: editOverlayPopup.note.trim(),
+              building: editOverlayPopup.building,
+              equipmentType: "",
+            }
+          : marker
+      );
 
   const nextData = {
     ...dabsOverlays,
@@ -1767,11 +1779,22 @@ const handleUpdateOverlayInfo = async () => {
 
   await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 
+  if (editOverlayPopup.targetKey === "equipmentFlow") {
+  setPendingEquipmentMarker({
+    arrowId: editOverlayPopup.itemId,
+    company: editOverlayPopup.company.trim(),
+    note: editOverlayPopup.note.trim(),
+    equipmentType: editOverlayPopup.equipmentType,
+    createdByUid: currentUser?.uid,
+    createdByName: currentUser?.name,
+  });
+} else {
   setMoveOverlayTarget({
     itemId: editOverlayPopup.itemId,
     targetKey: editOverlayPopup.targetKey,
-    mode: editOverlayPopup.targetKey === "equipmentFlow" ? "arrow" : "marker",
+    mode: "marker",
   });
+}
 
   setEditOverlayPopup({
     open: false,
@@ -1787,10 +1810,10 @@ const handleUpdateOverlayInfo = async () => {
   setArrowPreview(null);
 
   setDabsMessage(
-    editOverlayPopup.targetKey === "equipmentFlow"
-      ? "수정되었습니다. 새 화살표 시작점과 종료점을 다시 선택하세요."
-      : "수정되었습니다. 새 위치를 선택하세요."
-  );
+  editOverlayPopup.targetKey === "equipmentFlow"
+    ? "수정되었습니다. 상자를 표시할 위치를 한 번 더 클릭하세요."
+    : "수정되었습니다. 새 위치를 선택하세요."
+);
 };
 
 const handleDeleteOverlayItem = async (itemId: string) => {
@@ -2009,43 +2032,111 @@ lastTouchTimeRef.current = Date.now();
 };
 
   const cancelMarkerPopup = async () => {
-    if (imagePopup.targetKey === "equipmentFlow") {
-      const currentValue = getOverlayBundle("equipmentFlow");
-      const nextArrows = [...(currentValue.arrows || [])];
-      if (nextArrows.length > 0) nextArrows.pop();
-      const nextData = { ...dabsOverlays, [selectedDate]: { ...(dabsOverlays[selectedDate] || {}), equipmentFlow: { ...currentValue, arrows: nextArrows } } };
-      setDabsOverlays(nextData);
+  if (imagePopup.targetKey === "equipmentFlow") {
+    const currentValue = getOverlayBundle("equipmentFlow");
+    const nextArrows = [...(currentValue.arrows || [])];
 
-await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
-    }
-    setArrowStart(null);
-    setArrowPreview(null);
-    setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
-  };
+    if (nextArrows.length > 0) nextArrows.pop();
+
+    const nextData = {
+      ...dabsOverlays,
+      [selectedDate]: {
+        ...(dabsOverlays[selectedDate] || {}),
+        equipmentFlow: {
+          ...currentValue,
+          arrows: nextArrows,
+        },
+      },
+    };
+
+    setDabsOverlays(nextData);
+    await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+  }
+
+  setArrowStart(null);
+  setArrowPreview(null);
+  setPendingEquipmentMarker(null);
+  setImagePopup({
+    open: false,
+    x: 0,
+    y: 0,
+    note: "",
+    equipmentType: "concrete_pump_truck",
+    building: "",
+    targetKey: "highRisk",
+  });
+};
 
   const submitMarkerPopup = async () => {
-    if (!canEditDabs || !imagePopup.note.trim()) return;
-    if (imagePopup.targetKey === "highRisk" && !imagePopup.building) return;
-    const targetKey = imagePopup.targetKey || activeDabsKey;
-    const currentValue = getOverlayBundle(targetKey);
-    const markerId = imagePopup.targetKey === "equipmentFlow" && currentValue.arrows?.length ? currentValue.arrows[currentValue.arrows.length - 1].id : createLocalId("marker");
-    const marker = {
-  id: markerId,
-  x: imagePopup.x,
-  y: imagePopup.y,
-  building: imagePopup.targetKey === "highRisk" ? imagePopup.building : "",
-  company: currentUser?.companyName || "",
-  note: imagePopup.note.trim(),
-  equipmentType: imagePopup.targetKey === "equipmentFlow" ? imagePopup.equipmentType : "",
-  createdByUid: currentUser?.uid,
-  createdByName: currentUser?.name,
-};
-    const nextData = { ...dabsOverlays, [selectedDate]: { ...(dabsOverlays[selectedDate] || {}), [targetKey]: { ...currentValue, markers: [...(currentValue.markers || []), marker] } } };
-    setDabsOverlays(nextData);
+  if (!canEditDabs || !imagePopup.note.trim()) return;
+  if (imagePopup.targetKey === "highRisk" && !imagePopup.building) return;
 
-await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
-setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
+  const targetKey = imagePopup.targetKey || activeDabsKey;
+  const currentValue = getOverlayBundle(targetKey);
+
+  if (targetKey === "equipmentFlow") {
+    const lastArrow = currentValue.arrows?.[currentValue.arrows.length - 1];
+    if (!lastArrow) return;
+
+    setPendingEquipmentMarker({
+      arrowId: lastArrow.id,
+      company: currentUser?.companyName || "",
+      note: imagePopup.note.trim(),
+      equipmentType: imagePopup.equipmentType,
+      createdByUid: currentUser?.uid,
+      createdByName: currentUser?.name,
+    });
+
+    setImagePopup({
+      open: false,
+      x: 0,
+      y: 0,
+      note: "",
+      equipmentType: "concrete_pump_truck",
+      building: "",
+      targetKey: "highRisk",
+    });
+
+    setDabsMessage("상자를 표시할 위치를 한 번 더 클릭하세요.");
+    return;
+  }
+
+  const marker = {
+    id: createLocalId("marker"),
+    x: imagePopup.x,
+    y: imagePopup.y,
+    building: imagePopup.building,
+    company: currentUser?.companyName || "",
+    note: imagePopup.note.trim(),
+    equipmentType: "",
+    createdByUid: currentUser?.uid,
+    createdByName: currentUser?.name,
   };
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      [targetKey]: {
+        ...currentValue,
+        markers: [...(currentValue.markers || []), marker],
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  setImagePopup({
+    open: false,
+    x: 0,
+    y: 0,
+    note: "",
+    equipmentType: "concrete_pump_truck",
+    building: "",
+    targetKey: "highRisk",
+  });
+};
 
  const completeEquipmentArrow = async (endX: number, endY: number) => {
   if (!arrowStart) return;
@@ -2143,18 +2234,72 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
   vibrateBriefly();
 };
 
-  const handleEquipmentClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (Date.now() - lastTouchTimeRef.current < 500) return;
-    if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !canEditDabs) return;
-    const point = getRelativePoint(event.clientX, event.clientY);
-    if (!point) return;
-    if (!arrowStart) {
-      setArrowStart({ x: point.x, y: point.y });
-      setArrowPreview({ startX: point.x, startY: point.y, endX: point.x, endY: point.y });
+  const handleEquipmentClick = async (event: React.MouseEvent<HTMLDivElement>) => {
+  if (Date.now() - lastTouchTimeRef.current < 500) return;
+  if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !canEditDabs) return;
+
+  const point = getRelativePoint(event.clientX, event.clientY);
+  if (!point) return;
+
+  if (pendingEquipmentMarker) {
+    if (
+      isOverlayBoxTooClose(
+        "equipmentFlow",
+        point.x,
+        point.y,
+        pendingEquipmentMarker.arrowId
+      )
+    ) {
+      setDabsMessage("다른 박스와 너무 가까워 입력할 수 없습니다. 조금 떨어진 위치를 선택하세요.");
       return;
     }
-    completeEquipmentArrow(point.x, point.y);
-  };
+
+    const currentValue = getOverlayBundle("equipmentFlow");
+
+    const marker = {
+      id: pendingEquipmentMarker.arrowId,
+      x: point.x,
+      y: point.y,
+      building: "",
+      company: pendingEquipmentMarker.company,
+      note: pendingEquipmentMarker.note,
+      equipmentType: pendingEquipmentMarker.equipmentType,
+      createdByUid: pendingEquipmentMarker.createdByUid,
+      createdByName: pendingEquipmentMarker.createdByName,
+    };
+
+    const nextData = {
+      ...dabsOverlays,
+      [selectedDate]: {
+        ...(dabsOverlays[selectedDate] || {}),
+        equipmentFlow: {
+          ...currentValue,
+          markers: [...(currentValue.markers || []), marker],
+        },
+      },
+    };
+
+    setDabsOverlays(nextData);
+    await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    setPendingEquipmentMarker(null);
+    setDabsMessage("장비동선이 저장되었습니다.");
+    return;
+  }
+
+  if (!arrowStart) {
+    setArrowStart({ x: point.x, y: point.y });
+    setArrowPreview({
+      startX: point.x,
+      startY: point.y,
+      endX: point.x,
+      endY: point.y,
+    });
+    return;
+  }
+
+  completeEquipmentArrow(point.x, point.y);
+};
 
   const handleEquipmentMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
     if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !arrowStart) return;
@@ -2206,11 +2351,60 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
       if (!touchGestureRef.current.moved) openMarkerPopupByTouch(touch);
       return;
     }
-    if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !canEditDabs || !arrowStart) return;
-    if (touchGestureRef.current.moved) {
-      completeEquipmentArrow(point.x, point.y);
-      return;
-    }
+    if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !canEditDabs) return;
+
+if (pendingEquipmentMarker) {
+  if (
+    isOverlayBoxTooClose(
+      "equipmentFlow",
+      point.x,
+      point.y,
+      pendingEquipmentMarker.arrowId
+    )
+  ) {
+    setDabsMessage("다른 박스와 너무 가까워 입력할 수 없습니다. 조금 떨어진 위치를 선택하세요.");
+    return;
+  }
+
+  const currentValue = getOverlayBundle("equipmentFlow");
+
+  const marker = {
+    id: pendingEquipmentMarker.arrowId,
+    x: point.x,
+    y: point.y,
+    building: "",
+    company: pendingEquipmentMarker.company,
+    note: pendingEquipmentMarker.note,
+    equipmentType: pendingEquipmentMarker.equipmentType,
+    createdByUid: pendingEquipmentMarker.createdByUid,
+    createdByName: pendingEquipmentMarker.createdByName,
+  };
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      equipmentFlow: {
+        ...currentValue,
+        markers: [...(currentValue.markers || []), marker],
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  setPendingEquipmentMarker(null);
+  setDabsMessage("장비동선이 저장되었습니다.");
+  return;
+}
+
+if (!arrowStart) return;
+
+if (touchGestureRef.current.moved) {
+  completeEquipmentArrow(point.x, point.y);
+  return;
+}
     if (arrowPreview && (Math.abs((arrowPreview.endX || point.x) - arrowStart.x) > 2 || Math.abs((arrowPreview.endY || point.y) - arrowStart.y) > 2)) {
       completeEquipmentArrow(point.x, point.y);
       return;
@@ -3144,7 +3338,11 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
               <CardHeader><CardTitle className="text-base">{activeDabsTab.label}</CardTitle></CardHeader>
 <CardContent className="space-y-3 p-2 md:p-6">
   <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">선택 날짜: {formatMonthDay(selectedDate)}</div>
-  {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날짜와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && <div className="text-xs text-slate-500">첫 번째 터치/클릭은 시작점, 이동 중에는 미리보기, 종료 지점에서 화살표가 생성됩니다.</div>}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}<div className="-mx-2 md:mx-0">{renderOverlayImage(activeDabsKey === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow, isImageTab)}</div></>}
+  {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날짜와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && (
+  <div className="text-xs text-slate-500">
+    첫 번째 클릭은 시작점, 두 번째 클릭은 종료점입니다. 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요.
+  </div>
+)}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}<div className="-mx-2 md:mx-0">{renderOverlayImage(activeDabsKey === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow, isImageTab)}</div></>}
                 {isSectionTab && <><div className="grid gap-3 md:grid-cols-[220px_1fr_auto]"><select value={sectionInput.building} onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{activeColumns.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={sectionInput.content} onChange={(e) => setSectionInput({ ...sectionInput, content: e.target.value })} placeholder="작업내용 입력" /><Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div>{renderSectionMobileCards(activeColumns, sectionRows)}<div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-slate-200 px-3 py-2 text-left w-[9%]">동</th><th className="border border-slate-200 px-3 py-2 text-left w-[18%]">업체명</th><th className="border border-slate-200 px-3 py-2 text-left">작업내용</th></tr></thead><tbody>{activeColumns.map((col) => { const list = sectionRows[col] || []; return <tr key={col}><td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{col}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`company-${item.id}`} className="mb-2">{item.company}</div>)}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`content-${item.id}`} className="mb-2 flex items-center justify-between gap-2"><span className="whitespace-pre-wrap break-all leading-relaxed">
   {item.content}
 </span>
