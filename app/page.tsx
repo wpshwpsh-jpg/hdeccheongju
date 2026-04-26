@@ -2780,7 +2780,7 @@ const posY = marker.y;
     e.preventDefault();
     handleLogin();
   }}
-  className="grid items-end gap-2 md:grid-cols-[1fr_1fr_auto_auto]"
+  className="space-y-3 max-w-sm"
 >
   <div className="space-y-2">
     <label className="text-xs font-medium text-slate-600">아이디</label>
@@ -2805,9 +2805,10 @@ const posY = marker.y;
     />
   </div>
 
+  <div className="flex gap-2">
   <Button
     type="submit"
-    className="h-9 w-full px-4 md:w-auto"
+    className="h-9 flex-1"
     disabled={loginLoading}
   >
     {loginLoading ? "로그인 중..." : "로그인"}
@@ -2816,11 +2817,13 @@ const posY = marker.y;
   <Button
     type="button"
     variant="outline"
+    className="h-9 flex-1"
     onClick={handlePasswordReset}
     disabled={loginLoading}
   >
     비밀번호 재설정
   </Button>
+</div>
 </form>
               {loginMessage && <div className="text-sm text-slate-600">{loginMessage}</div>}
               {!isAuthReady && <div className="text-xs text-slate-400">로그인 상태 확인 중...</div>}
