@@ -289,9 +289,6 @@ function createLocalId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-
-const firebaseServices = getFirebaseServices();
-
 type UserItem = {
   uid: string;
   email?: string;
@@ -367,19 +364,6 @@ type DabsDateValue = {
   };
   [key: string]: DabsTabValue | { rows?: Record<string, DabsRowItem[]> } | undefined;
 };
-
-function runSelfTests() {
-  const results = [];
-  results.push({ name: "09:00 종료시간은 11:00", pass: getEndTime("09:00") === "11:00" });
-  results.push({ name: "시간 옵션 검증", pass: JSON.stringify(getTimeOptions()) === JSON.stringify(["09:00", "10:00", "13:00", "14:00", "16:00", "17:00"]) });
-  results.push({ name: "월/일 포맷 검증", pass: formatMonthDay("2026-04-03") === "4월 3일" });
-  results.push({ name: "같은 경계시간은 비중복", pass: isTimeOverlapping("13:00", "15:00", "15:00", "17:00") === false });
-  results.push({ name: "단독작업자 동 수 검증", pass: SOLO_WORKER_COLUMNS.length === 18 });
-  results.push({ name: "장비 옵션 수 검증", pass: EQUIPMENT_OPTIONS.length === 8 });
-  results.push({ name: "모바일 터치 미리보기 플래그", pass: true });
-  results.push({ name: "이미지 탭 키 검증", pass: ["highRisk", "equipmentFlow"].includes("highRisk") });
-  return results;
-}
 
 function getCompanyColor(company: string) {
   const palette = [
@@ -650,7 +634,6 @@ const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   elderly: "x",
 });
 
-// ✅ 여기 추가
 const [editMaterialPopup, setEditMaterialPopup] = useState({
   open: false,
   itemId: "",
@@ -665,7 +648,6 @@ const [editMaterialPopup, setEditMaterialPopup] = useState({
   const imageAreaRef = useRef<HTMLDivElement | null>(null);
   const lastTouchTimeRef = useRef(0);
   const touchGestureRef = useRef({ moved: false, startX: 0, startY: 0 });
-  const [testResults] = useState(runSelfTests);
 
   useEffect(() => {
   if (isDemoMode || !db || !currentUser) return;
@@ -856,7 +838,6 @@ const unsubscribeImages = onSnapshot(doc(db, "dabsImages", "shared"), (snap) => 
   const canManageApprovals = currentUser?.role === "master" || currentUser?.role === "admin";
   const canEditDabs = Boolean(currentUser && currentUser.status === "approved");
   const canUploadDabsImage = currentUser?.role === "master" || currentUser?.role === "admin";
-  const canDeleteDabsItem = currentUser?.role === "master" || currentUser?.role === "admin";
   const canAdminEditDabsItem = currentUser?.role === "master" || currentUser?.role === "admin";
   const canDeleteOwnItem = (item?: { createdByUid?: string }) => {
   if (!currentUser) return false;
