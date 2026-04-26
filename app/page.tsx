@@ -2849,9 +2849,18 @@ const posY = marker.y;
   const renderMenuScreen = () => (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
-      {!isConfigured && <Card className="border-amber-300 bg-amber-50"><CardContent className="p-4"><div className="text-sm font-medium text-amber-900">Firebase 환경변수가 설정되지 않았습니다.<div className="mt-1 text-xs text-amber-800">
-  Firebase 미설정 상태입니다. 환경변수를 설정해야 로그인할 수 있습니다.
-</div></CardContent></Card>}
+      {!isConfigured && (
+  <Card className="border-amber-300 bg-amber-50">
+    <CardContent className="p-4">
+      <div className="text-sm font-medium text-amber-900">
+        Firebase 환경변수가 설정되지 않았습니다.
+        <div className="mt-1 text-xs text-amber-800">
+          Firebase 미설정 상태입니다. 환경변수를 설정해야 로그인할 수 있습니다.
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+)}
       <div className="grid gap-4 md:grid-cols-3 md:gap-6">{menuItems.map((item) => { const Icon = item.icon; return <button key={item.key} onClick={() => {
   setCurrentPage(item.key);
 }} className="rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md sm:p-6"><div className="flex items-center gap-3"><div className="rounded-2xl bg-slate-100 p-3 text-slate-700"><Icon className="h-6 w-6" /></div><div><div className="text-base font-semibold text-slate-900 lg:text-lg">{item.title}</div><div className="mt-1 text-sm text-slate-500">{item.description}</div></div></div></button>; })}</div>
