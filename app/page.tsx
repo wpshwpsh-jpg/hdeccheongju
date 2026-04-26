@@ -1709,29 +1709,19 @@ const isOverlayBoxTooClose = (
   ignoreItemId = ""
 ) => {
   const currentValue = getOverlayBundle(targetKey);
-  const markers = currentValue.markers || [];
-  const arrows = currentValue.arrows || [];
+const markers = currentValue.markers || [];
 
-  return markers.some((marker) => {
-    if (ignoreItemId && marker.id === ignoreItemId) return false;
+return markers.some((marker) => {
+  if (ignoreItemId && marker.id === ignoreItemId) return false;
 
-    let markerX = marker.x;
-    let markerY = marker.y;
+  const markerX = marker.x;
+  const markerY = marker.y;
 
-    if (targetKey === "equipmentFlow") {
-      const linkedArrow = arrows.find((arrow) => arrow.id === marker.id);
+  const limitX = targetKey === "equipmentFlow" ? 12 : 9;
+  const limitY = targetKey === "equipmentFlow" ? 10 : 8;
 
-      if (linkedArrow) {
-        markerX = (linkedArrow.startX + linkedArrow.endX) / 2;
-        markerY = (linkedArrow.startY + linkedArrow.endY) / 2;
-      }
-    }
-
-    const limitX = targetKey === "equipmentFlow" ? 12 : 9;
-    const limitY = targetKey === "equipmentFlow" ? 10 : 8;
-
-    return Math.abs(markerX - x) < limitX && Math.abs(markerY - y) < limitY;
-  });
+  return Math.abs(markerX - x) < limitX && Math.abs(markerY - y) < limitY;
+});
 };
 
 const handleUpdateOverlayInfo = async () => {
@@ -1780,6 +1770,12 @@ const handleUpdateOverlayInfo = async () => {
   await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 
   if (editOverlayPopup.targetKey === "equipmentFlow") {
+  setMoveOverlayTarget({
+    itemId: editOverlayPopup.itemId,
+    targetKey: "equipmentFlow",
+    mode: "arrow",
+  });
+
   setPendingEquipmentMarker({
     arrowId: editOverlayPopup.itemId,
     company: editOverlayPopup.company.trim(),
@@ -1811,7 +1807,7 @@ const handleUpdateOverlayInfo = async () => {
 
   setDabsMessage(
   editOverlayPopup.targetKey === "equipmentFlow"
-    ? "수정되었습니다. 상자를 표시할 위치를 한 번 더 클릭하세요."
+    ? "수정되었습니다. 새 화살표 시작점과 종료점을 다시 선택하세요."
     : "수정되었습니다. 새 위치를 선택하세요."
 );
 };
@@ -2143,57 +2139,42 @@ lastTouchTimeRef.current = Date.now();
 
   const currentValue = getOverlayBundle("equipmentFlow");
 
-const boxX = (arrowStart.x + endX) / 2;
-const boxY = (arrowStart.y + endY) / 2;
-
-if (
-  isOverlayBoxTooClose(
-    "equipmentFlow",
-    boxX,
-    boxY,
-    moveOverlayTarget?.targetKey === "equipmentFlow" ? moveOverlayTarget.itemId : ""
-  )
-) {
-  setArrowStart(null);
-  setArrowPreview(null);
-  setMoveOverlayTarget(null);
-  setDabsMessage("다른 박스와 너무 가까워 입력할 수 없습니다. 조금 떨어진 위치에 화살표를 다시 그리세요.");
-  return;
-}
+// 화살표는 겹쳐도 입력 가능.
+// 상자 중복 검사는 상자 위치를 클릭하는 단계에서만 처리합니다.
 
 if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow") {
-    const nextArrows = (currentValue.arrows || []).map((arrow) =>
-      arrow.id === moveOverlayTarget.itemId
-        ? {
-            ...arrow,
-            startX: arrowStart.x,
-            startY: arrowStart.y,
-            endX,
-            endY,
-          }
-        : arrow
-    );
+  const nextArrows = (currentValue.arrows || []).map((arrow) =>
+    arrow.id === moveOverlayTarget.itemId
+      ? {
+          ...arrow,
+          startX: arrowStart.x,
+          startY: arrowStart.y,
+          endX,
+          endY,
+        }
+      : arrow
+  );
 
-    const nextData = {
-      ...dabsOverlays,
-      [selectedDate]: {
-        ...(dabsOverlays[selectedDate] || {}),
-        equipmentFlow: {
-          ...currentValue,
-          arrows: nextArrows,
-        },
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      equipmentFlow: {
+        ...currentValue,
+        arrows: nextArrows,
       },
-    };
+    },
+  };
 
-    setDabsOverlays(nextData);
-    await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+  setDabsOverlays(nextData);
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 
-    setMoveOverlayTarget(null);
-    setArrowStart(null);
-    setArrowPreview(null);
-    setDabsMessage("화살표 위치가 수정되었습니다.");
-    return;
-  }
+  setMoveOverlayTarget(null);
+  setArrowStart(null);
+  setArrowPreview(null);
+  setDabsMessage("화살표가 수정되었습니다. 상자를 표시할 위치를 한 번 더 클릭하세요.");
+  return;
+}
 
   const arrow = {
     id: createLocalId("arrow"),
@@ -2487,15 +2468,8 @@ if (touchGestureRef.current.moved) {
               {activeDabsKey === "equipmentFlow" && arrowStart && <circle cx={arrowStart.x} cy={arrowStart.y} r="1.3" fill="#f97316" />}
             </svg>
             {markers.map((marker) => {
-              let posX = marker.x;
-              let posY = marker.y;
-              if (activeDabsKey === "equipmentFlow") {
-                const linkedArrow = arrows.find((arrow) => arrow.id === marker.id);
-                if (linkedArrow) {
-                  posX = (linkedArrow.startX + linkedArrow.endX) / 2;
-                  posY = (linkedArrow.startY + linkedArrow.endY) / 2;
-                }
-              }
+              const posX = marker.x;
+const posY = marker.y;
               const color = getCompanyColor(marker.company || "-");
               const isHighRiskMarker = activeDabsKey === "highRisk";
               return (
@@ -3340,7 +3314,7 @@ if (touchGestureRef.current.moved) {
   <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">선택 날짜: {formatMonthDay(selectedDate)}</div>
   {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날짜와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && (
   <div className="text-xs text-slate-500">
-    첫 번째 클릭은 시작점, 두 번째 클릭은 종료점입니다. 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요.
+    첫 번째 클릭은 시작점, 두 번째 클릭은 종료점입니다. 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요. 수정 시에도 화살표를 다시 지정한 뒤 상자 위치를 선택합니다.
   </div>
 )}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}<div className="-mx-2 md:mx-0">{renderOverlayImage(activeDabsKey === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow, isImageTab)}</div></>}
                 {isSectionTab && <><div className="grid gap-3 md:grid-cols-[220px_1fr_auto]"><select value={sectionInput.building} onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{activeColumns.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={sectionInput.content} onChange={(e) => setSectionInput({ ...sectionInput, content: e.target.value })} placeholder="작업내용 입력" /><Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div>{renderSectionMobileCards(activeColumns, sectionRows)}<div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-slate-200 px-3 py-2 text-left w-[9%]">동</th><th className="border border-slate-200 px-3 py-2 text-left w-[18%]">업체명</th><th className="border border-slate-200 px-3 py-2 text-left">작업내용</th></tr></thead><tbody>{activeColumns.map((col) => { const list = sectionRows[col] || []; return <tr key={col}><td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{col}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`company-${item.id}`} className="mb-2">{item.company}</div>)}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`content-${item.id}`} className="mb-2 flex items-center justify-between gap-2"><span className="whitespace-pre-wrap break-all leading-relaxed">
