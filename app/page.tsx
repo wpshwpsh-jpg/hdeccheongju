@@ -1862,7 +1862,9 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
     <div className="font-semibold text-slate-900">
   {entry.startTime}
 </div>
-<div className="truncate">{entry.companyName}</div>
+<div className="whitespace-pre-wrap break-words leading-tight">
+  {entry.content}
+</div>
   </div>
 ))}</div></button>; })}</div></CardContent></Card></div><div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>일정 입력</CardTitle></CardHeader><CardContent className="space-y-4">{!currentUser ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">일정 등록은 승인된 계정으로 로그인한 뒤 사용할 수 있습니다.</div> : <><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><label className="text-xs font-medium text-slate-600">일자 선택</label><Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9" /></div><div className="space-y-2"><label className="text-xs font-medium text-slate-600">시간 선택</label><select value={effectiveSelectedTime} onChange={(e) => setSelectedTime(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100" disabled={availableTimes.length === 0}>{availableTimes.length === 0 ? <option value="">선택 가능한 시간이 없습니다</option> : availableTimes.map((time) => <option key={time} value={time}>{time}</option>)}</select><div className="text-xs text-slate-500">{availableTimes.length === 0 ? "해당 일자는 선택 가능한 시간이 없습니다" : `자동 표기 시간: ${effectiveSelectedTime} ~ ${effectiveEndTime}`}</div></div></div><div className="flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-slate-500">작성자: {currentUser.name} · {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}</div><Button className="w-full sm:w-auto" onClick={addEntry} disabled={availableTimes.length === 0}>일정 등록</Button></div></>}{entryMessage && (
   <div className="text-sm text-slate-600">{entryMessage}</div>
