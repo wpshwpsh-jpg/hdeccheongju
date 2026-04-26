@@ -1855,35 +1855,22 @@ setArrowStart(null);
                     {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold leading-none shadow-sm lg:text-[11px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm lg:p-1"><EquipmentIcon type={marker.equipmentType} className="h-4 w-4 lg:h-10 lg:w-10" /></span></> : null}
                     {isHighRiskMarker ? <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2"><div className="text-[9px] font-bold leading-none tracking-tight lg:text-[10px]">{marker.building || "동 미선택"}</div><div className="mt-1 text-[10px] font-semibold leading-tight lg:text-[11px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[11px] font-bold leading-tight lg:text-[13px]">{marker.note || "작업내용 없음"}</div></div> : <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2"><div className="text-[10px] font-semibold leading-tight lg:text-[12px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[11px] font-bold leading-tight lg:text-[13px]">{marker.note || "작업내용 없음"}</div></div>}
                   </div>
-                  {canDeleteOwnItem(marker) && <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteOverlayItem(marker.id); }} className="absolute -top-2 -right-2 flex h-7 w-7 items-center justify-center rounded-full bg-white shadow lg:top-1 lg:right-1 lg:h-4 lg:w-4"><X className="h-4 w-4 lg:h-3 lg:w-3" />
+                  {canDeleteOwnItem(marker) && <button
+  type="button"
+  onClick={(e) => {
+    e.stopPropagation();
+    handleDeleteOverlayItem(marker.id);
+  }}
+  style={{ touchAction: "manipulation" }}
+  className="absolute -top-2 -right-2 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow lg:top-1 lg:right-1 lg:h-4 lg:w-4"
+>
+  <X className="h-4 w-4 lg:h-3 lg:w-3" />
 </button>}
   </div>
 </div>
               );
             })}
-            {activeDabsKey === "equipmentFlow" &&
-  arrows.map((arrow) =>
-    canDeleteOwnItem(arrow) && (
-      <button
-        key={`arrow-delete-${arrow.id}`}
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          handleDeleteOverlayItem(arrow.id);
-        }}
-        className="absolute -top-2 -right-2 flex h-7 w-7 items-center justify-center rounded-full bg-white shadow"
-        style={{
-          left: `${(arrow.startX + arrow.endX) / 2}%`,
-          top: `${(arrow.startY + arrow.endY) / 2}%`,
-          transform: "translate(-50%, -50%)",
-        }}
-        title="화살표 삭제"
-      >
-        <X className="h-3 w-3" />
-      </button>
-    )
-  )}
-          </>
+                      </>
         )}
       </div>
     );
