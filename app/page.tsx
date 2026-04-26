@@ -591,7 +591,7 @@ const [entryMessage, setEntryMessage] = useState("");
   const [arrowPreview, setArrowPreview] = useState<
   { startX: number; startY: number; endX: number; endY: number } | null
 >(null);
-  const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", name: "", content: "", elderly: "o" });
+  const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", name: "", content: "", elderly: "x" });
   const [soloCompanyFilter, setSoloCompanyFilter] = useState("");
   const imageAreaRef = useRef<HTMLDivElement | null>(null);
   const lastTouchTimeRef = useRef(0);
@@ -1437,7 +1437,7 @@ const cancelApprovalUser = async (uid: string) => {
   setDabsData(nextData);
   
   await saveSoloWorkersToFirestore(selectedDate, nextRows);
-  setSoloWorkerInput({ building: "", name: "", content: "", elderly: "o" });
+  setSoloWorkerInput({ building: "", name: "", content: "", elderly: "x" });
 };
 
   const handleDeleteSoloWorker = async (itemId: string, building: string) => {
@@ -1720,22 +1720,46 @@ setArrowStart(null);
   const renderTopBar = () => {
     if (!currentUser) return null;
     return (
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }} className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-slate-600"><CalendarDays className="h-5 w-5" /><span className="text-sm">회원 승인형 메뉴 시스템</span></div>
-          <h1 className="mt-2 text-xl font-bold tracking-tight text-slate-900 lg:text-2xl">힐스테이트 어울림 청주사직</h1>
-          <p className="mt-2 text-sm text-slate-500">로그인 후 원하는 메뉴를 선택해 이동하세요.</p>
+      <motion.div
+  initial={{ opacity: 0, y: 12 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ duration: 0.35 }}
+  className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+>
+  <div className="pr-36 md:pr-0">
+    <div className="flex items-center gap-2 text-slate-600">
+      <CalendarDays className="h-5 w-5" />
+      <span className="text-sm">회원 승인형 메뉴 시스템</span>
+    </div>
+    <h1 className="mt-2 text-xl font-bold tracking-tight text-slate-900 lg:text-2xl">
+      힐스테이트 어울림 청주사직
+    </h1>
+    <p className="mt-2 text-sm text-slate-500">
+      로그인 후 원하는 메뉴를 선택해 이동하세요.
+    </p>
+  </div>
+
+  <Card className="absolute right-0 top-0 w-[130px] rounded-2xl border-0 shadow-sm md:static md:w-auto">
+    <CardContent className="flex flex-col gap-1 p-2 md:flex-row md:items-center md:gap-3 md:p-3">
+      <div className="text-right">
+        <div className="truncate text-xs font-semibold text-slate-900 md:text-sm">
+          {currentUser.name}
         </div>
-        <Card className="rounded-2xl border-0 shadow-sm">
-          <CardContent className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
-            <div className="text-left lg:text-right">
-              <div className="text-sm font-semibold text-slate-900">{currentUser.name}</div>
-              <div className="text-xs text-slate-500">{currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}</div>
-            </div>
-            <Button variant="outline" onClick={handleLogout}><LogOut className="mr-2 h-4 w-4" />로그아웃</Button>
-          </CardContent>
-        </Card>
-      </motion.div>
+        <div className="truncate text-[10px] text-slate-500 md:text-xs">
+          {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        onClick={handleLogout}
+        className="h-7 w-full rounded-xl px-2 text-xs md:h-10 md:w-auto md:rounded-2xl md:px-4 md:text-sm"
+      >
+        <LogOut className="mr-1 h-3 w-3 md:mr-2 md:h-4 md:w-4" />
+        로그아웃
+      </Button>
+    </CardContent>
+  </Card>
+</motion.div>
     );
   };
 
