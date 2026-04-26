@@ -18,7 +18,6 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { getApp, getApps, initializeApp } from "firebase/app";
 import {
   createUserWithEmailAndPassword,
   fetchSignInMethodsForEmail,
@@ -34,10 +33,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  getFirestore,
   onSnapshot,
-  orderBy,
-  query,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -56,9 +52,6 @@ const DEMO_MASTER_ID = "GH45";
 const DEMO_MASTER_PASSWORD = "2706";
 const DEMO_USERS_KEY = "demo-calendar-users";
 const DEMO_ENTRIES_KEY = "demo-calendar-entries";
-const DABS_STORAGE_KEY = "demo-dabs-pages";
-const DABS_IMAGE_STORAGE_KEY = "demo-dabs-images";
-const DABS_OVERLAY_STORAGE_KEY = "demo-dabs-overlays";
 const SECTION1_COLUMNS = ["101동", "102동", "103동", "104동", "114동", "115동", "116동", "117동", "상가"];
 const SECTION2_COLUMNS = ["105동", "106동", "107동", "108동", "109동", "110동", "111동", "112동", "113동"];
 const HIGH_RISK_BUILDINGS = [
@@ -290,54 +283,6 @@ function loadDemoEntries(): EntryItem[] {
 function saveDemoEntries(entries: Array<Record<string, unknown>>) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(DEMO_ENTRIES_KEY, JSON.stringify(entries));
-}
-
-function loadDabsData() {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(DABS_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveDabsData(data: Record<string, unknown>) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(DABS_STORAGE_KEY, JSON.stringify(data));
-}
-
-function loadDabsImages() {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(DABS_IMAGE_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveDabsImages(data: Record<string, unknown>) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(DABS_IMAGE_STORAGE_KEY, JSON.stringify(data));
-}
-
-function loadDabsOverlays() {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = window.localStorage.getItem(DABS_OVERLAY_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveDabsOverlays(data: Record<string, unknown>) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(DABS_OVERLAY_STORAGE_KEY, JSON.stringify(data));
 }
 
 function createLocalId(prefix: string) {
@@ -589,8 +534,8 @@ function MobileListCard({ title, children, action }: { title: ReactNode; childre
 
 export default function MonthlyCalendarTextEntrySite() {
   const { auth, db, isConfigured } = getFirebaseServices();
-const isDemoMode = !isConfigured;
-const storage = !isDemoMode ? getStorage() : null;
+const isDemoMode = false;
+const storage = getStorage();
 
   const [mounted, setMounted] = useState(false);
 
@@ -1288,20 +1233,24 @@ const cancelApprovalUser = async (uid: string) => {
 };
 
   const handleSaveDabsText = async () => {
-  if (!canEditDabs) return setDabsMessage("승인된 계정만 저장할 수 있습니다.");
+  if (!canEditDabs) {
+    setDabsMessage("권한 없음");
+    return;
+  }
 
   const nextData = {
-    ...dabsData,
-    [selectedDate]: {
-      ...(dabsData[selectedDate] || {}),
-      [activeDabsKey]: dabsDraft,
-    },
+    ...(dabsData[selectedDate] || {}),
+    [activeDabsKey]: dabsDraft,
   };
 
-  setDabsData(nextData);
-  saveDabsData(nextData);
-  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
-  setDabsMessage("저장되었습니다.");
+  setDabsData((prev) => ({
+    ...prev,
+    [selectedDate]: nextData,
+  }));
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData);
+
+  setDabsMessage("저장 완료");
 };
 
   const handleAddSectionWork = async () => {
@@ -1352,7 +1301,7 @@ const cancelApprovalUser = async (uid: string) => {
   };
 
   setDabsData(nextData);
-  saveDabsData(nextData);
+  
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
   setSectionInput({ building: "", content: "" });
   setDabsMessage("저장되었습니다.");
@@ -1394,7 +1343,7 @@ const cancelApprovalUser = async (uid: string) => {
   };
 
   setDabsData(nextData);
-  saveDabsData(nextData);
+  
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
   setMaterialsInput({ gate: "1", material: "", vehicle: "", location: "", time: "06" });
   setDabsMessage("저장되었습니다.");
@@ -1427,7 +1376,7 @@ const cancelApprovalUser = async (uid: string) => {
     };
 
     setDabsData(nextData);
-    saveDabsData(nextData);
+    
     await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
     return;
   }
@@ -1452,7 +1401,7 @@ const cancelApprovalUser = async (uid: string) => {
   };
 
   setDabsData(nextData);
-  saveDabsData(nextData);
+  
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
 };
 
@@ -1486,7 +1435,7 @@ const cancelApprovalUser = async (uid: string) => {
   };
 
   setDabsData(nextData);
-  saveDabsData(nextData);
+  
   await saveSoloWorkersToFirestore(selectedDate, nextRows);
   setSoloWorkerInput({ building: "", name: "", content: "", elderly: "o" });
 };
@@ -1512,7 +1461,7 @@ const cancelApprovalUser = async (uid: string) => {
   };
 
   setDabsData(nextData);
-  saveDabsData(nextData);
+  
   await saveSoloWorkersToFirestore(selectedDate, nextRows);
 };
 
@@ -1539,50 +1488,46 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
   };
 
   setDabsOverlays(nextData);
-saveDabsOverlays(nextData);
+
 await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 };
 
   const handleHighRiskImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-  if (!canUploadDabsImage) return setDabsMessage("사진 업로드는 마스터, 관리자만 가능합니다.");
+  if (!canUploadDabsImage) {
+    setDabsMessage("사진 업로드는 마스터, 관리자만 가능합니다.");
+    return;
+  }
 
   const file = event.target.files?.[0];
   if (!file) return;
 
-  if (isDemoMode || !db || !storage) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const imageValue = typeof reader.result === "string" ? reader.result : "";
-      const nextImages = { highRisk: imageValue, equipmentFlow: imageValue };
-      setDabsImages(nextImages);
-      saveDabsImages(nextImages);
-      setDabsMessage("사진이 저장되었습니다.");
-    };
-    reader.readAsDataURL(file);
+  if (!db || !storage) {
+    setDabsMessage("Firebase 연결 오류");
     event.target.value = "";
     return;
   }
 
   try {
-  const imageDocRef = doc(db, "dabsImages", "shared");
-  const oldImageSnap = await getDoc(imageDocRef);
-  const oldStoragePath = oldImageSnap.exists()
-    ? String(oldImageSnap.data().storagePath || "")
-    : "";
+    const imageDocRef = doc(db, "dabsImages", "shared");
+    const oldImageSnap = await getDoc(imageDocRef);
+    const oldStoragePath = oldImageSnap.exists()
+      ? String(oldImageSnap.data().storagePath || "")
+      : "";
 
-  if (oldStoragePath) {
-    try {
-      await deleteObject(storageRef(storage, oldStoragePath));
-    } catch (error) {
-      console.log("OLD IMAGE DELETE SKIPPED:", error);
+    if (oldStoragePath) {
+      try {
+        await deleteObject(storageRef(storage, oldStoragePath));
+      } catch (error) {
+        console.log("OLD IMAGE DELETE SKIPPED:", error);
+      }
     }
-  }
 
-  const newStoragePath = `dabsImages/shared-${Date.now()}-${file.name}`;
-  const imageRef = storageRef(storage, newStoragePath);
-  await uploadBytes(imageRef, file);
+    const newStoragePath = `dabsImages/shared-${Date.now()}-${file.name}`;
+    const imageRef = storageRef(storage, newStoragePath);
 
-  const imageUrl = await getDownloadURL(imageRef);
+    await uploadBytes(imageRef, file);
+
+    const imageUrl = await getDownloadURL(imageRef);
 
     const nextImages = {
       highRisk: imageUrl,
@@ -1590,19 +1535,18 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
     };
 
     setDabsImages(nextImages);
-    saveDabsImages(nextImages);
 
     await setDoc(
-  doc(db, "dabsImages", "shared"),
-  {
-    ...nextImages,
-    storagePath: newStoragePath,
-    updatedAt: serverTimestamp(),
-    updatedByUid: currentUser?.uid,
-    updatedByName: currentUser?.name,
-  },
-  { merge: true }
-);
+      doc(db, "dabsImages", "shared"),
+      {
+        ...nextImages,
+        storagePath: newStoragePath,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser?.uid,
+        updatedByName: currentUser?.name,
+      },
+      { merge: true }
+    );
 
     setDabsMessage("사진이 저장되었습니다.");
   } catch (error) {
@@ -1644,7 +1588,7 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
       if (nextArrows.length > 0) nextArrows.pop();
       const nextData = { ...dabsOverlays, [selectedDate]: { ...(dabsOverlays[selectedDate] || {}), equipmentFlow: { ...currentValue, arrows: nextArrows } } };
       setDabsOverlays(nextData);
-saveDabsOverlays(nextData);
+
 await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
     }
     setArrowStart(null);
@@ -1671,7 +1615,7 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 };
     const nextData = { ...dabsOverlays, [selectedDate]: { ...(dabsOverlays[selectedDate] || {}), [targetKey]: { ...currentValue, markers: [...(currentValue.markers || []), marker] } } };
     setDabsOverlays(nextData);
-saveDabsOverlays(nextData);
+
 await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
   };
@@ -1690,7 +1634,7 @@ setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump
 };
     const nextData = { ...dabsOverlays, [selectedDate]: { ...(dabsOverlays[selectedDate] || {}), equipmentFlow: { ...currentValue, arrows: [...(currentValue.arrows || []), arrow] } } };
     setDabsOverlays(nextData);
-saveDabsOverlays(nextData);
+
 await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 setArrowStart(null);
     setArrowPreview(null);
