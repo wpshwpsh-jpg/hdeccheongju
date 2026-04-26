@@ -1734,9 +1734,9 @@ setArrowStart(null);
     <h1 className="mt-2 text-xl font-bold tracking-tight text-slate-900 lg:text-2xl">
       힐스테이트 어울림 청주사직
     </h1>
-    <p className="mt-2 text-sm text-slate-500">
-      로그인 후 원하는 메뉴를 선택해 이동하세요.
-    </p>
+    <p className="mt-1 hidden text-sm text-slate-500 sm:block">
+  로그인 후 원하는 메뉴를 선택해 이동하세요.
+</p>
   </div>
 
   <Card className="absolute right-0 top-0 w-[130px] rounded-2xl border-0 shadow-sm md:static md:w-auto">
@@ -1962,7 +1962,7 @@ setArrowStart(null);
         <Card>
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />DAB&apos;s회의</CardTitle><Button variant="outline" onClick={() => setCurrentPage("menu")}>메뉴로 돌아가기</Button></CardHeader>
           <CardContent className="space-y-5">
-            <div className="flex flex-wrap gap-2 pb-1">
+            <div className="sticky bottom-2 z-40 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-lg backdrop-blur lg:static lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
   {dabsTabs.map((tab, index) => (
     <button
       key={tab.key}
@@ -2112,8 +2112,8 @@ setArrowStart(null);
   if (!mounted) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-3 sm:p-4 md:p-8">
-      <div className="mx-auto max-w-6xl space-y-4 sm:space-y-6">
+    <div className="min-h-screen bg-slate-50 p-2 sm:p-4 md:p-8">
+      <div className="mx-auto max-w-6xl space-y-3 sm:space-y-6">
         {!currentUser
   ? renderAuthScreen()
   : currentPage === "menu"
