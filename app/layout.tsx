@@ -16,6 +16,9 @@ export const metadata: Metadata = {
   title: "현장 안전관리 시스템",
   description: "현장 안전관리 웹앱",
   manifest: "/manifest.json",
+};
+
+export const viewport = {
   themeColor: "#0f172a",
 };
 
