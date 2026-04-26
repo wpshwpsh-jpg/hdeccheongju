@@ -1833,15 +1833,32 @@ setArrowStart(null);
               const color = getCompanyColor(marker.company || "-");
               const isHighRiskMarker = activeDabsKey === "highRisk";
               return (
-                <div key={marker.id} className={cn("absolute rounded-lg border px-1 py-0.5 shadow-md backdrop-blur-[1px] lg:rounded-2xl lg:px-3 lg:py-2", color.bg, color.text)} style={{ left: `${posX}%`, top: `${posY}%`, transform: "translate(-50%, -50%)" }}>
+                <div
+  key={marker.id}
+  className="absolute"
+  style={{
+    left: `${posX}%`,
+    top: `${posY}%`,
+    transform: "translate(-50%, -50%)",
+  }}
+>
+  <div
+    className={cn(
+      "relative origin-center scale-[0.55] rounded-lg border px-1 py-0.5 shadow-md backdrop-blur-[1px] lg:scale-100 lg:rounded-2xl lg:px-3 lg:py-2",
+      color.bg,
+      color.text
+    )}
+  >
                   <div className={cn("flex flex-col items-center text-center", isHighRiskMarker
   ? "min-w-[52px] max-w-[72px] gap-0 lg:min-w-[104px] lg:max-w-[140px] lg:gap-1"
   : "min-w-[64px] max-w-[84px] gap-0 lg:min-w-[150px] lg:max-w-[190px] lg:gap-1")}>
                     {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold leading-none shadow-sm lg:text-[11px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm lg:p-1"><EquipmentIcon type={marker.equipmentType} className="h-4 w-4 lg:h-10 lg:w-10" /></span></> : null}
                     {isHighRiskMarker ? <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2"><div className="text-[9px] font-bold leading-none tracking-tight lg:text-[10px]">{marker.building || "동 미선택"}</div><div className="mt-1 text-[10px] font-semibold leading-tight lg:text-[11px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[11px] font-bold leading-tight lg:text-[13px]">{marker.note || "작업내용 없음"}</div></div> : <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2"><div className="text-[10px] font-semibold leading-tight lg:text-[12px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[11px] font-bold leading-tight lg:text-[13px]">{marker.note || "작업내용 없음"}</div></div>}
                   </div>
-                  {canDeleteOwnItem(marker) && <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteOverlayItem(marker.id); }} className="absolute right-1 top-1 opacity-70 hover:opacity-100"><X className="h-3 w-3" /></button>}
-                </div>
+                  {canDeleteOwnItem(marker) && <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteOverlayItem(marker.id); }} className="absolute right-1 top-1 opacity-70 hover:opacity-100"><X className="h-3 w-3" />
+</button>}
+  </div>
+</div>
               );
             })}
             {activeDabsKey === "equipmentFlow" &&
