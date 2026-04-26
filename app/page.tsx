@@ -561,7 +561,6 @@ const storage = isConfigured ? getStorage() : null;
   const [signupName, setSignupName] = useState("");
   const [signupRole, setSignupRole] = useState("general");
   const [signupMessage, setSignupMessage] = useState("");
-  const [activeTab, setActiveTab] = useState("calendar");
   const [deleteNoticeOpen, setDeleteNoticeOpen] = useState(false);
 const [entryMessage, setEntryMessage] = useState("");
 
@@ -918,11 +917,6 @@ const saveDabsOverlaysToFirestore = async (
     { merge: true }
   );
 };
-
-  const tabs = [
-    { key: "calendar", label: "일정 관리", icon: CalendarDays },
-    { key: "approval", label: "가입 승인 관리", icon: Users },
-  ];
 
   const menuItems = [
   { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
@@ -2711,7 +2705,6 @@ const posY = marker.y;
       {renderTopBar()}
       {!isConfigured && <Card className="border-amber-300 bg-amber-50"><CardContent className="p-4"><div className="text-sm font-medium text-amber-900">Firebase 환경변수가 설정되지 않았습니다.</div><div className="mt-1 text-xs text-amber-800">Firebase 미설정 상태입니다. 현재는 데모 모드로 로그인할 수 있습니다: GH45 / 2706</div></CardContent></Card>}
       <div className="grid gap-4 md:grid-cols-3 md:gap-6">{menuItems.map((item) => { const Icon = item.icon; return <button key={item.key} onClick={() => {
-  if (item.key === "approval") setActiveTab("approval");
   setCurrentPage(item.key);
 }} className="rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md sm:p-6"><div className="flex items-center gap-3"><div className="rounded-2xl bg-slate-100 p-3 text-slate-700"><Icon className="h-6 w-6" /></div><div><div className="text-base font-semibold text-slate-900 lg:text-lg">{item.title}</div><div className="mt-1 text-sm text-slate-500">{item.description}</div></div></div></button>; })}</div>
     </div>
@@ -3724,8 +3717,7 @@ const posY = marker.y;
 )}
       {deleteNoticeOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"><div className="text-lg font-semibold text-slate-900">안내</div><div className="mt-3 text-sm text-slate-600">삭제는 관리자에게 요청</div><div className="mt-6 flex justify-end"><Button onClick={() => setDeleteNoticeOpen(false)}>확인</Button></div></div></div>}
       <div className="flex flex-wrap justify-between gap-3"><Button variant="outline" onClick={() => setCurrentPage("menu")}>메뉴로 돌아가기</Button></div>
-      <Card className="rounded-[24px] border-0 shadow-sm"><CardContent className="p-3"><div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{tabs.map((tab) => { const Icon = tab.icon; const isActive = activeTab === tab.key; return <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={cn("flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold transition", isActive ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")}><Icon className="h-4 w-4" />{tab.label}{tab.key === "approval" && pendingUsers.length > 0 && <span className={cn("rounded-full px-2 py-0.5 text-xs", isActive ? "bg-white/20 text-white" : "bg-white text-slate-700")}>{pendingUsers.length}</span>}</button>; })}</div></CardContent></Card>
-      {activeTab === "calendar" && <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr] lg:gap-6"><div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between"><CardTitle>월간 달력</CardTitle><div className="flex items-center gap-2"><Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}><ChevronLeft className="h-4 w-4" /></Button><div className="min-w-28 text-center text-sm font-semibold lg:min-w-36 lg:text-base">{monthLabel}</div><Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}><ChevronRight className="h-4 w-4" /></Button></div></CardHeader><CardContent><div className="grid grid-cols-7 gap-1 lg:gap-2">{weekLabels.map((label) => <div key={label} className="rounded-xl bg-slate-100 py-2 text-center text-[10px] font-semibold text-slate-600 lg:text-xs">{label}</div>)}{monthGrid.map((date) => { const key = formatDateKey(date); const isCurrentMonth = date.getMonth() === currentDate.getMonth(); const isToday = key === todayKey; const isSelected = key === selectedDate; const cellEntries = entries.filter((entry) => entry.date === key); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("min-h-[72px] rounded-xl border p-1.5 text-left transition sm:min-h-[82px] sm:p-2", isSelected ? "border-slate-900 bg-slate-100" : isCurrentMonth ? "border-slate-200 bg-white shadow-sm" : "border-slate-100 bg-slate-50 text-slate-400")}><div className="mb-1 flex items-center justify-between sm:mb-2"><div className={cn("flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold lg:h-6 lg:w-6 lg:text-xs", isToday ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")}>{date.getDate()}</div><Badge className="px-1.5 py-0">{cellEntries.length}</Badge></div><div className="space-y-1">{cellEntries.map((entry) => (
+      <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr] lg:gap-6"><div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader className="flex flex-row items-center justify-between"><CardTitle>월간 달력</CardTitle><div className="flex items-center gap-2"><Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}><ChevronLeft className="h-4 w-4" /></Button><div className="min-w-28 text-center text-sm font-semibold lg:min-w-36 lg:text-base">{monthLabel}</div><Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}><ChevronRight className="h-4 w-4" /></Button></div></CardHeader><CardContent><div className="grid grid-cols-7 gap-1 lg:gap-2">{weekLabels.map((label) => <div key={label} className="rounded-xl bg-slate-100 py-2 text-center text-[10px] font-semibold text-slate-600 lg:text-xs">{label}</div>)}{monthGrid.map((date) => { const key = formatDateKey(date); const isCurrentMonth = date.getMonth() === currentDate.getMonth(); const isToday = key === todayKey; const isSelected = key === selectedDate; const cellEntries = entries.filter((entry) => entry.date === key); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("min-h-[72px] rounded-xl border p-1.5 text-left transition sm:min-h-[82px] sm:p-2", isSelected ? "border-slate-900 bg-slate-100" : isCurrentMonth ? "border-slate-200 bg-white shadow-sm" : "border-slate-100 bg-slate-50 text-slate-400")}><div className="mb-1 flex items-center justify-between sm:mb-2"><div className={cn("flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold lg:h-6 lg:w-6 lg:text-xs", isToday ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")}>{date.getDate()}</div><Badge className="px-1.5 py-0">{cellEntries.length}</Badge></div><div className="space-y-1">{cellEntries.map((entry) => (
   <div
     key={entry.id}
     className="rounded-lg bg-slate-50 p-1 text-[9px] text-slate-700 lg:p-1.5 lg:text-[10px]"
@@ -3775,41 +3767,141 @@ const posY = marker.y;
   >
     <Trash2 className="h-4 w-4" />
   </button>
-</div></div></motion.div>)}</CardContent></Card></div></div>}
-      {activeTab === "approval" && <div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle className="flex items-center gap-2"><LayoutGrid className="h-5 w-5" />가입 승인 전용 탭</CardTitle></CardHeader><CardContent>{!canManageApprovals ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">가입 승인 관리는 관리자 또는 마스터만 접근할 수 있습니다.</div> : pendingUsers.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">현재 승인 대기 중인 계정이 없습니다.</div> : <div className="space-y-3">{pendingUsers.map((user) => { const canApproveThisUser = user.role === "admin" ? canApproveAdmin : canApproveGeneral; return <div key={user.uid} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"><div className="space-y-1"><div className="text-base font-semibold text-slate-900">{user.name} ({user.email || user.uid})</div><div className="text-sm text-slate-600">업체명: {user.companyName}</div><div className="text-sm text-slate-600">신청 권한: {getRoleLabel(user.role || "general")}</div><div className="text-xs text-slate-500">상태: {getStatusLabel(user.status || "pending")}</div></div><div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => rejectUser(user.uid)} disabled={!canApproveThisUser}>반려</Button><Button onClick={() => approveUser(user.uid)} disabled={!canApproveThisUser}>승인</Button></div></div>{!canApproveThisUser && <div className="mt-3 text-xs text-red-500">이 계정은 현재 로그인한 권한으로 승인할 수 없습니다.</div>}</div>; })}</div>}</CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>승인된 회원 목록</CardTitle></CardHeader><CardContent className="space-y-3">{approvedUsers.map((user) => {
-  const canCancelThisUser = user.role === "admin" ? canApproveAdmin : canApproveGeneral;
+</div></div></motion.div>)}</CardContent></Card></div></div>
+    </div>
+  );
 
-  return (
-    <div key={user.uid} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm shadow-sm">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="font-semibold text-slate-900">
-            {user.name} ({user.email || user.uid})
-          </div>
-          <div className="text-slate-600">{user.companyName}</div>
-          <div className="mt-1 text-xs text-slate-500">
-            {getRoleLabel(user.role || "general")} · {getStatusLabel(user.status || "pending")}
-          </div>
-        </div>
+  const renderApprovalPage = () => (
+    <div className="space-y-4 sm:space-y-6">
+      {renderTopBar()}
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => cancelApprovalUser(user.uid)}
-          disabled={!canCancelThisUser || user.uid === currentUser?.uid}
-        >
-          승인 취소
+      <div className="flex flex-wrap justify-between gap-3">
+        <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+          메뉴로 돌아가기
         </Button>
       </div>
 
-      {user.uid === currentUser?.uid && (
-        <div className="mt-2 text-xs text-slate-400">
-          본인 계정은 승인 취소할 수 없습니다.
-        </div>
-      )}
-    </div>
-  );
-})}</CardContent></Card></div>}
+      <Card className="rounded-[24px] border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LayoutGrid className="h-5 w-5" />
+            가입 승인 관리
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent>
+          {!canManageApprovals ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+              가입 승인 관리는 관리자 또는 마스터만 접근할 수 있습니다.
+            </div>
+          ) : pendingUsers.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+              현재 승인 대기 중인 계정이 없습니다.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pendingUsers.map((user) => {
+                const canApproveThisUser =
+                  user.role === "admin" ? canApproveAdmin : canApproveGeneral;
+
+                return (
+                  <div
+                    key={user.uid}
+                    className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                      <div className="space-y-1">
+                        <div className="text-base font-semibold text-slate-900">
+                          {user.name} ({user.email || user.uid})
+                        </div>
+                        <div className="text-sm text-slate-600">
+                          업체명: {user.companyName}
+                        </div>
+                        <div className="text-sm text-slate-600">
+                          신청 권한: {getRoleLabel(user.role || "general")}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          상태: {getStatusLabel(user.status || "pending")}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => rejectUser(user.uid)}
+                          disabled={!canApproveThisUser}
+                        >
+                          반려
+                        </Button>
+                        <Button
+                          onClick={() => approveUser(user.uid)}
+                          disabled={!canApproveThisUser}
+                        >
+                          승인
+                        </Button>
+                      </div>
+                    </div>
+
+                    {!canApproveThisUser && (
+                      <div className="mt-3 text-xs text-red-500">
+                        이 계정은 현재 로그인한 권한으로 승인할 수 없습니다.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-[24px] border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle>승인된 회원 목록</CardTitle>
+        </CardHeader>
+
+        <CardContent className="space-y-3">
+          {approvedUsers.map((user) => {
+            const canCancelThisUser =
+              user.role === "admin" ? canApproveAdmin : canApproveGeneral;
+
+            return (
+              <div
+                key={user.uid}
+                className="rounded-2xl border border-slate-200 bg-white p-3 text-sm shadow-sm"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="font-semibold text-slate-900">
+                      {user.name} ({user.email || user.uid})
+                    </div>
+                    <div className="text-slate-600">{user.companyName}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {getRoleLabel(user.role || "general")} ·{" "}
+                      {getStatusLabel(user.status || "pending")}
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => cancelApprovalUser(user.uid)}
+                    disabled={!canCancelThisUser || user.uid === currentUser?.uid}
+                  >
+                    승인 취소
+                  </Button>
+                </div>
+
+                {user.uid === currentUser?.uid && (
+                  <div className="mt-2 text-xs text-slate-400">
+                    본인 계정은 승인 취소할 수 없습니다.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
     </div>
   );
 
@@ -3826,8 +3918,8 @@ const posY = marker.y;
       : currentPage === "soloWorker"
         ? renderSoloWorkerPage()
         : currentPage === "approval"
-          ? renderEducationPage()
-          : renderEducationPage()}
+  ? renderApprovalPage()
+  : renderEducationPage()}
         </div>
   );
 }
