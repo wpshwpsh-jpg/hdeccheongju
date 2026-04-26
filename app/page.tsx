@@ -646,7 +646,6 @@ const [editMaterialPopup, setEditMaterialPopup] = useState({
 });
   const [loadSourceDate, setLoadSourceDate] = useState(() => {
   const d = new Date();
-  d.setDate(d.getDate() - 1);
   return formatDateKey(d);
 });
 
