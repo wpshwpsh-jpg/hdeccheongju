@@ -585,6 +585,21 @@ const [entryMessage, setEntryMessage] = useState("");
   const [dabsDraft, setDabsDraft] = useState("");
   const [dabsMessage, setDabsMessage] = useState("");
   const [sectionInput, setSectionInput] = useState({ building: "", content: "" });
+  const [editSectionPopup, setEditSectionPopup] = useState<{
+  open: boolean;
+  itemId: string;
+  oldBuilding: string;
+  building: string;
+  company: string;
+  content: string;
+}>({
+  open: false,
+  itemId: "",
+  oldBuilding: "",
+  building: "",
+  company: "",
+  content: "",
+});
   const [materialsInput, setMaterialsInput] = useState({ gate: "1", material: "", vehicle: "", location: "", time: "06" });
   const [imagePopup, setImagePopup] = useState({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
   const [arrowStart, setArrowStart] = useState<{ x: number; y: number } | null>(null);
@@ -788,6 +803,7 @@ const unsubscribeImages = onSnapshot(doc(db, "dabsImages", "shared"), (snap) => 
   const canEditDabs = Boolean(currentUser && currentUser.status === "approved");
   const canUploadDabsImage = currentUser?.role === "master" || currentUser?.role === "admin";
   const canDeleteDabsItem = currentUser?.role === "master" || currentUser?.role === "admin";
+  const canAdminEditDabsItem = currentUser?.role === "master" || currentUser?.role === "admin";
   const canDeleteOwnItem = (item?: { createdByUid?: string }) => {
   if (!currentUser) return false;
   if (currentUser.role === "master" || currentUser.role === "admin") return true;
@@ -1349,6 +1365,60 @@ const cancelApprovalUser = async (uid: string) => {
   setDabsMessage("저장되었습니다.");
 };
 
+  const handleUpdateSectionWork = async () => {
+  if (!canAdminEditDabsItem) return;
+  if (!editSectionPopup.itemId || !editSectionPopup.building || !editSectionPopup.company.trim() || !editSectionPopup.content.trim()) return;
+
+  const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const nextRows = { ...currentRows };
+
+  const oldBuilding = editSectionPopup.oldBuilding;
+  const newBuilding = editSectionPopup.building;
+
+  const targetItem = (nextRows[oldBuilding] || []).find((item) => item.id === editSectionPopup.itemId);
+  if (!targetItem) return;
+
+  nextRows[oldBuilding] = (nextRows[oldBuilding] || []).filter(
+    (item) => item.id !== editSectionPopup.itemId
+  );
+
+  nextRows[newBuilding] = [
+    ...(nextRows[newBuilding] || []),
+    {
+      ...targetItem,
+      company: editSectionPopup.company.trim(),
+      content: editSectionPopup.content.trim(),
+    },
+  ];
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      [activeDabsKey]: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  setEditSectionPopup({
+    open: false,
+    itemId: "",
+    oldBuilding: "",
+    building: "",
+    company: "",
+    content: "",
+  });
+
+  setDabsMessage("수정되었습니다.");
+};
   const handleDeleteDabsItem = async (itemId: string, building: string | null = null) => {
 
   if (activeDabsKey === "section1" || activeDabsKey === "section2") {
@@ -1910,13 +1980,63 @@ setArrowStart(null);
   columns: string[],
   rows: Record<string, DabsRowItem[]>
 ) => (
-    <div className="space-y-3 lg:hidden">
-      {columns.map((col) => {
-        const list = rows[col] || [];
-        return <MobileListCard key={col} title={col}>{list.length === 0 ? <div className="text-slate-400">입력 없음</div> : list.map((item) => <div key={item.id} className="rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 flex items-start justify-between gap-2"><span className="text-slate-900">{item.content}</span>{canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteDabsItem(item.id, col)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div></div>)}</MobileListCard>;
-      })}
-    </div>
-  );
+  <div className="space-y-3 lg:hidden">
+    {columns.map((col) => {
+      const list = rows[col] || [];
+
+      return (
+        <MobileListCard key={col} title={col}>
+          {list.length === 0 ? (
+            <div className="text-slate-400">입력 없음</div>
+          ) : (
+            list.map((item) => (
+              <div key={item.id} className="rounded-xl bg-slate-50 p-3">
+                <div className="text-xs font-medium text-slate-500">
+                  {item.company}
+                </div>
+
+                <div className="mt-1 flex items-start justify-between gap-2">
+                  <span className="text-slate-900">{item.content}</span>
+
+                  <div className="flex shrink-0 gap-1">
+                    {canAdminEditDabsItem && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditSectionPopup({
+                            open: true,
+                            itemId: item.id,
+                            oldBuilding: col,
+                            building: col,
+                            company: item.company || "",
+                            content: item.content || "",
+                          })
+                        }
+                        className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
+                      >
+                        수정
+                      </button>
+                    )}
+
+                    {canDeleteOwnItem(item) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDabsItem(item.id, col)}
+                        className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </MobileListCard>
+      );
+    })}
+  </div>
+);
 
   const renderMaterialsMobileCards = (list: DabsRowItem[]) => (
     <div className="space-y-3 lg:hidden">
@@ -1961,6 +2081,75 @@ setArrowStart(null);
     return (
       <div className="space-y-4 sm:space-y-6">
         {renderTopBar()}
+        {editSectionPopup.open && (
+  <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="text-base font-semibold text-slate-900">작업 내용 수정</div>
+
+      <div className="mt-4 space-y-2">
+        <label className="text-xs font-medium text-slate-600">동 선택</label>
+        <select
+          value={editSectionPopup.building}
+          onChange={(e) =>
+            setEditSectionPopup((prev) => ({ ...prev, building: e.target.value }))
+          }
+          className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+        >
+          <option value="">동 선택</option>
+          {activeColumns.map((column) => (
+            <option key={column} value={column}>
+              {column}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <label className="text-xs font-medium text-slate-600">업체명</label>
+        <Input
+          value={editSectionPopup.company}
+          onChange={(e) =>
+            setEditSectionPopup((prev) => ({ ...prev, company: e.target.value }))
+          }
+          placeholder="업체명 입력"
+        />
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <label className="text-xs font-medium text-slate-600">작업내용</label>
+        <Input
+          value={editSectionPopup.content}
+          onChange={(e) =>
+            setEditSectionPopup((prev) => ({ ...prev, content: e.target.value }))
+          }
+          placeholder="작업내용 입력"
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button
+          variant="outline"
+          className="w-full lg:w-auto"
+          onClick={() =>
+            setEditSectionPopup({
+              open: false,
+              itemId: "",
+              oldBuilding: "",
+              building: "",
+              company: "",
+              content: "",
+            })
+          }
+        >
+          취소
+        </Button>
+        <Button className="w-full lg:w-auto" onClick={handleUpdateSectionWork}>
+          저장
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
         {imagePopup.open && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4"><div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6"><div className="text-base font-semibold text-slate-900">작업내용 입력</div>{imagePopup.targetKey === "highRisk" && <div className="mt-4 space-y-2"><label className="text-xs font-medium text-slate-600">동 선택</label><select value={imagePopup.building} onChange={(e) => setImagePopup((prev) => ({ ...prev, building: e.target.value }))} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"><option value="">동 선택</option>{HIGH_RISK_BUILDINGS.map((building) => <option key={building} value={building}>{building}</option>)}</select></div>}{imagePopup.targetKey === "equipmentFlow" && <div className="mt-4 space-y-2"><label className="text-xs font-medium text-slate-600">장비 선택</label><select value={imagePopup.equipmentType} onChange={(e) => setImagePopup((prev) => ({ ...prev, equipmentType: e.target.value }))} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200">{EQUIPMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>}<div className="mt-4"><Input value={imagePopup.note} onChange={(e) => setImagePopup((prev) => ({ ...prev, note: e.target.value }))} placeholder="작업내용 입력" /></div><div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end"><Button variant="outline" className="w-full lg:w-auto" onClick={cancelMarkerPopup}>취소</Button><Button className="w-full lg:w-auto" onClick={submitMarkerPopup}>입력</Button></div></div></div>}
         <Card>
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />DAB&apos;s회의</CardTitle><Button variant="outline" onClick={() => setCurrentPage("menu")}>메뉴로 돌아가기</Button></CardHeader>
@@ -1993,7 +2182,38 @@ setArrowStart(null);
   {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날짜와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && <div className="text-xs text-slate-500">첫 번째 터치/클릭은 시작점, 이동 중에는 미리보기, 종료 지점에서 화살표가 생성됩니다.</div>}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}<div className="-mx-2 md:mx-0">{renderOverlayImage(activeDabsKey === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow, isImageTab)}</div></>}
                 {isSectionTab && <><div className="grid gap-3 md:grid-cols-[220px_1fr_auto]"><select value={sectionInput.building} onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{activeColumns.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={sectionInput.content} onChange={(e) => setSectionInput({ ...sectionInput, content: e.target.value })} placeholder="작업내용 입력" /><Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div>{renderSectionMobileCards(activeColumns, sectionRows)}<div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-slate-200 px-3 py-2 text-left w-[9%]">동</th><th className="border border-slate-200 px-3 py-2 text-left w-[18%]">업체명</th><th className="border border-slate-200 px-3 py-2 text-left">작업내용</th></tr></thead><tbody>{activeColumns.map((col) => { const list = sectionRows[col] || []; return <tr key={col}><td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{col}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`company-${item.id}`} className="mb-2">{item.company}</div>)}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`content-${item.id}`} className="mb-2 flex items-center justify-between gap-2"><span className="whitespace-pre-wrap break-all leading-relaxed">
   {item.content}
-</span>{canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteDabsItem(item.id, col)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div>)}</td></tr>; })}</tbody></table></div></>}
+</span>
+
+<div className="flex shrink-0 items-center gap-1">
+  {canAdminEditDabsItem && (
+    <button
+      type="button"
+      onClick={() =>
+        setEditSectionPopup({
+          open: true,
+          itemId: item.id,
+          oldBuilding: col,
+          building: col,
+          company: item.company || "",
+          content: item.content || "",
+        })
+      }
+      className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+    >
+      수정
+    </button>
+  )}
+
+  {canDeleteOwnItem(item) && (
+    <button
+      type="button"
+      onClick={() => handleDeleteDabsItem(item.id, col)}
+      className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+    >
+      <X className="h-3 w-3" />
+    </button>
+  )}
+</div></div>)}</td></tr>; })}</tbody></table></div></>}
                 {isMaterialTab && <><div className="grid gap-3 md:grid-cols-6"><select value={materialsInput.gate} onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="1">1게이트</option><option value="7">7게이트</option></select><select value={materialsInput.time} onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500">{MATERIAL_TIMES.map((time) => <option key={time} value={time}>{time}시</option>)}</select><Input value={materialsInput.material} onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })} placeholder="자재명" /><Input value={materialsInput.vehicle} onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })} placeholder="차종" /><Input value={materialsInput.location} onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })} placeholder="하역장소" /><Button onClick={handleAddMaterial} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div>{renderMaterialsMobileCards(materialList)}<div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead>
   <tr className="bg-slate-100 text-slate-700">
     <th rowSpan={2} className="w-[8%] border border-slate-200 px-2 py-2 text-left">시간</th>
