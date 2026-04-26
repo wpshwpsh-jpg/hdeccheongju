@@ -2341,7 +2341,7 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
     setArrowPreview({ startX: arrowStart.x, startY: arrowStart.y, endX: point.x, endY: point.y });
   };
 
-  const handleOverlayTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+  const handleOverlayTouchEnd = async (event: React.TouchEvent<HTMLDivElement>) => {
     const touch = event.changedTouches?.[0];
     if (!touch) return;
     const point = getRelativePoint(touch.clientX, touch.clientY);
