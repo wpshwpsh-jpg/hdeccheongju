@@ -21,7 +21,6 @@ import {
 import {
   createUserWithEmailAndPassword,
   fetchSignInMethodsForEmail,
-  getAuth,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
@@ -535,7 +534,7 @@ function MobileListCard({ title, children, action }: { title: ReactNode; childre
 export default function MonthlyCalendarTextEntrySite() {
   const { auth, db, isConfigured } = getFirebaseServices();
 const isDemoMode = false;
-const storage = getStorage();
+const storage = isConfigured ? getStorage() : null;
 
   const [mounted, setMounted] = useState(false);
 
@@ -1284,7 +1283,11 @@ const cancelApprovalUser = async (uid: string) => {
   const canCancel = targetUser.role === "admin" ? canApproveAdmin : canApproveGeneral;
   if (!canCancel) return;
 
-  await deleteDoc(doc(db, "users", uid));
+  await updateDoc(doc(db, "users", uid), {
+  status: "rejected",
+  approvedAt: null,
+  approvedBy: currentUser.uid,
+});
 };
 
   const handleSaveDabsText = async () => {
@@ -1689,6 +1692,38 @@ const handleUpdateMaterial = async () => {
 
 const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
 
+const isOverlayBoxTooClose = (
+  targetKey: string,
+  x: number,
+  y: number,
+  ignoreItemId = ""
+) => {
+  const currentValue = getOverlayBundle(targetKey);
+  const markers = currentValue.markers || [];
+  const arrows = currentValue.arrows || [];
+
+  return markers.some((marker) => {
+    if (ignoreItemId && marker.id === ignoreItemId) return false;
+
+    let markerX = marker.x;
+    let markerY = marker.y;
+
+    if (targetKey === "equipmentFlow") {
+      const linkedArrow = arrows.find((arrow) => arrow.id === marker.id);
+
+      if (linkedArrow) {
+        markerX = (linkedArrow.startX + linkedArrow.endX) / 2;
+        markerY = (linkedArrow.startY + linkedArrow.endY) / 2;
+      }
+    }
+
+    const limitX = targetKey === "equipmentFlow" ? 12 : 9;
+    const limitY = targetKey === "equipmentFlow" ? 10 : 8;
+
+    return Math.abs(markerX - x) < limitX && Math.abs(markerY - y) < limitY;
+  });
+};
+
 const handleUpdateOverlayInfo = async () => {
   if (!canAdminEditDabsItem) return;
 
@@ -1852,9 +1887,21 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
   if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
 
   const point = getRelativePoint(event.clientX, event.clientY);
-  if (!point) return;
+if (!point) return;
 
-  if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
+if (
+  isOverlayBoxTooClose(
+    "highRisk",
+    point.x,
+    point.y,
+    moveOverlayTarget?.targetKey === "highRisk" ? moveOverlayTarget.itemId : ""
+  )
+) {
+  setDabsMessage("다른 박스와 너무 가까워 입력할 수 없습니다. 조금 떨어진 위치를 선택하세요.");
+  return;
+}
+
+if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
     const currentValue = getOverlayBundle("highRisk");
 
     const nextMarkers = (currentValue.markers || []).map((marker) =>
@@ -1901,9 +1948,21 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
   if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
 
   const point = getRelativePoint(touch.clientX, touch.clientY);
-  if (!point) return;
+if (!point) return;
 
-  lastTouchTimeRef.current = Date.now();
+if (
+  isOverlayBoxTooClose(
+    "highRisk",
+    point.x,
+    point.y,
+    moveOverlayTarget?.targetKey === "highRisk" ? moveOverlayTarget.itemId : ""
+  )
+) {
+  setDabsMessage("다른 박스와 너무 가까워 입력할 수 없습니다. 조금 떨어진 위치를 선택하세요.");
+  return;
+}
+
+lastTouchTimeRef.current = Date.now();
   vibrateBriefly();
 
   if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
@@ -1993,7 +2052,25 @@ setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump
 
   const currentValue = getOverlayBundle("equipmentFlow");
 
-  if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow") {
+const boxX = (arrowStart.x + endX) / 2;
+const boxY = (arrowStart.y + endY) / 2;
+
+if (
+  isOverlayBoxTooClose(
+    "equipmentFlow",
+    boxX,
+    boxY,
+    moveOverlayTarget?.targetKey === "equipmentFlow" ? moveOverlayTarget.itemId : ""
+  )
+) {
+  setArrowStart(null);
+  setArrowPreview(null);
+  setMoveOverlayTarget(null);
+  setDabsMessage("다른 박스와 너무 가까워 입력할 수 없습니다. 조금 떨어진 위치에 화살표를 다시 그리세요.");
+  return;
+}
+
+if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow") {
     const nextArrows = (currentValue.arrows || []).map((arrow) =>
       arrow.id === moveOverlayTarget.itemId
         ? {
@@ -2250,7 +2327,7 @@ setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump
                     {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold leading-none shadow-sm lg:text-[11px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm lg:p-1"><EquipmentIcon type={marker.equipmentType} className="h-4 w-4 lg:h-10 lg:w-10" /></span></> : null}
                     {isHighRiskMarker ? <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2"><div className="text-[9px] font-bold leading-none tracking-tight lg:text-[10px]">{marker.building || "동 미선택"}</div><div className="mt-1 text-[10px] font-semibold leading-tight lg:text-[11px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[11px] font-bold leading-tight lg:text-[13px]">{marker.note || "작업내용 없음"}</div></div> : <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2"><div className="text-[10px] font-semibold leading-tight lg:text-[12px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[11px] font-bold leading-tight lg:text-[13px]">{marker.note || "작업내용 없음"}</div></div>}
                   </div>
-                  <div className="absolute -top-2 -right-2 flex gap-1 lg:top-1 lg:right-1">
+                  <div className="absolute -top-8 -right-2 z-20 flex gap-1 lg:-top-6 lg:right-1">
   {canAdminEditDabsItem && (
     <button
       type="button"
@@ -3354,9 +3431,8 @@ setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump
   if (!mounted) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-2 sm:p-4 md:p-8">
-      <div className="min-h-screen bg-slate-50 p-2 pb-28 sm:p-4 md:p-8">
-        {!currentUser
+  <div className="min-h-screen bg-slate-50 p-2 pb-28 sm:p-4 md:p-8">
+    {!currentUser
   ? renderAuthScreen()
   : currentPage === "menu"
     ? renderMenuScreen()
@@ -3367,7 +3443,6 @@ setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump
         : currentPage === "approval"
           ? renderEducationPage()
           : renderEducationPage()}
-      </div>
-    </div>
+        </div>
   );
 }
