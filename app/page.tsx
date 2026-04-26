@@ -617,6 +617,18 @@ const [entryMessage, setEntryMessage] = useState("");
   content: "",
   elderly: "x",
 });
+
+// ✅ 여기 추가
+const [editMaterialPopup, setEditMaterialPopup] = useState({
+  open: false,
+  itemId: "",
+  gate: "",
+  time: "",
+  company: "",
+  material: "",
+  vehicle: "",
+  location: "",
+});
   const [soloCompanyFilter, setSoloCompanyFilter] = useState("");
   const imageAreaRef = useRef<HTMLDivElement | null>(null);
   const lastTouchTimeRef = useRef(0);
@@ -1375,6 +1387,68 @@ const cancelApprovalUser = async (uid: string) => {
   setDabsMessage("저장되었습니다.");
 };
 
+const handleUpdateMaterial = async () => {
+  if (!canAdminEditDabsItem) return;
+
+  if (
+    !editMaterialPopup.itemId ||
+    !editMaterialPopup.gate ||
+    !editMaterialPopup.time ||
+    !editMaterialPopup.company.trim() ||
+    !editMaterialPopup.material.trim() ||
+    !editMaterialPopup.vehicle.trim() ||
+    !editMaterialPopup.location.trim()
+  ) {
+    return;
+  }
+
+  const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
+
+  const currentList =
+    typeof currentTabValue === "object" && currentTabValue && "list" in currentTabValue
+      ? currentTabValue.list || []
+      : [];
+
+  const nextList = currentList.map((item) =>
+    item.id === editMaterialPopup.itemId
+      ? {
+          ...item,
+          gate: editMaterialPopup.gate,
+          time: editMaterialPopup.time,
+          company: editMaterialPopup.company.trim(),
+          material: editMaterialPopup.material.trim(),
+          vehicle: editMaterialPopup.vehicle.trim(),
+          location: editMaterialPopup.location.trim(),
+        }
+      : item
+  );
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      [activeDabsKey]: { list: nextList },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  setEditMaterialPopup({
+    open: false,
+    itemId: "",
+    gate: "",
+    time: "",
+    company: "",
+    material: "",
+    vehicle: "",
+    location: "",
+  });
+
+  setDabsMessage("수정되었습니다.");
+};
+
   const handleUpdateSectionWork = async () => {
   if (!canAdminEditDabsItem) return;
   if (!editSectionPopup.itemId || !editSectionPopup.building || !editSectionPopup.company.trim() || !editSectionPopup.content.trim()) return;
@@ -2105,7 +2179,77 @@ setArrowStart(null);
         const row = list.filter((item) => item.time === time);
         const gate1 = row.filter((item) => item.gate === "1");
         const gate7 = row.filter((item) => item.gate === "7");
-        return <MobileListCard key={time} title={`${time}시`}><div className="grid gap-3 md:grid-cols-2"><div><div className="mb-2 text-xs font-semibold text-slate-500">1게이트</div>{gate1.length === 0 ? <div className="text-slate-400">입력 없음</div> : gate1.map((item) => <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 text-sm">자재명: {item.material}</div><div className="text-sm">차종: {item.vehicle}</div><div className="mt-1 flex items-start justify-between gap-2 text-sm"><span>하역장소: {item.location}</span>{canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div></div>)}</div><div><div className="mb-2 text-xs font-semibold text-slate-500">7게이트</div>{gate7.length === 0 ? <div className="text-slate-400">입력 없음</div> : gate7.map((item) => <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 text-sm">자재명: {item.material}</div><div className="text-sm">차종: {item.vehicle}</div><div className="mt-1 flex items-start justify-between gap-2 text-sm"><span>하역장소: {item.location}</span>{canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div></div>)}</div></div></MobileListCard>;
+        return <MobileListCard key={time} title={`${time}시`}><div className="grid gap-3 md:grid-cols-2"><div><div className="mb-2 text-xs font-semibold text-slate-500">1게이트</div>{gate1.length === 0 ? <div className="text-slate-400">입력 없음</div> : gate1.map((item) => <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 text-sm">자재명: {item.material}</div><div className="text-sm">차종: {item.vehicle}</div><div className="mt-1 flex items-start justify-between gap-2 text-sm">
+  <span>하역장소: {item.location}</span>
+
+  <div className="flex shrink-0 gap-1">
+    {canAdminEditDabsItem && (
+      <button
+        type="button"
+        onClick={() =>
+          setEditMaterialPopup({
+            open: true,
+            itemId: item.id,
+            gate: item.gate || "",
+            time: item.time || "",
+            company: item.company || "",
+            material: item.material || "",
+            vehicle: item.vehicle || "",
+            location: item.location || "",
+          })
+        }
+        className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
+      >
+        수정
+      </button>
+    )}
+
+    {canDeleteOwnItem(item) && (
+      <button
+        type="button"
+        onClick={() => handleDeleteDabsItem(item.id)}
+        className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    )}
+  </div>
+</div></div>)}</div><div><div className="mb-2 text-xs font-semibold text-slate-500">7게이트</div>{gate7.length === 0 ? <div className="text-slate-400">입력 없음</div> : gate7.map((item) => <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 text-sm">자재명: {item.material}</div><div className="text-sm">차종: {item.vehicle}</div><div className="mt-1 flex items-start justify-between gap-2 text-sm">
+  <span>하역장소: {item.location}</span>
+
+  <div className="flex shrink-0 gap-1">
+    {canAdminEditDabsItem && (
+      <button
+        type="button"
+        onClick={() =>
+          setEditMaterialPopup({
+            open: true,
+            itemId: item.id,
+            gate: item.gate || "",
+            time: item.time || "",
+            company: item.company || "",
+            material: item.material || "",
+            vehicle: item.vehicle || "",
+            location: item.location || "",
+          })
+        }
+        className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
+      >
+        수정
+      </button>
+    )}
+
+    {canDeleteOwnItem(item) && (
+      <button
+        type="button"
+        onClick={() => handleDeleteDabsItem(item.id)}
+        className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    )}
+  </div>
+</div></div>)}</div></div></MobileListCard>;
       })}
     </div>
   );
@@ -2426,6 +2570,117 @@ setArrowStart(null);
     </div>
   </div>
 )}
+
+        {editMaterialPopup.open && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+            <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+              <div className="text-base font-semibold text-slate-900">
+                자재반입 수정
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <label className="text-xs font-medium text-slate-600">게이트</label>
+                <select
+                  value={editMaterialPopup.gate}
+                  onChange={(e) =>
+                    setEditMaterialPopup((prev) => ({ ...prev, gate: e.target.value }))
+                  }
+                  className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                >
+                  <option value="1">1게이트</option>
+                  <option value="7">7게이트</option>
+                </select>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <label className="text-xs font-medium text-slate-600">시간</label>
+                <select
+                  value={editMaterialPopup.time}
+                  onChange={(e) =>
+                    setEditMaterialPopup((prev) => ({ ...prev, time: e.target.value }))
+                  }
+                  className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                >
+                  {MATERIAL_TIMES.map((time) => (
+                    <option key={time} value={time}>
+                      {time}시
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <label className="text-xs font-medium text-slate-600">업체명</label>
+                <Input
+                  value={editMaterialPopup.company}
+                  onChange={(e) =>
+                    setEditMaterialPopup((prev) => ({ ...prev, company: e.target.value }))
+                  }
+                  placeholder="업체명 입력"
+                />
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <label className="text-xs font-medium text-slate-600">자재명</label>
+                <Input
+                  value={editMaterialPopup.material}
+                  onChange={(e) =>
+                    setEditMaterialPopup((prev) => ({ ...prev, material: e.target.value }))
+                  }
+                  placeholder="자재명 입력"
+                />
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <label className="text-xs font-medium text-slate-600">차종</label>
+                <Input
+                  value={editMaterialPopup.vehicle}
+                  onChange={(e) =>
+                    setEditMaterialPopup((prev) => ({ ...prev, vehicle: e.target.value }))
+                  }
+                  placeholder="차종 입력"
+                />
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <label className="text-xs font-medium text-slate-600">하역장소</label>
+                <Input
+                  value={editMaterialPopup.location}
+                  onChange={(e) =>
+                    setEditMaterialPopup((prev) => ({ ...prev, location: e.target.value }))
+                  }
+                  placeholder="하역장소 입력"
+                />
+              </div>
+
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  variant="outline"
+                  className="w-full lg:w-auto"
+                  onClick={() =>
+                    setEditMaterialPopup({
+                      open: false,
+                      itemId: "",
+                      gate: "",
+                      time: "",
+                      company: "",
+                      material: "",
+                      vehicle: "",
+                      location: "",
+                    })
+                  }
+                >
+                  취소
+                </Button>
+
+                <Button className="w-full lg:w-auto" onClick={handleUpdateMaterial}>
+                  저장
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {imagePopup.open && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4"><div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6"><div className="text-base font-semibold text-slate-900">작업내용 입력</div>{imagePopup.targetKey === "highRisk" && <div className="mt-4 space-y-2"><label className="text-xs font-medium text-slate-600">동 선택</label><select value={imagePopup.building} onChange={(e) => setImagePopup((prev) => ({ ...prev, building: e.target.value }))} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"><option value="">동 선택</option>{HIGH_RISK_BUILDINGS.map((building) => <option key={building} value={building}>{building}</option>)}</select></div>}{imagePopup.targetKey === "equipmentFlow" && <div className="mt-4 space-y-2"><label className="text-xs font-medium text-slate-600">장비 선택</label><select value={imagePopup.equipmentType} onChange={(e) => setImagePopup((prev) => ({ ...prev, equipmentType: e.target.value }))} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200">{EQUIPMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>}<div className="mt-4"><Input value={imagePopup.note} onChange={(e) => setImagePopup((prev) => ({ ...prev, note: e.target.value }))} placeholder="작업내용 입력" /></div><div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end"><Button variant="outline" className="w-full lg:w-auto" onClick={cancelMarkerPopup}>취소</Button><Button className="w-full lg:w-auto" onClick={submitMarkerPopup}>입력</Button></div></div></div>}
         <Card>
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5" />DAB&apos;s회의</CardTitle><Button variant="outline" onClick={() => setCurrentPage("menu")}>메뉴로 돌아가기</Button></CardHeader>
@@ -2514,15 +2769,40 @@ setArrowStart(null);
       <span className="whitespace-pre-wrap break-all leading-relaxed">
   {item[field]}
 </span>
-      {canDeleteOwnItem(item) && field === "location" && (
-        <button
-          type="button"
-          onClick={() => handleDeleteDabsItem(item.id)}
-          className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-        >
-          <X className="h-3 w-3" />
-        </button>
-      )}
+      {field === "location" && (
+  <div className="flex shrink-0 gap-1">
+    {canAdminEditDabsItem && (
+      <button
+        type="button"
+        onClick={() =>
+          setEditMaterialPopup({
+            open: true,
+            itemId: item.id,
+            gate: item.gate || "",
+            time: item.time || "",
+            company: item.company || "",
+            material: item.material || "",
+            vehicle: item.vehicle || "",
+            location: item.location || "",
+          })
+        }
+        className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+      >
+        수정
+      </button>
+    )}
+
+    {canDeleteOwnItem(item) && (
+      <button
+        type="button"
+        onClick={() => handleDeleteDabsItem(item.id)}
+        className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    )}
+  </div>
+)}
     </div>
   )); return <tr key={time}><td className="border border-slate-200 px-3 py-2 font-medium">{time}시</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate1, "company")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate1, "material")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate1, "vehicle")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate1, "location")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate7, "company")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate7, "material")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate7, "vehicle")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate7, "location")}</td></tr>; })}</tbody></table></div></>}
                 {!isImageTab && !isSectionTab && !isMaterialTab && <><TextArea value={dabsDraft} onChange={(e) => setDabsDraft(e.target.value)} placeholder="회의 내용, 작업사항, 확인사항 등을 입력하세요." /><div className="flex justify-end"><Button onClick={handleSaveDabsText} disabled={!canEditDabs} className="w-full lg:w-auto">저장</Button></div></>}
