@@ -1859,8 +1859,11 @@ setArrowStart(null);
   type="button"
   onClick={(e) => {
     e.stopPropagation();
+    e.preventDefault();
     handleDeleteOverlayItem(marker.id);
   }}
+  onTouchStart={(e) => e.stopPropagation()}
+  onTouchEnd={(e) => e.stopPropagation()}
   style={{ touchAction: "manipulation" }}
   className="absolute -top-2 -right-2 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow lg:top-1 lg:right-1 lg:h-4 lg:w-4"
 >
