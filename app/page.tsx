@@ -368,6 +368,8 @@ type EntryItem = {
 type DabsRowItem = {
   id: string;
   company?: string;
+  createdByUid?: string;
+  createdByName?: string;
   content?: string;
   name?: string;
   elderly?: string;
@@ -380,6 +382,8 @@ type DabsRowItem = {
 
 type OverlayMarkerItem = {
   id: string;
+  createdByUid?: string;
+  createdByName?: string;
   x: number;
   y: number;
   building?: string;
@@ -390,6 +394,8 @@ type OverlayMarkerItem = {
 
 type OverlayArrowItem = {
   id: string;
+  createdByUid?: string;
+  createdByName?: string;
   startX: number;
   startY: number;
   endX: number;
@@ -794,6 +800,11 @@ const [entryMessage, setEntryMessage] = useState("");
   const canEditDabs = Boolean(currentUser && currentUser.status === "approved");
   const canUploadDabsImage = currentUser?.role === "master" || currentUser?.role === "admin";
   const canDeleteDabsItem = currentUser?.role === "master" || currentUser?.role === "admin";
+  const canDeleteOwnItem = (item?: { createdByUid?: string }) => {
+  if (!currentUser) return false;
+  if (currentUser.role === "master" || currentUser.role === "admin") return true;
+  return item?.createdByUid === currentUser.uid;
+};
 
 const saveDabsMeetingToFirestore = async (dateKey: string, dateData: DabsDateValue) => {
   if (isDemoMode || !db || !currentUser) return;
@@ -962,11 +973,11 @@ setEntryMessage("일정이 등록되었습니다.");
     return;
   }
 
-  const canDelete = currentUser.role === "master" || currentUser.role === "admin";
+  const targetEntry = entries.find((entry) => entry.id === entryId);
 
-  if (!canDelete) {
+  if (!canDeleteOwnItem(targetEntry)) {
     setDeleteNoticeOpen(true);
-    setEntryMessage("삭제 권한이 없습니다.");
+    setEntryMessage("본인이 입력한 일정만 삭제할 수 있습니다.");
     return;
   }
 
@@ -985,11 +996,11 @@ setEntryMessage("일정이 등록되었습니다.");
 
   try {
     await deleteDoc(doc(db, "entries", entryId));
-setEntryMessage("일정이 삭제되었습니다.");
+    setEntryMessage("일정이 삭제되었습니다.");
   } catch (error: any) {
-  console.log("ENTRY DELETE ERROR:", error);
-  setEntryMessage(error?.message || "일정 삭제 중 오류가 발생했습니다.");
-}
+    console.log("ENTRY DELETE ERROR:", error);
+    setEntryMessage(error?.message || "일정 삭제 중 오류가 발생했습니다.");
+  }
 };
 
   const handleLogin = async () => {
@@ -1253,10 +1264,12 @@ const cancelApprovalUser = async (uid: string) => {
       : [
           ...buildingRows,
           {
-            id: createLocalId("section"),
-            company: companyName,
-            content: sectionInput.content,
-          },
+  id: createLocalId("section"),
+  company: companyName,
+  content: sectionInput.content,
+  createdByUid: currentUser?.uid,
+  createdByName: currentUser?.name,
+},
         ];
 
   const nextRows = {
@@ -1294,14 +1307,16 @@ const cancelApprovalUser = async (uid: string) => {
   const nextList = [
     ...list,
     {
-      id: createLocalId("material"),
-      gate,
-      material,
-      vehicle,
-      location,
-      time,
-      company: companyName,
-    },
+  id: createLocalId("material"),
+  gate,
+  material,
+  vehicle,
+  location,
+  time,
+  company: companyName,
+  createdByUid: currentUser?.uid,
+  createdByName: currentUser?.name,
+},
   ];
 
   const nextData = {
@@ -1320,7 +1335,6 @@ const cancelApprovalUser = async (uid: string) => {
 };
 
   const handleDeleteDabsItem = async (itemId: string, building: string | null = null) => {
-  if (!canDeleteDabsItem) return;
 
   if (activeDabsKey === "section1" || activeDabsKey === "section2") {
     const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
@@ -1332,8 +1346,11 @@ const cancelApprovalUser = async (uid: string) => {
     const nextRows = { ...currentRows };
 
     if (building) {
-      nextRows[building] = (nextRows[building] || []).filter((item) => item.id !== itemId);
-    }
+  const targetItem = (nextRows[building] || []).find((item) => item.id === itemId);
+  if (!canDeleteOwnItem(targetItem)) return;
+
+  nextRows[building] = (nextRows[building] || []).filter((item) => item.id !== itemId);
+}
 
     const nextData = {
       ...dabsData,
@@ -1360,7 +1377,10 @@ const cancelApprovalUser = async (uid: string) => {
     [selectedDate]: {
       ...(dabsData[selectedDate] || {}),
       [activeDabsKey]: {
-        list: currentList.filter((item) => item.id !== itemId),
+        list: currentList.filter((item) => {
+  if (item.id !== itemId) return true;
+  return !canDeleteOwnItem(item);
+}),
       },
     },
   };
@@ -1380,12 +1400,14 @@ const cancelApprovalUser = async (uid: string) => {
     [soloWorkerInput.building]: [
       ...(currentRows[soloWorkerInput.building] || []),
       {
-        id: createLocalId("solo-worker"),
-        company: currentUser?.companyName || "",
-        name: soloWorkerInput.name.trim(),
-        content: soloWorkerInput.content.trim(),
-        elderly: soloWorkerInput.elderly,
-      },
+  id: createLocalId("solo-worker"),
+  company: currentUser?.companyName || "",
+  name: soloWorkerInput.name.trim(),
+  content: soloWorkerInput.content.trim(),
+  elderly: soloWorkerInput.elderly,
+  createdByUid: currentUser?.uid,
+  createdByName: currentUser?.name,
+},
     ],
   };
 
@@ -1404,13 +1426,15 @@ const cancelApprovalUser = async (uid: string) => {
 };
 
   const handleDeleteSoloWorker = async (itemId: string, building: string) => {
-  if (!canDeleteDabsItem) return;
 
   const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
 
   const nextRows = {
     ...currentRows,
-    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
+    [building]: (currentRows[building] || []).filter((item) => {
+  if (item.id !== itemId) return true;
+  return !canDeleteOwnItem(item);
+}),
   };
 
   const nextData = {
@@ -1429,8 +1453,14 @@ const cancelApprovalUser = async (uid: string) => {
 const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
 
   const handleDeleteOverlayItem = (itemId: string) => {
-  if (!canDeleteDabsItem) return;
   const currentValue = getOverlayBundle();
+
+  const targetMarker = (currentValue.markers || []).find((item) => item.id === itemId);
+  const targetArrow = (currentValue.arrows || []).find((item) => item.id === itemId);
+  const targetItem = targetMarker || targetArrow;
+
+  if (!canDeleteOwnItem(targetItem)) return;
+
   const nextData = {
     ...dabsOverlays,
     [selectedDate]: {
@@ -1441,6 +1471,7 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
       },
     },
   };
+
   setDabsOverlays(nextData);
   saveDabsOverlays(nextData);
 };
@@ -1505,7 +1536,17 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
     const targetKey = imagePopup.targetKey || activeDabsKey;
     const currentValue = getOverlayBundle(targetKey);
     const markerId = imagePopup.targetKey === "equipmentFlow" && currentValue.arrows?.length ? currentValue.arrows[currentValue.arrows.length - 1].id : createLocalId("marker");
-    const marker = { id: markerId, x: imagePopup.x, y: imagePopup.y, building: imagePopup.targetKey === "highRisk" ? imagePopup.building : "", company: currentUser?.companyName || "", note: imagePopup.note.trim(), equipmentType: imagePopup.targetKey === "equipmentFlow" ? imagePopup.equipmentType : "" };
+    const marker = {
+  id: markerId,
+  x: imagePopup.x,
+  y: imagePopup.y,
+  building: imagePopup.targetKey === "highRisk" ? imagePopup.building : "",
+  company: currentUser?.companyName || "",
+  note: imagePopup.note.trim(),
+  equipmentType: imagePopup.targetKey === "equipmentFlow" ? imagePopup.equipmentType : "",
+  createdByUid: currentUser?.uid,
+  createdByName: currentUser?.name,
+};
     const nextData = { ...dabsOverlays, [selectedDate]: { ...(dabsOverlays[selectedDate] || {}), [targetKey]: { ...currentValue, markers: [...(currentValue.markers || []), marker] } } };
     setDabsOverlays(nextData);
     saveDabsOverlays(nextData);
@@ -1515,7 +1556,15 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
   const completeEquipmentArrow = (endX: number, endY: number) => {
     if (!arrowStart) return;
     const currentValue = getOverlayBundle("equipmentFlow");
-    const arrow = { id: createLocalId("arrow"), startX: arrowStart.x, startY: arrowStart.y, endX, endY };
+    const arrow = {
+  id: createLocalId("arrow"),
+  startX: arrowStart.x,
+  startY: arrowStart.y,
+  endX,
+  endY,
+  createdByUid: currentUser?.uid,
+  createdByName: currentUser?.name,
+};
     const nextData = { ...dabsOverlays, [selectedDate]: { ...(dabsOverlays[selectedDate] || {}), equipmentFlow: { ...currentValue, arrows: [...(currentValue.arrows || []), arrow] } } };
     setDabsOverlays(nextData);
     saveDabsOverlays(nextData);
@@ -1665,11 +1714,32 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
                     {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold leading-none shadow-sm sm:text-[11px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm sm:p-1"><EquipmentIcon type={marker.equipmentType} className="h-7 w-7 sm:h-10 sm:w-10" /></span></> : null}
                     {isHighRiskMarker ? <div className="w-full rounded-xl bg-white/65 px-2 py-2 shadow-sm"><div className="text-[9px] font-bold leading-none tracking-tight sm:text-[10px]">{marker.building || "동 미선택"}</div><div className="mt-1 text-[10px] font-semibold leading-tight sm:text-[11px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[11px] font-bold leading-tight sm:text-[13px]">{marker.note || "작업내용 없음"}</div></div> : <div className="w-full rounded-xl bg-white/65 px-2 py-2 shadow-sm"><div className="text-[10px] font-semibold leading-tight sm:text-[12px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[11px] font-bold leading-tight sm:text-[13px]">{marker.note || "작업내용 없음"}</div></div>}
                   </div>
-                  {canDeleteDabsItem && <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteOverlayItem(marker.id); }} className="absolute right-1 top-1 opacity-70 hover:opacity-100"><X className="h-3 w-3" /></button>}
+                  {canDeleteOwnItem(marker) && <button type="button" onClick={(e) => { e.stopPropagation(); handleDeleteOverlayItem(marker.id); }} className="absolute right-1 top-1 opacity-70 hover:opacity-100"><X className="h-3 w-3" /></button>}
                 </div>
               );
             })}
-            {activeDabsKey === "equipmentFlow" && canDeleteDabsItem && arrows.map((arrow) => <button key={`arrow-delete-${arrow.id}`} type="button" onClick={(e) => { e.stopPropagation(); handleDeleteOverlayItem(arrow.id); }} className="absolute flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow hover:bg-slate-100" style={{ left: `${(arrow.startX + arrow.endX) / 2}%`, top: `${(arrow.startY + arrow.endY) / 2}%`, transform: "translate(-50%, -50%)" }} title="화살표 삭제"><X className="h-3 w-3" /></button>)}
+            {activeDabsKey === "equipmentFlow" &&
+  arrows.map((arrow) =>
+    canDeleteOwnItem(arrow) && (
+      <button
+        key={`arrow-delete-${arrow.id}`}
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleDeleteOverlayItem(arrow.id);
+        }}
+        className="absolute flex h-5 w-5 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow hover:bg-slate-100"
+        style={{
+          left: `${(arrow.startX + arrow.endX) / 2}%`,
+          top: `${(arrow.startY + arrow.endY) / 2}%`,
+          transform: "translate(-50%, -50%)",
+        }}
+        title="화살표 삭제"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    )
+  )}
           </>
         )}
       </div>
@@ -1739,7 +1809,7 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
     <div className="space-y-3 lg:hidden">
       {columns.map((col) => {
         const list = rows[col] || [];
-        return <MobileListCard key={col} title={col}>{list.length === 0 ? <div className="text-slate-400">입력 없음</div> : list.map((item) => <div key={item.id} className="rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 flex items-start justify-between gap-2"><span className="text-slate-900">{item.content}</span>{canDeleteDabsItem && <button type="button" onClick={() => handleDeleteDabsItem(item.id, col)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div></div>)}</MobileListCard>;
+        return <MobileListCard key={col} title={col}>{list.length === 0 ? <div className="text-slate-400">입력 없음</div> : list.map((item) => <div key={item.id} className="rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 flex items-start justify-between gap-2"><span className="text-slate-900">{item.content}</span>{canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteDabsItem(item.id, col)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div></div>)}</MobileListCard>;
       })}
     </div>
   );
@@ -1750,7 +1820,7 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
         const row = list.filter((item) => item.time === time);
         const gate1 = row.filter((item) => item.gate === "1");
         const gate7 = row.filter((item) => item.gate === "7");
-        return <MobileListCard key={time} title={`${time}시`}><div className="grid gap-3 md:grid-cols-2"><div><div className="mb-2 text-xs font-semibold text-slate-500">1게이트</div>{gate1.length === 0 ? <div className="text-slate-400">입력 없음</div> : gate1.map((item) => <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 text-sm">자재명: {item.material}</div><div className="text-sm">차종: {item.vehicle}</div><div className="mt-1 flex items-start justify-between gap-2 text-sm"><span>하역장소: {item.location}</span>{canDeleteDabsItem && <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div></div>)}</div><div><div className="mb-2 text-xs font-semibold text-slate-500">7게이트</div>{gate7.length === 0 ? <div className="text-slate-400">입력 없음</div> : gate7.map((item) => <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 text-sm">자재명: {item.material}</div><div className="text-sm">차종: {item.vehicle}</div><div className="mt-1 flex items-start justify-between gap-2 text-sm"><span>하역장소: {item.location}</span>{canDeleteDabsItem && <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div></div>)}</div></div></MobileListCard>;
+        return <MobileListCard key={time} title={`${time}시`}><div className="grid gap-3 md:grid-cols-2"><div><div className="mb-2 text-xs font-semibold text-slate-500">1게이트</div>{gate1.length === 0 ? <div className="text-slate-400">입력 없음</div> : gate1.map((item) => <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 text-sm">자재명: {item.material}</div><div className="text-sm">차종: {item.vehicle}</div><div className="mt-1 flex items-start justify-between gap-2 text-sm"><span>하역장소: {item.location}</span>{canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div></div>)}</div><div><div className="mb-2 text-xs font-semibold text-slate-500">7게이트</div>{gate7.length === 0 ? <div className="text-slate-400">입력 없음</div> : gate7.map((item) => <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 text-sm">자재명: {item.material}</div><div className="text-sm">차종: {item.vehicle}</div><div className="mt-1 flex items-start justify-between gap-2 text-sm"><span>하역장소: {item.location}</span>{canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div></div>)}</div></div></MobileListCard>;
       })}
     </div>
   );
@@ -1758,7 +1828,7 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
   const renderSoloWorkerDesktopTable = () => (
     <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-slate-200 px-3 py-2 text-left w-[9%]">동</th><th className="border border-slate-200 px-3 py-2 text-left w-[16%]">업체명</th><th className="border border-slate-200 px-3 py-2 text-left w-[16%]">성명</th><th className="border border-slate-200 px-3 py-2 text-left">작업 내용</th><th className="border border-slate-200 px-3 py-2 text-left w-[10%]">고령자</th></tr></thead><tbody>{SOLO_WORKER_COLUMNS.map((col) => { const rawList = soloRows[col] || []; const list = rawList.filter((item) => String(item.company || "").toLowerCase().includes(soloCompanyFilter.trim().toLowerCase())); const grouped = groupSoloWorkersByCompany(list); const totalRows = grouped.reduce((sum, [, items]) => sum + items.length, 0); if (totalRows === 0) return <tr key={col}><td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{col}</td><td className="border border-slate-200 px-3 py-2 text-slate-300" colSpan={4}>-</td></tr>; return grouped.flatMap(([company, items], groupIndex) => { const color = getCompanyColor(company); return items.map((item, idx) => { const elderlyHighlight = item.elderly === "o" ? "bg-amber-50 text-amber-700 font-semibold" : "text-slate-600"; return <tr key={`${col}-${item.id}`} className={groupIndex % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>{groupIndex === 0 && idx === 0 && <td rowSpan={totalRows} className="border border-slate-200 px-3 py-2 align-top font-medium text-slate-700">{col}</td>}{idx === 0 && <td rowSpan={items.length} className={cn("border border-slate-200 px-3 py-2 align-top font-semibold", color.bg, color.border, color.text)}>{company}</td>}<td className="border border-slate-200 px-3 py-2 align-top">{item.name}</td><td className="border border-slate-200 px-3 py-2 align-top"><div className="flex items-center justify-between gap-2"><span className="whitespace-pre-wrap break-all leading-relaxed">
   {item.content}
-</span>{canDeleteDabsItem && <button type="button" onClick={() => handleDeleteSoloWorker(item.id, col)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div></td><td className={cn("border border-slate-200 px-3 py-2 align-top", elderlyHighlight)}>{item.elderly}</td></tr>; }); }); })}</tbody></table></div>
+</span>{canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteSoloWorker(item.id, col)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div></td><td className={cn("border border-slate-200 px-3 py-2 align-top", elderlyHighlight)}>{item.elderly}</td></tr>; }); }); })}</tbody></table></div>
   );
 
   const renderSoloWorkerMobileCards = () => {
@@ -1767,7 +1837,7 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
       const list = rawList.filter((item) => String(item.company || "").toLowerCase().includes(soloCompanyFilter.trim().toLowerCase()));
       return list.map((item) => ({ ...item, building: col }));
     });
-    return <div className="space-y-3 lg:hidden">{blocks.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">조건에 맞는 단독작업자가 없습니다.</div> : blocks.map((item) => { const color = getCompanyColor(item.company || "-"); return <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="mb-3 flex items-start justify-between gap-3"><div><div className="text-sm font-semibold text-slate-900">{item.building}</div><div className={cn("mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs font-medium", color.bg, color.border, color.text)}>{item.company}</div></div>{canDeleteDabsItem && <button type="button" onClick={() => handleDeleteSoloWorker(item.id, item.building)} className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div><div className="space-y-2 text-sm"><div><span className="mr-2 font-medium text-slate-500">성명</span><span className="text-slate-900">{item.name}</span></div><div><span className="mr-2 font-medium text-slate-500">작업</span><span className="text-slate-900">{item.content}</span></div><div><span className="mr-2 font-medium text-slate-500">고령자</span><span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold", item.elderly === "o" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600")}>{item.elderly}</span></div></div></div>; })}</div>;
+    return <div className="space-y-3 lg:hidden">{blocks.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">조건에 맞는 단독작업자가 없습니다.</div> : blocks.map((item) => { const color = getCompanyColor(item.company || "-"); return <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="mb-3 flex items-start justify-between gap-3"><div><div className="text-sm font-semibold text-slate-900">{item.building}</div><div className={cn("mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs font-medium", color.bg, color.border, color.text)}>{item.company}</div></div>{canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteSoloWorker(item.id, item.building)} className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div><div className="space-y-2 text-sm"><div><span className="mr-2 font-medium text-slate-500">성명</span><span className="text-slate-900">{item.name}</span></div><div><span className="mr-2 font-medium text-slate-500">작업</span><span className="text-slate-900">{item.content}</span></div><div><span className="mr-2 font-medium text-slate-500">고령자</span><span className={cn("inline-flex rounded-full px-2 py-0.5 text-xs font-semibold", item.elderly === "o" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600")}>{item.elderly}</span></div></div></div>; })}</div>;
   };
 
   const renderDabsPage = () => {
@@ -1799,12 +1869,12 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
                 {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날짜와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && <div className="text-xs text-slate-500">첫 번째 터치/클릭은 시작점, 이동 중에는 미리보기, 종료 지점에서 화살표가 생성됩니다.</div>}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}{renderOverlayImage(activeDabsKey === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow, isImageTab)}</>}
                 {isSectionTab && <><div className="grid gap-3 md:grid-cols-[220px_1fr_auto]"><select value={sectionInput.building} onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{activeColumns.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={sectionInput.content} onChange={(e) => setSectionInput({ ...sectionInput, content: e.target.value })} placeholder="작업내용 입력" /><Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div>{renderSectionMobileCards(activeColumns, sectionRows)}<div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-slate-200 px-3 py-2 text-left w-[9%]">동</th><th className="border border-slate-200 px-3 py-2 text-left w-[18%]">업체명</th><th className="border border-slate-200 px-3 py-2 text-left">작업내용</th></tr></thead><tbody>{activeColumns.map((col) => { const list = sectionRows[col] || []; return <tr key={col}><td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{col}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`company-${item.id}`} className="mb-2">{item.company}</div>)}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`content-${item.id}`} className="mb-2 flex items-center justify-between gap-2"><span className="whitespace-pre-wrap break-all leading-relaxed">
   {item.content}
-</span>{canDeleteDabsItem && <button type="button" onClick={() => handleDeleteDabsItem(item.id, col)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div>)}</td></tr>; })}</tbody></table></div></>}
+</span>{canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteDabsItem(item.id, col)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}</div>)}</td></tr>; })}</tbody></table></div></>}
                 {isMaterialTab && <><div className="grid gap-3 md:grid-cols-6"><select value={materialsInput.gate} onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="1">1게이트</option><option value="7">7게이트</option></select><select value={materialsInput.time} onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500">{MATERIAL_TIMES.map((time) => <option key={time} value={time}>{time}시</option>)}</select><Input value={materialsInput.material} onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })} placeholder="자재명" /><Input value={materialsInput.vehicle} onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })} placeholder="차종" /><Input value={materialsInput.location} onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })} placeholder="하역장소" /><Button onClick={handleAddMaterial} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div>{renderMaterialsMobileCards(materialList)}<div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white lg:block"><table className="min-w-[1200px] border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th rowSpan={2} className="border border-slate-200 px-3 py-2 text-left">시간</th><th colSpan={4} className="border border-slate-200 px-3 py-2 text-center">1게이트</th><th colSpan={4} className="border border-slate-200 px-3 py-2 text-center">7게이트</th></tr><tr className="bg-slate-100 text-slate-700"><th className="border border-slate-200 px-3 py-2 text-left">업체명</th><th className="border border-slate-200 px-3 py-2 text-left">자재명</th><th className="border border-slate-200 px-3 py-2 text-left">차종</th><th className="border border-slate-200 px-3 py-2 text-left">하역장소</th><th className="border border-slate-200 px-3 py-2 text-left">업체명</th><th className="border border-slate-200 px-3 py-2 text-left">자재명</th><th className="border border-slate-200 px-3 py-2 text-left">차종</th><th className="border border-slate-200 px-3 py-2 text-left">하역장소</th></tr></thead><tbody>{MATERIAL_TIMES.map((time) => { const row = materialList.filter((item) => item.time === time); const gate1 = row.filter((item) => item.gate === "1"); const gate7 = row.filter((item) => item.gate === "7"); const renderCell = (items: DabsRowItem[], field: keyof DabsRowItem) =>
   items.map((item) => (
     <div key={`${field}-${item.id}`} className="mb-2 flex items-center justify-between gap-1">
       <span>{item[field]}</span>
-      {canDeleteDabsItem && field === "location" && (
+      {canDeleteOwnItem(item) && field === "location" && (
         <button
           type="button"
           onClick={() => handleDeleteDabsItem(item.id)}
@@ -1863,7 +1933,7 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
     deleteEntry(entry.id);
   }}
   className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-slate-500 hover:bg-slate-100 hover:text-red-600 disabled:opacity-50"
-  disabled={!currentUser}
+  disabled={!canDeleteOwnItem(entry)}
   title="일정 삭제"
 >
   <Trash2 className="h-4 w-4" />
