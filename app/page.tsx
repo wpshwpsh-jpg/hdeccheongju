@@ -537,8 +537,9 @@ const storage = isConfigured ? getStorage() : null;
   });
   const [selectedTime, setSelectedTime] = useState("09:00");
   const [loginId, setLoginId] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginMessage, setLoginMessage] = useState("");
+const [loginPassword, setLoginPassword] = useState("");
+const [loginMessage, setLoginMessage] = useState("");
+const [loginLoading, setLoginLoading] = useState(false);
   const [signupId, setSignupId] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
   const [signupCompanyName, setSignupCompanyName] = useState("");
@@ -1166,30 +1167,53 @@ const handleUpdateEntry = async () => {
 };
 
   const handleLogin = async () => {
+  if (loginLoading) return;
+
+  setLoginLoading(true);
+  setLoginMessage("");
+
+  try {
     if (isDemoMode) {
       const demoUsers = loadDemoUsers();
-      const foundUser = demoUsers.find((user) => String(user.email).toLowerCase() === loginId.trim().toLowerCase() && user.password === loginPassword.trim());
-      if (!foundUser) return setLoginMessage("아이디 또는 비밀번호가 올바르지 않습니다.");
-      if (foundUser.status !== "approved") return setLoginMessage("승인 완료된 계정만 로그인할 수 있습니다.");
+      const foundUser = demoUsers.find(
+        (user) =>
+          String(user.email).toLowerCase() === loginId.trim().toLowerCase() &&
+          user.password === loginPassword.trim()
+      );
+
+      if (!foundUser) {
+        setLoginMessage("아이디 또는 비밀번호가 올바르지 않습니다.");
+        return;
+      }
+
+      if (foundUser.status !== "approved") {
+        setLoginMessage("승인 완료된 계정만 로그인할 수 있습니다.");
+        return;
+      }
+
       setCurrentUser(foundUser);
       setUsers(demoUsers);
       setEntries(loadDemoEntries());
       setCurrentPage("menu");
-      setLoginMessage("");
       setLoginId("");
       setLoginPassword("");
       return;
     }
-    if (!auth) return setLoginMessage("Firebase 설정이 없어 로그인할 수 없습니다.");
-    try {
-      setLoginMessage("");
-      await signInWithEmailAndPassword(auth, loginId.trim(), loginPassword.trim());
-      setLoginId("");
-      setLoginPassword("");
-    } catch {
-      setLoginMessage("아이디(이메일) 또는 비밀번호가 올바르지 않습니다.");
+
+    if (!auth) {
+      setLoginMessage("Firebase 설정이 없어 로그인할 수 없습니다.");
+      return;
     }
-  };
+
+    await signInWithEmailAndPassword(auth, loginId.trim(), loginPassword.trim());
+    setLoginId("");
+    setLoginPassword("");
+  } catch {
+    setLoginMessage("아이디(이메일) 또는 비밀번호가 올바르지 않습니다.");
+  } finally {
+    setLoginLoading(false);
+  }
+};
 
 const handlePasswordReset = async () => {
   const email = loginId.trim();
@@ -2751,14 +2775,53 @@ const posY = marker.y;
           <Card className="rounded-[24px] border-0 shadow-sm">
             <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><ShieldCheck className="h-5 w-5" />로그인</CardTitle></CardHeader>
             <CardContent className="space-y-3 py-3">
-              <div className="grid items-end gap-2 md:grid-cols-[1fr_1fr_auto]">
-                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">아이디</label><Input value={loginId} onChange={(e) => setLoginId(e.target.value)} placeholder={isDemoMode ? "GH45" : "이메일 입력"} className="h-9" /></div>
-                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">비밀번호</label><Input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder={isDemoMode ? "2706" : "비밀번호 입력"} className="h-9" /></div>
-                <Button className="h-9 w-full px-4 md:w-auto" onClick={handleLogin}>로그인</Button>
-<Button variant="outline" onClick={handlePasswordReset}>
-  비밀번호 재설정
-</Button>
-              </div>
+              <form
+  onSubmit={(e) => {
+    e.preventDefault();
+    handleLogin();
+  }}
+  className="grid items-end gap-2 md:grid-cols-[1fr_1fr_auto_auto]"
+>
+  <div className="space-y-2">
+    <label className="text-xs font-medium text-slate-600">아이디</label>
+    <Input
+      value={loginId}
+      onChange={(e) => setLoginId(e.target.value)}
+      placeholder={isDemoMode ? "GH45" : "이메일 입력"}
+      className="h-9"
+      disabled={loginLoading}
+    />
+  </div>
+
+  <div className="space-y-2">
+    <label className="text-xs font-medium text-slate-600">비밀번호</label>
+    <Input
+      type="password"
+      value={loginPassword}
+      onChange={(e) => setLoginPassword(e.target.value)}
+      placeholder={isDemoMode ? "2706" : "비밀번호 입력"}
+      className="h-9"
+      disabled={loginLoading}
+    />
+  </div>
+
+  <Button
+    type="submit"
+    className="h-9 w-full px-4 md:w-auto"
+    disabled={loginLoading}
+  >
+    {loginLoading ? "로그인 중..." : "로그인"}
+  </Button>
+
+  <Button
+    type="button"
+    variant="outline"
+    onClick={handlePasswordReset}
+    disabled={loginLoading}
+  >
+    비밀번호 재설정
+  </Button>
+</form>
               {loginMessage && <div className="text-sm text-slate-600">{loginMessage}</div>}
               {!isAuthReady && <div className="text-xs text-slate-400">로그인 상태 확인 중...</div>}
             </CardContent>
@@ -2786,7 +2849,9 @@ const posY = marker.y;
   const renderMenuScreen = () => (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
-      {!isConfigured && <Card className="border-amber-300 bg-amber-50"><CardContent className="p-4"><div className="text-sm font-medium text-amber-900">Firebase 환경변수가 설정되지 않았습니다.</div><div className="mt-1 text-xs text-amber-800">Firebase 미설정 상태입니다. 현재는 데모 모드로 로그인할 수 있습니다: GH45 / 2706</div></CardContent></Card>}
+      {!isConfigured && <Card className="border-amber-300 bg-amber-50"><CardContent className="p-4"><div className="text-sm font-medium text-amber-900">Firebase 환경변수가 설정되지 않았습니다.<div className="mt-1 text-xs text-amber-800">
+  Firebase 미설정 상태입니다. 환경변수를 설정해야 로그인할 수 있습니다.
+</div></CardContent></Card>}
       <div className="grid gap-4 md:grid-cols-3 md:gap-6">{menuItems.map((item) => { const Icon = item.icon; return <button key={item.key} onClick={() => {
   setCurrentPage(item.key);
 }} className="rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md sm:p-6"><div className="flex items-center gap-3"><div className="rounded-2xl bg-slate-100 p-3 text-slate-700"><Icon className="h-6 w-6" /></div><div><div className="text-base font-semibold text-slate-900 lg:text-lg">{item.title}</div><div className="mt-1 text-sm text-slate-500">{item.description}</div></div></div></button>; })}</div>
