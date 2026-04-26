@@ -43,6 +43,13 @@ import {
   updateDoc,
 } from "firebase/firestore";
 
+import {
+  getDownloadURL,
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+} from "firebase/storage";
+
 const weekLabels = ["일", "월", "화", "수", "목", "금", "토"];
 const DEMO_MASTER_ID = "GH45";
 const DEMO_MASTER_PASSWORD = "2706";
@@ -582,6 +589,7 @@ function MobileListCard({ title, children, action }: { title: ReactNode; childre
 export default function MonthlyCalendarTextEntrySite() {
   const { auth, db, isConfigured } = getFirebaseServices();
 const isDemoMode = !isConfigured;
+const storage = !isDemoMode ? getStorage() : null;
 
   const [mounted, setMounted] = useState(false);
 
@@ -677,10 +685,44 @@ const [entryMessage, setEntryMessage] = useState("");
     }));
   });
 
+const unsubscribeOverlays = onSnapshot(doc(db, "dabsOverlays", selectedDate), (snap) => {
+  if (!snap.exists()) return;
+
+  const data = snap.data();
+
+  setDabsOverlays((prev) => ({
+    ...prev,
+    [selectedDate]: {
+      ...(prev[selectedDate] || {}),
+      highRisk: {
+        markers: data.highRisk?.markers || [],
+        arrows: data.highRisk?.arrows || [],
+      },
+      equipmentFlow: {
+        markers: data.equipmentFlow?.markers || [],
+        arrows: data.equipmentFlow?.arrows || [],
+      },
+    },
+  }));
+});
+
+const unsubscribeImages = onSnapshot(doc(db, "dabsImages", "shared"), (snap) => {
+  if (!snap.exists()) return;
+
+  const data = snap.data() as Record<string, string>;
+
+  setDabsImages({
+    highRisk: data.highRisk || "",
+    equipmentFlow: data.equipmentFlow || "",
+  });
+});
+
   return () => {
-    unsubscribeDabs();
-    unsubscribeSolo();
-  };
+  unsubscribeDabs();
+  unsubscribeSolo();
+  unsubscribeOverlays();
+  unsubscribeImages();
+};
 }, [db, isDemoMode, currentUser, selectedDate]);
 
   useEffect(() => {
@@ -831,6 +873,29 @@ const saveSoloWorkersToFirestore = async (
     {
       date: dateKey,
       rows,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+};
+
+const saveDabsOverlaysToFirestore = async (
+  dateKey: string,
+  overlayData: Record<
+    string,
+    {
+      markers?: OverlayMarkerItem[];
+      arrows?: OverlayArrowItem[];
+    }
+  >
+) => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  await setDoc(
+    doc(db, "dabsOverlays", dateKey),
+    {
+      date: dateKey,
+      ...overlayData,
       updatedAt: serverTimestamp(),
     },
     { merge: true }
@@ -1452,7 +1517,7 @@ const cancelApprovalUser = async (uid: string) => {
 
 const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
 
-  const handleDeleteOverlayItem = (itemId: string) => {
+  const handleDeleteOverlayItem = async (itemId: string) => {
   const currentValue = getOverlayBundle();
 
   const targetMarker = (currentValue.markers || []).find((item) => item.id === itemId);
@@ -1473,22 +1538,61 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
   };
 
   setDabsOverlays(nextData);
-  saveDabsOverlays(nextData);
+saveDabsOverlays(nextData);
+await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 };
 
-  const handleHighRiskImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleHighRiskImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
   if (!canUploadDabsImage) return setDabsMessage("사진 업로드는 마스터, 관리자만 가능합니다.");
+
   const file = event.target.files?.[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const imageValue = typeof reader.result === "string" ? reader.result : "";
-    const nextImages = { ...dabsImages, highRisk: imageValue, equipmentFlow: imageValue };
+
+  if (isDemoMode || !db || !storage) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const imageValue = typeof reader.result === "string" ? reader.result : "";
+      const nextImages = { highRisk: imageValue, equipmentFlow: imageValue };
+      setDabsImages(nextImages);
+      saveDabsImages(nextImages);
+      setDabsMessage("사진이 저장되었습니다.");
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const imageRef = storageRef(storage, `dabsImages/shared-${Date.now()}-${file.name}`);
+    await uploadBytes(imageRef, file);
+
+    const imageUrl = await getDownloadURL(imageRef);
+
+    const nextImages = {
+      highRisk: imageUrl,
+      equipmentFlow: imageUrl,
+    };
+
     setDabsImages(nextImages);
     saveDabsImages(nextImages);
+
+    await setDoc(
+      doc(db, "dabsImages", "shared"),
+      {
+        ...nextImages,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser?.uid,
+        updatedByName: currentUser?.name,
+      },
+      { merge: true }
+    );
+
     setDabsMessage("사진이 저장되었습니다.");
-  };
-  reader.readAsDataURL(file);
+  } catch (error) {
+    console.log("IMAGE UPLOAD ERROR:", error);
+    setDabsMessage("사진 저장 중 오류가 발생했습니다.");
+  }
+
   event.target.value = "";
 };
 
@@ -1516,21 +1620,22 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
   });
 };
 
-  const cancelMarkerPopup = () => {
+  const cancelMarkerPopup = async () => {
     if (imagePopup.targetKey === "equipmentFlow") {
       const currentValue = getOverlayBundle("equipmentFlow");
       const nextArrows = [...(currentValue.arrows || [])];
       if (nextArrows.length > 0) nextArrows.pop();
       const nextData = { ...dabsOverlays, [selectedDate]: { ...(dabsOverlays[selectedDate] || {}), equipmentFlow: { ...currentValue, arrows: nextArrows } } };
       setDabsOverlays(nextData);
-      saveDabsOverlays(nextData);
+saveDabsOverlays(nextData);
+await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
     }
     setArrowStart(null);
     setArrowPreview(null);
     setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
   };
 
-  const submitMarkerPopup = () => {
+  const submitMarkerPopup = async () => {
     if (!canEditDabs || !imagePopup.note.trim()) return;
     if (imagePopup.targetKey === "highRisk" && !imagePopup.building) return;
     const targetKey = imagePopup.targetKey || activeDabsKey;
@@ -1549,11 +1654,12 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
 };
     const nextData = { ...dabsOverlays, [selectedDate]: { ...(dabsOverlays[selectedDate] || {}), [targetKey]: { ...currentValue, markers: [...(currentValue.markers || []), marker] } } };
     setDabsOverlays(nextData);
-    saveDabsOverlays(nextData);
-    setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
+saveDabsOverlays(nextData);
+await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
   };
 
-  const completeEquipmentArrow = (endX: number, endY: number) => {
+  const completeEquipmentArrow = async (endX: number, endY: number) => {
     if (!arrowStart) return;
     const currentValue = getOverlayBundle("equipmentFlow");
     const arrow = {
@@ -1567,8 +1673,9 @@ const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[k
 };
     const nextData = { ...dabsOverlays, [selectedDate]: { ...(dabsOverlays[selectedDate] || {}), equipmentFlow: { ...currentValue, arrows: [...(currentValue.arrows || []), arrow] } } };
     setDabsOverlays(nextData);
-    saveDabsOverlays(nextData);
-    setArrowStart(null);
+saveDabsOverlays(nextData);
+await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+setArrowStart(null);
     setArrowPreview(null);
     setImagePopup({ open: true, x: (arrow.startX + arrow.endX) / 2, y: (arrow.startY + arrow.endY) / 2, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "equipmentFlow" });
     vibrateBriefly();
