@@ -602,7 +602,24 @@ const [entryMessage, setEntryMessage] = useState("");
 });
   const [materialsInput, setMaterialsInput] = useState({ gate: "1", material: "", vehicle: "", location: "", time: "06" });
   const [imagePopup, setImagePopup] = useState({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
-  const [arrowStart, setArrowStart] = useState<{ x: number; y: number } | null>(null);
+
+const [editOverlayPopup, setEditOverlayPopup] = useState({
+  open: false,
+  itemId: "",
+  targetKey: "highRisk",
+  company: "",
+  note: "",
+  building: "",
+  equipmentType: "concrete_pump_truck",
+});
+
+const [moveOverlayTarget, setMoveOverlayTarget] = useState<{
+  itemId: string;
+  targetKey: string;
+  mode: "marker" | "arrow";
+} | null>(null);
+
+const [arrowStart, setArrowStart] = useState<{ x: number; y: number } | null>(null);
   const [arrowPreview, setArrowPreview] = useState<
   { startX: number; startY: number; endX: number; endY: number } | null
 >(null);
@@ -1672,7 +1689,76 @@ const handleUpdateMaterial = async () => {
 
 const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
 
-  const handleDeleteOverlayItem = async (itemId: string) => {
+const handleUpdateOverlayInfo = async () => {
+  if (!canAdminEditDabsItem) return;
+
+  if (!editOverlayPopup.itemId || !editOverlayPopup.company.trim() || !editOverlayPopup.note.trim()) {
+    return;
+  }
+
+  if (editOverlayPopup.targetKey === "highRisk" && !editOverlayPopup.building) {
+    return;
+  }
+
+  const currentValue = getOverlayBundle(editOverlayPopup.targetKey);
+
+  const nextMarkers = (currentValue.markers || []).map((marker) =>
+    marker.id === editOverlayPopup.itemId
+      ? {
+          ...marker,
+          company: editOverlayPopup.company.trim(),
+          note: editOverlayPopup.note.trim(),
+          building: editOverlayPopup.targetKey === "highRisk" ? editOverlayPopup.building : "",
+          equipmentType:
+            editOverlayPopup.targetKey === "equipmentFlow"
+              ? editOverlayPopup.equipmentType
+              : "",
+        }
+      : marker
+  );
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      [editOverlayPopup.targetKey]: {
+        ...currentValue,
+        markers: nextMarkers,
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  setMoveOverlayTarget({
+    itemId: editOverlayPopup.itemId,
+    targetKey: editOverlayPopup.targetKey,
+    mode: editOverlayPopup.targetKey === "equipmentFlow" ? "arrow" : "marker",
+  });
+
+  setEditOverlayPopup({
+    open: false,
+    itemId: "",
+    targetKey: "highRisk",
+    company: "",
+    note: "",
+    building: "",
+    equipmentType: "concrete_pump_truck",
+  });
+
+  setArrowStart(null);
+  setArrowPreview(null);
+
+  setDabsMessage(
+    editOverlayPopup.targetKey === "equipmentFlow"
+      ? "수정되었습니다. 새 화살표 시작점과 종료점을 다시 선택하세요."
+      : "수정되었습니다. 새 위치를 선택하세요."
+  );
+};
+
+const handleDeleteOverlayItem = async (itemId: string) => {
   const currentValue = getOverlayBundle();
 
   const targetMarker = (currentValue.markers || []).find((item) => item.id === itemId);
@@ -1763,18 +1849,95 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 };
 
   const openMarkerPopup = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
-    const point = getRelativePoint(event.clientX, event.clientY);
-    if (!point) return;
-    setImagePopup({ open: true, x: point.x, y: point.y, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
-  };
-
-  const openMarkerPopupByTouch = (touch: { clientX: number; clientY: number }) => {
   if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
+
+  const point = getRelativePoint(event.clientX, event.clientY);
+  if (!point) return;
+
+  if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
+    const currentValue = getOverlayBundle("highRisk");
+
+    const nextMarkers = (currentValue.markers || []).map((marker) =>
+      marker.id === moveOverlayTarget.itemId
+        ? {
+            ...marker,
+            x: point.x,
+            y: point.y,
+          }
+        : marker
+    );
+
+    const nextData = {
+      ...dabsOverlays,
+      [selectedDate]: {
+        ...(dabsOverlays[selectedDate] || {}),
+        highRisk: {
+          ...currentValue,
+          markers: nextMarkers,
+        },
+      },
+    };
+
+    setDabsOverlays(nextData);
+    saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    setMoveOverlayTarget(null);
+    setDabsMessage("위치가 수정되었습니다.");
+    return;
+  }
+
+  setImagePopup({
+    open: true,
+    x: point.x,
+    y: point.y,
+    note: "",
+    equipmentType: "concrete_pump_truck",
+    building: "",
+    targetKey: "highRisk",
+  });
+};
+
+  const openMarkerPopupByTouch = async (touch: { clientX: number; clientY: number }) => {
+  if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
+
   const point = getRelativePoint(touch.clientX, touch.clientY);
   if (!point) return;
+
   lastTouchTimeRef.current = Date.now();
   vibrateBriefly();
+
+  if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
+    const currentValue = getOverlayBundle("highRisk");
+
+    const nextMarkers = (currentValue.markers || []).map((marker) =>
+      marker.id === moveOverlayTarget.itemId
+        ? {
+            ...marker,
+            x: point.x,
+            y: point.y,
+          }
+        : marker
+    );
+
+    const nextData = {
+      ...dabsOverlays,
+      [selectedDate]: {
+        ...(dabsOverlays[selectedDate] || {}),
+        highRisk: {
+          ...currentValue,
+          markers: nextMarkers,
+        },
+      },
+    };
+
+    setDabsOverlays(nextData);
+    await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    setMoveOverlayTarget(null);
+    setDabsMessage("위치가 수정되었습니다.");
+    return;
+  }
+
   setImagePopup({
     open: true,
     x: point.x,
@@ -1825,27 +1988,83 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 setImagePopup({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
   };
 
-  const completeEquipmentArrow = async (endX: number, endY: number) => {
-    if (!arrowStart) return;
-    const currentValue = getOverlayBundle("equipmentFlow");
-    const arrow = {
-  id: createLocalId("arrow"),
-  startX: arrowStart.x,
-  startY: arrowStart.y,
-  endX,
-  endY,
-  createdByUid: currentUser?.uid,
-  createdByName: currentUser?.name,
-};
-    const nextData = { ...dabsOverlays, [selectedDate]: { ...(dabsOverlays[selectedDate] || {}), equipmentFlow: { ...currentValue, arrows: [...(currentValue.arrows || []), arrow] } } };
-    setDabsOverlays(nextData);
+ const completeEquipmentArrow = async (endX: number, endY: number) => {
+  if (!arrowStart) return;
 
-await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
-setArrowStart(null);
+  const currentValue = getOverlayBundle("equipmentFlow");
+
+  if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow") {
+    const nextArrows = (currentValue.arrows || []).map((arrow) =>
+      arrow.id === moveOverlayTarget.itemId
+        ? {
+            ...arrow,
+            startX: arrowStart.x,
+            startY: arrowStart.y,
+            endX,
+            endY,
+          }
+        : arrow
+    );
+
+    const nextData = {
+      ...dabsOverlays,
+      [selectedDate]: {
+        ...(dabsOverlays[selectedDate] || {}),
+        equipmentFlow: {
+          ...currentValue,
+          arrows: nextArrows,
+        },
+      },
+    };
+
+    setDabsOverlays(nextData);
+    await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    setMoveOverlayTarget(null);
+    setArrowStart(null);
     setArrowPreview(null);
-    setImagePopup({ open: true, x: (arrow.startX + arrow.endX) / 2, y: (arrow.startY + arrow.endY) / 2, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "equipmentFlow" });
-    vibrateBriefly();
+    setDabsMessage("화살표 위치가 수정되었습니다.");
+    return;
+  }
+
+  const arrow = {
+    id: createLocalId("arrow"),
+    startX: arrowStart.x,
+    startY: arrowStart.y,
+    endX,
+    endY,
+    createdByUid: currentUser?.uid,
+    createdByName: currentUser?.name,
   };
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      equipmentFlow: {
+        ...currentValue,
+        arrows: [...(currentValue.arrows || []), arrow],
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  setArrowStart(null);
+  setArrowPreview(null);
+  setImagePopup({
+    open: true,
+    x: (arrow.startX + arrow.endX) / 2,
+    y: (arrow.startY + arrow.endY) / 2,
+    note: "",
+    equipmentType: "concrete_pump_truck",
+    building: "",
+    targetKey: "equipmentFlow",
+  });
+  vibrateBriefly();
+};
 
   const handleEquipmentClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (Date.now() - lastTouchTimeRef.current < 500) return;
@@ -2031,20 +2250,49 @@ setArrowStart(null);
                     {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold leading-none shadow-sm lg:text-[11px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm lg:p-1"><EquipmentIcon type={marker.equipmentType} className="h-4 w-4 lg:h-10 lg:w-10" /></span></> : null}
                     {isHighRiskMarker ? <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2"><div className="text-[9px] font-bold leading-none tracking-tight lg:text-[10px]">{marker.building || "동 미선택"}</div><div className="mt-1 text-[10px] font-semibold leading-tight lg:text-[11px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[11px] font-bold leading-tight lg:text-[13px]">{marker.note || "작업내용 없음"}</div></div> : <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2"><div className="text-[10px] font-semibold leading-tight lg:text-[12px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[11px] font-bold leading-tight lg:text-[13px]">{marker.note || "작업내용 없음"}</div></div>}
                   </div>
-                  {canDeleteOwnItem(marker) && <button
-  type="button"
-  onClick={(e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    handleDeleteOverlayItem(marker.id);
-  }}
-  onTouchStart={(e) => e.stopPropagation()}
-  onTouchEnd={(e) => e.stopPropagation()}
-  style={{ touchAction: "manipulation" }}
-  className="absolute -top-2 -right-2 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow lg:top-1 lg:right-1 lg:h-4 lg:w-4"
->
-  <X className="h-4 w-4 lg:h-3 lg:w-3" />
-</button>}
+                  <div className="absolute -top-2 -right-2 flex gap-1 lg:top-1 lg:right-1">
+  {canAdminEditDabsItem && (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        setEditOverlayPopup({
+          open: true,
+          itemId: marker.id,
+          targetKey: activeDabsKey,
+          company: marker.company || "",
+          note: marker.note || "",
+          building: marker.building || "",
+          equipmentType: marker.equipmentType || "concrete_pump_truck",
+        });
+      }}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
+      style={{ touchAction: "manipulation" }}
+      className="flex h-8 min-w-8 items-center justify-center rounded-full bg-white px-2 text-[10px] font-semibold text-slate-600 shadow lg:h-5 lg:min-w-5 lg:px-1 lg:text-[9px]"
+    >
+      수정
+    </button>
+  )}
+
+  {canDeleteOwnItem(marker) && (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        handleDeleteOverlayItem(marker.id);
+      }}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
+      style={{ touchAction: "manipulation" }}
+      className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow lg:h-5 lg:w-5"
+    >
+      <X className="h-4 w-4 lg:h-3 lg:w-3" />
+    </button>
+  )}
+</div>
   </div>
 </div>
               );
@@ -2675,6 +2923,115 @@ setArrowStart(null);
 
                 <Button className="w-full lg:w-auto" onClick={handleUpdateMaterial}>
                   저장
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+                {editOverlayPopup.open && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+            <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+              <div className="text-base font-semibold text-slate-900">
+                {editOverlayPopup.targetKey === "equipmentFlow"
+                  ? "장비동선 수정"
+                  : "고위험작업 수정"}
+              </div>
+
+              {editOverlayPopup.targetKey === "highRisk" && (
+                <div className="mt-4 space-y-2">
+                  <label className="text-xs font-medium text-slate-600">동 선택</label>
+                  <select
+                    value={editOverlayPopup.building}
+                    onChange={(e) =>
+                      setEditOverlayPopup((prev) => ({
+                        ...prev,
+                        building: e.target.value,
+                      }))
+                    }
+                    className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  >
+                    <option value="">동 선택</option>
+                    {HIGH_RISK_BUILDINGS.map((building) => (
+                      <option key={building} value={building}>
+                        {building}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {editOverlayPopup.targetKey === "equipmentFlow" && (
+                <div className="mt-4 space-y-2">
+                  <label className="text-xs font-medium text-slate-600">장비 선택</label>
+                  <select
+                    value={editOverlayPopup.equipmentType}
+                    onChange={(e) =>
+                      setEditOverlayPopup((prev) => ({
+                        ...prev,
+                        equipmentType: e.target.value,
+                      }))
+                    }
+                    className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  >
+                    {EQUIPMENT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="mt-4 space-y-2">
+                <label className="text-xs font-medium text-slate-600">업체명</label>
+                <Input
+                  value={editOverlayPopup.company}
+                  onChange={(e) =>
+                    setEditOverlayPopup((prev) => ({
+                      ...prev,
+                      company: e.target.value,
+                    }))
+                  }
+                  placeholder="업체명 입력"
+                />
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <label className="text-xs font-medium text-slate-600">작업내용</label>
+                <Input
+                  value={editOverlayPopup.note}
+                  onChange={(e) =>
+                    setEditOverlayPopup((prev) => ({
+                      ...prev,
+                      note: e.target.value,
+                    }))
+                  }
+                  placeholder="작업내용 입력"
+                />
+              </div>
+
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  variant="outline"
+                  className="w-full lg:w-auto"
+                  onClick={() =>
+                    setEditOverlayPopup({
+                      open: false,
+                      itemId: "",
+                      targetKey: "highRisk",
+                      company: "",
+                      note: "",
+                      building: "",
+                      equipmentType: "concrete_pump_truck",
+                    })
+                  }
+                >
+                  취소
+                </Button>
+
+                <Button className="w-full lg:w-auto" onClick={handleUpdateOverlayInfo}>
+                  저장 후 위치 수정
                 </Button>
               </div>
             </div>
