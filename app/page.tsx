@@ -996,13 +996,26 @@ const handleDownloadCaptureImage = async (
   windowWidth: target.scrollWidth,
   windowHeight: target.scrollHeight,
   onclone: (clonedDoc) => {
-    clonedDoc.querySelectorAll("*").forEach((el) => {
-      const element = el as HTMLElement;
-      element.style.color = "";
-      element.style.backgroundColor = "";
-      element.style.borderColor = "";
-    });
-  },
+  const style = clonedDoc.createElement("style");
+  style.innerHTML = `
+    * {
+      color: #000000 !important;
+      background-color: #ffffff !important;
+      border-color: #000000 !important;
+      box-shadow: none !important;
+      text-shadow: none !important;
+    }
+
+    img {
+      background-color: transparent !important;
+    }
+
+    svg, svg * {
+      background-color: transparent !important;
+    }
+  `;
+  clonedDoc.head.appendChild(style);
+},
 });
 
     const image = canvas.toDataURL("image/png");
