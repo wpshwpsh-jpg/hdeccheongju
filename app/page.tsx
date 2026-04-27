@@ -988,14 +988,22 @@ const handleDownloadCaptureImage = async (
     const safeFileName = fileName.replace(/[\\/:*?"<>|]/g, "-");
 
     const canvas = await html2canvas(target, {
-      backgroundColor: "#ffffff",
-      scale: 2,
-      useCORS: true,
-      allowTaint: false,
-      logging: true,
-      windowWidth: target.scrollWidth,
-      windowHeight: target.scrollHeight,
+  backgroundColor: "#ffffff",
+  scale: 2,
+  useCORS: true,
+  allowTaint: false,
+  logging: true,
+  windowWidth: target.scrollWidth,
+  windowHeight: target.scrollHeight,
+  onclone: (clonedDoc) => {
+    clonedDoc.querySelectorAll("*").forEach((el) => {
+      const element = el as HTMLElement;
+      element.style.color = "";
+      element.style.backgroundColor = "";
+      element.style.borderColor = "";
     });
+  },
+});
 
     const image = canvas.toDataURL("image/png");
 
