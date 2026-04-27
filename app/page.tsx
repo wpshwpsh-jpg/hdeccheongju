@@ -980,24 +980,34 @@ const handleDownloadCaptureImage = async (
   const target = targetRef.current;
 
   if (!target) {
-    setDabsMessage("다운로드할 화면을 찾을 수 없습니다.");
+    alert("다운로드할 화면을 찾을 수 없습니다.");
     return;
   }
 
   try {
+    const safeFileName = fileName.replace(/[\\/:*?"<>|]/g, "-");
+
     const canvas = await html2canvas(target, {
       backgroundColor: "#ffffff",
       scale: 2,
       useCORS: true,
+      allowTaint: true,
+      logging: true,
+      windowWidth: target.scrollWidth,
+      windowHeight: target.scrollHeight,
     });
 
+    const image = canvas.toDataURL("image/png");
+
     const link = document.createElement("a");
-    link.download = `${fileName}.png`;
-    link.href = canvas.toDataURL("image/png");
+    link.href = image;
+    link.download = `${safeFileName}.png`;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   } catch (error) {
     console.log("IMAGE DOWNLOAD ERROR:", error);
-    setDabsMessage("이미지 저장 중 오류가 발생했습니다.");
+    alert("이미지 저장 중 오류가 발생했습니다. 콘솔을 확인하세요.");
   }
 };
 
