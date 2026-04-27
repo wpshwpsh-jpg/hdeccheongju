@@ -53,6 +53,11 @@ const DEMO_USERS_KEY = "demo-calendar-users";
 const DEMO_ENTRIES_KEY = "demo-calendar-entries";
 const SECTION1_COLUMNS = ["101동", "102동", "103동", "104동", "114동", "115동", "116동", "117동", "상가"];
 const SECTION2_COLUMNS = ["105동", "106동", "107동", "108동", "109동", "110동", "111동", "112동", "113동"];
+
+const FIRE_WORK_COLUMNS = [
+  ...Array.from({ length: 17 }, (_, i) => `${101 + i}동`),
+  "상가",
+];
 const HIGH_RISK_BUILDINGS = [
   "101동", "102동", "103동", "104동", "105동", "106동", "107동", "108동", "109동",
   "110동", "111동", "112동", "113동", "114동", "115동", "116동", "117동", "상가",
@@ -926,13 +931,14 @@ const saveDabsOverlaysToFirestore = async (
   }, []);
  
   const dabsTabs = useMemo(() => [
-    { key: "highRisk", label: "고위험작업" },
-    { key: "equipmentFlow", label: "장비동선" },
-    { key: "section1", label: "1공구 작업" },
-    { key: "section2", label: "2공구 작업" },
-    { key: "materialsAfter2", label: `${formatShortDate(todayPlusTwo)} 자재반입` },
-    { key: "materialsAfter1", label: `${formatShortDate(todayPlusOne)} 자재반입` },
-  ], [todayPlusOne, todayPlusTwo]);
+  { key: "highRisk", label: "고위험작업" },
+  { key: "equipmentFlow", label: "장비동선" },
+  { key: "section1", label: "1공구 작업" },
+  { key: "section2", label: "2공구 작업" },
+  { key: "fireWork", label: "화기작업" },
+  { key: "materialsAfter2", label: `${formatShortDate(todayPlusTwo)} 자재반입` },
+  { key: "materialsAfter1", label: `${formatShortDate(todayPlusOne)} 자재반입` },
+], [todayPlusOne, todayPlusTwo]);
 
   const activeDabsTab = dabsTabs[dabsTabIndex] || dabsTabs[0];
   const activeDabsKey = activeDabsTab.key;
@@ -1646,7 +1652,7 @@ const handleUpdateMaterial = async () => {
 };
   const handleDeleteDabsItem = async (itemId: string, building: string | null = null) => {
 
-  if (activeDabsKey === "section1" || activeDabsKey === "section2") {
+  if (activeDabsKey === "section1" || activeDabsKey === "section2" || activeDabsKey === "fireWork") {
     const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
     const currentRows =
       typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
@@ -1700,7 +1706,7 @@ const handleUpdateMaterial = async () => {
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
 };
 
-const handleLoadPreviousCompanyData = async (targetKey: "section1" | "section2" | "soloWorker") => {
+const handleLoadPreviousCompanyData = async (targetKey: "section1" | "section2" | "fireWork" | "soloWorker") => {
   if (!currentUser?.companyName) return;
 
   if (!loadSourceDate || loadSourceDate === selectedDate) {
@@ -3246,9 +3252,19 @@ const posY = marker.y;
   const renderDabsPage = () => {
     const selectedTabValue = dabsData[selectedDate]?.[activeDabsKey];
     const isImageTab = activeDabsKey === "highRisk" || activeDabsKey === "equipmentFlow";
-    const isSectionTab = activeDabsKey === "section1" || activeDabsKey === "section2";
-    const isMaterialTab = activeDabsKey === "materialsAfter1" || activeDabsKey === "materialsAfter2";
-    const activeColumns = activeDabsKey === "section1" ? SECTION1_COLUMNS : SECTION2_COLUMNS;
+    const isSectionTab =
+  activeDabsKey === "section1" ||
+  activeDabsKey === "section2" ||
+  activeDabsKey === "fireWork";
+
+const isMaterialTab = activeDabsKey === "materialsAfter1" || activeDabsKey === "materialsAfter2";
+
+const activeColumns =
+  activeDabsKey === "section1"
+    ? SECTION1_COLUMNS
+    : activeDabsKey === "fireWork"
+      ? FIRE_WORK_COLUMNS
+      : SECTION2_COLUMNS;
     const sectionRows =
   typeof selectedTabValue === "object" && selectedTabValue && "rows" in selectedTabValue
     ? selectedTabValue.rows || {}
@@ -3596,7 +3612,9 @@ const posY = marker.y;
     </div>
     <Button
       variant="outline"
-      onClick={() => handleLoadPreviousCompanyData(activeDabsKey as "section1" | "section2")}
+      onClick={() =>
+  handleLoadPreviousCompanyData(activeDabsKey as "section1" | "section2" | "fireWork")
+}
     >
       내 업체 작업 불러오기
     </Button>
