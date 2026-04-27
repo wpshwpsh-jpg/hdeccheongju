@@ -4,7 +4,7 @@ import { getFirebaseServices } from "@/lib/firebase";
 
 import React, { useEffect, useMemo, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { motion } from "framer-motion";
-import { toPng } from "html-to-image";
+import { toJpeg } from "html-to-image";
 import {
   CalendarDays,
   ChevronLeft,
@@ -987,9 +987,10 @@ const handleDownloadCaptureImage = async (
   try {
     const safeFileName = fileName.replace(/[\\/:*?"<>|]/g, "-");
 
-    const image = await toPng(target, {
+    const image = await toJpeg(target, {
   cacheBust: true,
-  pixelRatio: 2,
+  quality: 0.8,
+  pixelRatio: 1,
   backgroundColor: "#ffffff",
   style: {
     backgroundColor: "#ffffff",
