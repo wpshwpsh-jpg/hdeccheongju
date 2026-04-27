@@ -2722,6 +2722,7 @@ if (touchGestureRef.current.moved) {
   <img
   src={selectedImage}
   alt={activeDabsTab.label}
+  crossOrigin="anonymous"
   className="block h-full w-full object-cover md:h-auto"
 />
 ) : (
