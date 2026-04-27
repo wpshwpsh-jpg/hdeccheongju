@@ -4,7 +4,7 @@ import { getFirebaseServices } from "@/lib/firebase";
 
 import React, { useEffect, useMemo, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { motion } from "framer-motion";
-import html2canvas from "html2canvas";
+import { toPng } from "html-to-image";
 import {
   CalendarDays,
   ChevronLeft,
@@ -987,49 +987,14 @@ const handleDownloadCaptureImage = async (
   try {
     const safeFileName = fileName.replace(/[\\/:*?"<>|]/g, "-");
 
-    const canvas = await html2canvas(target, {
+    const image = await toPng(target, {
+  cacheBust: true,
+  pixelRatio: 2,
   backgroundColor: "#ffffff",
-  scale: 2,
-  useCORS: true,
-  allowTaint: false,
-  logging: true,
-  windowWidth: target.scrollWidth,
-  windowHeight: target.scrollHeight,
-  onclone: (clonedDoc) => {
-  clonedDoc.querySelectorAll("button").forEach((el) => {
-    el.remove();
-  });
-
-  clonedDoc.querySelectorAll("*").forEach((el) => {
-    const element = el as HTMLElement;
-
-    element.removeAttribute("class");
-
-    element.style.color = "#000000";
-    element.style.background = "#ffffff";
-    element.style.backgroundColor = "#ffffff";
-    element.style.borderColor = "#000000";
-    element.style.boxShadow = "none";
-    element.style.textShadow = "none";
-    element.style.filter = "none";
-    element.style.backdropFilter = "none";
-  });
-
-  clonedDoc.querySelectorAll("img").forEach((el) => {
-    const image = el as HTMLElement;
-    image.style.background = "transparent";
-    image.style.backgroundColor = "transparent";
-  });
-
-  clonedDoc.querySelectorAll("svg, svg *").forEach((el) => {
-    const svg = el as SVGElement;
-    svg.setAttribute("fill", "#000000");
-    svg.setAttribute("stroke", "#000000");
-  });
-},
+  style: {
+    backgroundColor: "#ffffff",
+  },
 });
-
-    const image = canvas.toDataURL("image/png");
 
     const link = document.createElement("a");
     link.href = image;
