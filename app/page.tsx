@@ -998,20 +998,28 @@ const handleDownloadCaptureImage = async (
   onclone: (clonedDoc) => {
   const style = clonedDoc.createElement("style");
   style.innerHTML = `
-    * {
+    *, *::before, *::after {
       color: #000000 !important;
+      background: #ffffff !important;
       background-color: #ffffff !important;
       border-color: #000000 !important;
       box-shadow: none !important;
       text-shadow: none !important;
+      filter: none !important;
+      backdrop-filter: none !important;
     }
 
     img {
+      background: transparent !important;
       background-color: transparent !important;
     }
 
     svg, svg * {
+      background: transparent !important;
       background-color: transparent !important;
+      fill: #000000 !important;
+      stroke: #000000 !important;
+      filter: none !important;
     }
   `;
   clonedDoc.head.appendChild(style);
