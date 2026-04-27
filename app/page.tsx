@@ -996,33 +996,36 @@ const handleDownloadCaptureImage = async (
   windowWidth: target.scrollWidth,
   windowHeight: target.scrollHeight,
   onclone: (clonedDoc) => {
-  const style = clonedDoc.createElement("style");
-  style.innerHTML = `
-    *, *::before, *::after {
-      color: #000000 !important;
-      background: #ffffff !important;
-      background-color: #ffffff !important;
-      border-color: #000000 !important;
-      box-shadow: none !important;
-      text-shadow: none !important;
-      filter: none !important;
-      backdrop-filter: none !important;
-    }
+  clonedDoc.querySelectorAll("button").forEach((el) => {
+    el.remove();
+  });
 
-    img {
-      background: transparent !important;
-      background-color: transparent !important;
-    }
+  clonedDoc.querySelectorAll("*").forEach((el) => {
+    const element = el as HTMLElement;
 
-    svg, svg * {
-      background: transparent !important;
-      background-color: transparent !important;
-      fill: #000000 !important;
-      stroke: #000000 !important;
-      filter: none !important;
-    }
-  `;
-  clonedDoc.head.appendChild(style);
+    element.removeAttribute("class");
+
+    element.style.color = "#000000";
+    element.style.background = "#ffffff";
+    element.style.backgroundColor = "#ffffff";
+    element.style.borderColor = "#000000";
+    element.style.boxShadow = "none";
+    element.style.textShadow = "none";
+    element.style.filter = "none";
+    element.style.backdropFilter = "none";
+  });
+
+  clonedDoc.querySelectorAll("img").forEach((el) => {
+    const image = el as HTMLElement;
+    image.style.background = "transparent";
+    image.style.backgroundColor = "transparent";
+  });
+
+  clonedDoc.querySelectorAll("svg, svg *").forEach((el) => {
+    const svg = el as SVGElement;
+    svg.setAttribute("fill", "#000000");
+    svg.setAttribute("stroke", "#000000");
+  });
 },
 });
 
