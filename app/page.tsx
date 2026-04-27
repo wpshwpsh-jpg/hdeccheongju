@@ -2720,11 +2720,10 @@ if (touchGestureRef.current.moved) {
       >
   {selectedImage ? (
   <img
-    src={selectedImage}
-    alt={activeDabsTab.label}
-    crossOrigin="anonymous"
-    className="block h-auto w-full object-contain"
-  />
+  src={selectedImage}
+  alt={activeDabsTab.label}
+  className="block h-full w-full object-cover md:h-auto"
+/>
 ) : (
   <div className="flex h-64 items-center justify-center text-sm text-slate-400">
     등록된 사진이 없습니다.
