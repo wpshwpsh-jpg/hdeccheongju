@@ -2817,6 +2817,7 @@ const posY = marker.y;
             })}
                       </>
         )}
+      }
       </div>
     );
   };
