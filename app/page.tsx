@@ -2718,7 +2718,7 @@ if (touchGestureRef.current.moved) {
         onTouchMove={activeDabsKey === "equipmentFlow" ? handleOverlayTouchMove : undefined}
         onTouchEnd={isImageTab ? handleOverlayTouchEnd : undefined}
       >
-  {selectedImage ? <img src={selectedImage ? (
+  {selectedImage ? (
   <img
     src={selectedImage}
     alt={activeDabsTab.label}
