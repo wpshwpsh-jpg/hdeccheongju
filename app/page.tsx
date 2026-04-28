@@ -395,7 +395,7 @@ const tableStyle = {
   th: "border border-slate-500 px-4 py-3 text-left font-bold",
   td: "border border-slate-400 px-4 py-3 align-top leading-relaxed",
   empty: "text-slate-400",
-  companyDivider: "border-t border-dashed border-slate-400",
+  companyDivider: "border-t border-slate-400 [border-top-style:dashed]",
 };
 
 function groupSoloWorkersByCompany(list: DabsRowItem[]): Array<[string, DabsRowItem[]]> {
@@ -3700,64 +3700,116 @@ const activeColumns =
 </div></>}
                 {isMaterialTab && <><div className="grid gap-3 md:grid-cols-6"><select value={materialsInput.gate} onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="1">1게이트</option><option value="7">7게이트</option></select><select value={materialsInput.time} onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500">{MATERIAL_TIMES.map((time) => <option key={time} value={time}>{time}시</option>)}</select><Input value={materialsInput.material} onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })} placeholder="자재명" /><Input value={materialsInput.vehicle} onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })} placeholder="차종" /><Input value={materialsInput.location} onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })} placeholder="하역장소" /><Button onClick={handleAddMaterial} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div><div ref={dabsCaptureRef} className="bg-white">
   {renderMaterialsMobileCards(materialList)}
-  <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead>
-  <tr className="bg-slate-100 text-slate-700">
-    <th rowSpan={2} className="w-[8%] border border-slate-200 px-2 py-2 text-left">시간</th>
-    <th colSpan={4} className="border border-slate-200 px-2 py-2 text-center">1게이트</th>
-    <th colSpan={4} className="border border-slate-200 px-2 py-2 text-center">7게이트</th>
-  </tr>
-  <tr className="bg-slate-100 text-slate-700">
-    <th className="w-[9%] border border-slate-200 px-2 py-2 text-left">업체명</th>
-    <th className="w-[10%] border border-slate-200 px-2 py-2 text-left">자재명</th>
-    <th className="w-[8%] border border-slate-200 px-2 py-2 text-left">차종</th>
-    <th className="w-[13%] border border-slate-200 px-2 py-2 text-left">하역장소</th>
-    <th className="w-[9%] border border-slate-200 px-2 py-2 text-left">업체명</th>
-    <th className="w-[10%] border border-slate-200 px-2 py-2 text-left">자재명</th>
-    <th className="w-[8%] border border-slate-200 px-2 py-2 text-left">차종</th>
-    <th className="w-[13%] border border-slate-200 px-2 py-2 text-left">하역장소</th>
-  </tr>
-</thead><tbody>{MATERIAL_TIMES.map((time) => { const row = materialList.filter((item) => item.time === time); const gate1 = row.filter((item) => item.gate === "1"); const gate7 = row.filter((item) => item.gate === "7"); const renderCell = (items: DabsRowItem[], field: keyof DabsRowItem) =>
-  items.map((item) => (
-    <div key={`${field}-${item.id}`} className="mb-2 flex items-center justify-between gap-1">
-      <span className="whitespace-pre-wrap break-all leading-relaxed">
-  {item[field]}
-</span>
-      {field === "location" && (
-  <div className="flex shrink-0 gap-1">
-    {canAdminEditDabsItem && (
-      <button
-        type="button"
-        onClick={() =>
-          setEditMaterialPopup({
-            open: true,
-            itemId: item.id,
-            gate: item.gate || "",
-            time: item.time || "",
-            company: item.company || "",
-            material: item.material || "",
-            vehicle: item.vehicle || "",
-            location: item.location || "",
-          })
-        }
-        className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-      >
-        수정
-      </button>
-    )}
+  <div className={tableStyle.wrap}>
+  <table className={tableStyle.table}>
+    <thead>
+      <tr className={tableStyle.headRow}>
+        <th rowSpan={2} className={cn(tableStyle.th, "w-[8%] text-center")}>
+          시간
+        </th>
+        <th colSpan={4} className={cn(tableStyle.th, "text-center")}>
+          1게이트
+        </th>
+        <th colSpan={4} className={cn(tableStyle.th, "text-center")}>
+          7게이트
+        </th>
+      </tr>
 
-    {canDeleteOwnItem(item) && (
-      <button
-        type="button"
-        onClick={() => handleDeleteDabsItem(item.id)}
-        className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-      >
-        <X className="h-3 w-3" />
-      </button>
-    )}
-  </div>
-)}
-    </div>
-  )); return <tr key={time}><td className="border border-slate-200 px-3 py-2 font-medium">{time}시</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate1, "company")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate1, "material")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate1, "vehicle")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate1, "location")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate7, "company")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate7, "material")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate7, "vehicle")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate7, "location")}</td></tr>; })}</tbody></table></div>
+      <tr className={tableStyle.headRow}>
+        <th className={cn(tableStyle.th, "w-[9%]")}>업체명</th>
+        <th className={cn(tableStyle.th, "w-[10%]")}>자재명</th>
+        <th className={cn(tableStyle.th, "w-[8%]")}>차종</th>
+        <th className={cn(tableStyle.th, "w-[13%]")}>하역장소</th>
+        <th className={cn(tableStyle.th, "w-[9%]")}>업체명</th>
+        <th className={cn(tableStyle.th, "w-[10%]")}>자재명</th>
+        <th className={cn(tableStyle.th, "w-[8%]")}>차종</th>
+        <th className={cn(tableStyle.th, "w-[13%]")}>하역장소</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {MATERIAL_TIMES.map((time) => {
+        const row = materialList.filter((item) => item.time === time);
+        const gate1 = row.filter((item) => item.gate === "1");
+        const gate7 = row.filter((item) => item.gate === "7");
+
+        const renderCell = (items: DabsRowItem[], field: keyof DabsRowItem) =>
+          items.map((item, index) => {
+            const prev = items[index - 1];
+            const isDivider = index > 0 && prev?.company !== item.company;
+
+            return (
+              <div
+                key={`${field}-${item.id}`}
+                className={cn(
+                  "mb-2 flex items-center justify-between gap-1 px-1 py-1",
+                  index % 2 === 0 ? "bg-white" : "bg-slate-100",
+                  isDivider && "border-t border-slate-400 [border-top-style:dashed]"
+                )}
+              >
+                <span className="whitespace-pre-wrap break-all leading-relaxed">
+                  {item[field]}
+                </span>
+
+                {field === "location" && (
+                  <div className="flex shrink-0 gap-1">
+                    {canAdminEditDabsItem && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditMaterialPopup({
+                            open: true,
+                            itemId: item.id,
+                            gate: item.gate || "",
+                            time: item.time || "",
+                            company: item.company || "",
+                            material: item.material || "",
+                            vehicle: item.vehicle || "",
+                            location: item.location || "",
+                          })
+                        }
+                        className="rounded-full border border-slate-400 bg-white px-2 py-0.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                      >
+                        수정
+                      </button>
+                    )}
+
+                    {canDeleteOwnItem(item) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDabsItem(item.id)}
+                        className="rounded-full border border-slate-400 bg-white p-0.5 text-slate-600 hover:bg-slate-100"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          });
+
+        return (
+          <tr key={time}>
+            <td className={cn(tableStyle.td, "bg-slate-200 text-center font-bold text-slate-900")}>
+              {time}시
+            </td>
+
+            <td className={tableStyle.td}>{renderCell(gate1, "company")}</td>
+            <td className={tableStyle.td}>{renderCell(gate1, "material")}</td>
+            <td className={tableStyle.td}>{renderCell(gate1, "vehicle")}</td>
+            <td className={tableStyle.td}>{renderCell(gate1, "location")}</td>
+
+            <td className={tableStyle.td}>{renderCell(gate7, "company")}</td>
+            <td className={tableStyle.td}>{renderCell(gate7, "material")}</td>
+            <td className={tableStyle.td}>{renderCell(gate7, "vehicle")}</td>
+            <td className={tableStyle.td}>{renderCell(gate7, "location")}</td>
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+</div>
 </div></>}
                 {!isImageTab && !isSectionTab && !isMaterialTab && <><TextArea value={dabsDraft} onChange={(e) => setDabsDraft(e.target.value)} placeholder="회의 내용, 작업사항, 확인사항 등을 입력하세요." /><div className="flex justify-end"><Button onClick={handleSaveDabsText} disabled={!canEditDabs} className="w-full lg:w-auto">저장</Button></div></>}
                 {dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
