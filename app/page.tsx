@@ -395,7 +395,7 @@ const tableStyle = {
   th: "border border-slate-500 px-4 py-3 text-left font-bold",
   td: "border border-slate-400 px-4 py-3 align-top leading-relaxed",
   empty: "text-slate-400",
-  companyDivider: "border-t-4 border-dashed border-slate-600 mt-2",
+  companyDivider: "border-t border-dashed border-slate-400",
 };
 
 function groupSoloWorkersByCompany(list: DabsRowItem[]): Array<[string, DabsRowItem[]]> {
