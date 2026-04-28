@@ -937,8 +937,10 @@ const saveDabsOverlaysToFirestore = async (
   const dabsTabs = useMemo(() => [
   { key: "highRisk", label: "고위험작업" },
   { key: "equipmentFlow", label: "장비동선" },
-  { key: "section1", label: "1공구 작업" },
-  { key: "section2", label: "2공구 작업" },
+  { key: "section1_arch", label: "1공구 작업(건축토목)" },
+{ key: "section1_mep", label: "1공구 작업(기전부)" },
+{ key: "section2_arch", label: "2공구 작업(건축토목)" },
+{ key: "section2_mep", label: "2공구 작업(기전부)" },
   { key: "fireWork", label: "화기작업" },
   { key: "materialsAfter2", label: `${formatShortDate(todayPlusTwo)} 자재반입` },
   { key: "materialsAfter1", label: `${formatShortDate(todayPlusOne)} 자재반입` },
@@ -1692,7 +1694,13 @@ const handleUpdateMaterial = async () => {
 };
   const handleDeleteDabsItem = async (itemId: string, building: string | null = null) => {
 
-  if (activeDabsKey === "section1" || activeDabsKey === "section2" || activeDabsKey === "fireWork") {
+  if (
+  activeDabsKey === "section1_arch" ||
+  activeDabsKey === "section1_mep" ||
+  activeDabsKey === "section2_arch" ||
+  activeDabsKey === "section2_mep" ||
+  activeDabsKey === "fireWork"
+) {
     const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
     const currentRows =
       typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
@@ -3304,14 +3312,16 @@ const posY = marker.y;
     const selectedTabValue = dabsData[selectedDate]?.[activeDabsKey];
     const isImageTab = activeDabsKey === "highRisk" || activeDabsKey === "equipmentFlow";
     const isSectionTab =
-  activeDabsKey === "section1" ||
-  activeDabsKey === "section2" ||
+  activeDabsKey === "section1_arch" ||
+  activeDabsKey === "section1_mep" ||
+  activeDabsKey === "section2_arch" ||
+  activeDabsKey === "section2_mep" ||
   activeDabsKey === "fireWork";
 
 const isMaterialTab = activeDabsKey === "materialsAfter1" || activeDabsKey === "materialsAfter2";
 
 const activeColumns =
-  activeDabsKey === "section1"
+  activeDabsKey === "section1_arch" || activeDabsKey === "section1_mep"
     ? SECTION1_COLUMNS
     : activeDabsKey === "fireWork"
       ? FIRE_WORK_COLUMNS
