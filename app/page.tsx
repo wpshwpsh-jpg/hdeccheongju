@@ -389,13 +389,13 @@ function getCompanyColor(company: string) {
 }
 
 const tableStyle = {
-  wrap: "hidden overflow-x-auto rounded-2xl border border-slate-300 bg-white shadow-sm lg:block",
-  table: "w-full table-fixed border-collapse text-[13px] text-slate-900",
-  headRow: "bg-slate-800 text-white",
-  th: "border border-slate-300 px-3 py-3 text-left font-bold",
-  td: "border border-slate-300 px-3 py-3 align-top leading-relaxed",
+  wrap: "hidden overflow-x-auto rounded-2xl border border-slate-500 bg-white shadow-md lg:block",
+  table: "w-full table-fixed border-collapse text-[14px] text-slate-900",
+  headRow: "bg-slate-900 text-white",
+  th: "border border-slate-500 px-4 py-3 text-left font-bold",
+  td: "border border-slate-400 px-4 py-3 align-top leading-relaxed",
   empty: "text-slate-400",
-  companyDivider: "border-t-2 border-dashed border-slate-300",
+  companyDivider: "border-t-4 border-dashed border-slate-600 mt-2",
 };
 
 function groupSoloWorkersByCompany(list: DabsRowItem[]): Array<[string, DabsRowItem[]]> {
@@ -3114,12 +3114,18 @@ const posY = marker.y;
               <tr
                 key={item.id}
                 className={cn(
-                  index % 2 === 0 ? "bg-white" : "bg-slate-50",
+                  index % 2 === 0 ? "bg-white" : "bg-slate-100",
                   isDivider && tableStyle.companyDivider
                 )}
               >
                 {index === 0 && (
-                  <td rowSpan={list.length} className={tableStyle.td}>
+  <td
+    rowSpan={list.length}
+    className={cn(
+      tableStyle.td,
+      "bg-slate-200 text-center font-bold text-slate-900"
+    )}
+  >
                     {col}
                   </td>
                 )}
@@ -3666,12 +3672,18 @@ const activeColumns =
             <tr
               key={item.id}
               className={cn(
-                index % 2 === 0 ? "bg-white" : "bg-slate-50",
+                index % 2 === 0 ? "bg-white" : "bg-slate-100",
                 isDivider && tableStyle.companyDivider
               )}
             >
               {index === 0 && (
-                <td rowSpan={list.length} className={tableStyle.td}>
+  <td
+    rowSpan={list.length}
+    className={cn(
+      tableStyle.td,
+      "bg-slate-200 text-center font-bold text-slate-900"
+    )}
+  >
                   {col}
                 </td>
               )}
