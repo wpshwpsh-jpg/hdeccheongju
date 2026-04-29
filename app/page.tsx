@@ -757,6 +757,7 @@ const [editMaterialPopup, setEditMaterialPopup] = useState({
 });
 
 const [soloCompanyFilter, setSoloCompanyFilter] = useState("");
+const [isCapturingImage, setIsCapturingImage] = useState(false);
   const imageAreaRef = useRef<HTMLDivElement | null>(null);
 const dabsCaptureRef = useRef<HTMLDivElement | null>(null);
 const soloWorkerCaptureRef = useRef<HTMLDivElement | null>(null);
@@ -1087,17 +1088,20 @@ const handleDownloadCaptureImage = async (
   }
 
   try {
+    setIsCapturingImage(true);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
     const safeFileName = fileName.replace(/[\\/:*?"<>|]/g, "-");
 
     const image = await toJpeg(target, {
-  cacheBust: true,
-  quality: 0.8,
-  pixelRatio: 1,
-  backgroundColor: "#ffffff",
-  style: {
-    backgroundColor: "#ffffff",
-  },
-});
+      cacheBust: true,
+      quality: 0.8,
+      pixelRatio: 1,
+      backgroundColor: "#ffffff",
+      style: {
+        backgroundColor: "#ffffff",
+      },
+    });
 
     const link = document.createElement("a");
     link.href = image;
@@ -1108,6 +1112,8 @@ const handleDownloadCaptureImage = async (
   } catch (error) {
     console.log("IMAGE DOWNLOAD ERROR:", error);
     alert("이미지 저장 중 오류가 발생했습니다. 콘솔을 확인하세요.");
+  } finally {
+    setIsCapturingImage(false);
   }
 };
 
@@ -2928,7 +2934,8 @@ const posY = marker.y;
                     {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold leading-none shadow-sm lg:text-[11px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm lg:p-1"><EquipmentIcon type={marker.equipmentType} className="h-4 w-4 lg:h-10 lg:w-10" /></span></> : null}
                     {isHighRiskMarker ? <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2"><div className="text-[12px] font-bold leading-none tracking-tight lg:text-[13px]">{marker.building || "동 미선택"}</div><div className="mt-1 text-[13px] font-semibold leading-tight lg:text-[15px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[17px]">{marker.note || "작업내용 없음"}</div></div> : <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2"><div className="text-[13px] font-semibold leading-tight lg:text-[16px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[17px]">{marker.note || "작업내용 없음"}</div></div>}
                   </div>
-                  <div className="absolute -top-8 -right-2 z-20 flex gap-1 lg:-top-6 lg:right-1">
+                  {!isCapturingImage && (
+<div className="absolute -top-8 -right-2 z-20 flex gap-1 lg:-top-6 lg:right-1">
   {canAdminEditDabsItem && (
     <button
       type="button"
@@ -2971,6 +2978,7 @@ const posY = marker.y;
     </button>
   )}
 </div>
+)}
   </div>
 </div>
               );
@@ -3109,41 +3117,43 @@ const posY = marker.y;
                 </div>
 
                 <div className="mt-1 flex items-start justify-between gap-2">
-                  <span className="text-slate-900">
+                  <span className="text-slate-900 whitespace-pre-wrap break-all leading-relaxed">
                     {renderTextWithRedRanges(item.content, item.contentRedRanges)}
                   </span>
 
-                  <div className="flex shrink-0 gap-1">
-                    {canAdminEditDabsItem && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setEditSectionPopup({
-                            open: true,
-                            itemId: item.id,
-                            oldBuilding: col,
-                            building: col,
-                            company: item.company || "",
-                            content: item.content || "",
-                            contentRedRanges: item.contentRedRanges || [],
-                          })
-                        }
-                        className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
-                      >
-                        수정
-                      </button>
-                    )}
+                  {!isCapturingImage && (
+                    <div className="flex shrink-0 gap-1">
+                      {canAdminEditDabsItem && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditSectionPopup({
+                              open: true,
+                              itemId: item.id,
+                              oldBuilding: col,
+                              building: col,
+                              company: item.company || "",
+                              content: item.content || "",
+                              contentRedRanges: item.contentRedRanges || [],
+                            })
+                          }
+                          className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
+                        >
+                          수정
+                        </button>
+                      )}
 
-                    {canDeleteOwnItem(item) && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteDabsItem(item.id, col)}
-                        className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
+                      {canDeleteOwnItem(item) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDabsItem(item.id, col)}
+                          className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))
@@ -3155,85 +3165,130 @@ const posY = marker.y;
 );
 
   const renderMaterialsMobileCards = (list: DabsRowItem[]) => (
-    <div className="space-y-3 lg:hidden">
-      {MATERIAL_TIMES.map((time) => {
-        const row = list.filter((item) => item.time === time);
-        const gate1 = row.filter((item) => item.gate === "1");
-        const gate7 = row.filter((item) => item.gate === "7");
-        return <MobileListCard key={time} title={`${time}시`}><div className="grid gap-3 md:grid-cols-2"><div><div className="mb-2 text-xs font-semibold text-slate-500">1게이트</div>{gate1.length === 0 ? <div className="text-slate-400">입력 없음</div> : gate1.map((item) => <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 text-sm">자재명: {item.material}</div><div className="text-sm">차종: {item.vehicle}</div><div className="mt-1 flex items-start justify-between gap-2 text-sm">
-  <span>하역장소: {item.location}</span>
+  <div className="space-y-3 lg:hidden">
+    {MATERIAL_TIMES.map((time) => {
+      const row = list.filter((item) => item.time === time);
+      const gate1 = row.filter((item) => item.gate === "1");
+      const gate7 = row.filter((item) => item.gate === "7");
 
-  <div className="flex shrink-0 gap-1">
-    {canAdminEditDabsItem && (
-      <button
-        type="button"
-        onClick={() =>
-          setEditMaterialPopup({
-            open: true,
-            itemId: item.id,
-            gate: item.gate || "",
-            time: item.time || "",
-            company: item.company || "",
-            material: item.material || "",
-            vehicle: item.vehicle || "",
-            location: item.location || "",
-          })
-        }
-        className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
-      >
-        수정
-      </button>
-    )}
+      return (
+        <MobileListCard key={time} title={`${time}시`}>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <div className="mb-2 text-xs font-semibold text-slate-500">1게이트</div>
 
-    {canDeleteOwnItem(item) && (
-      <button
-        type="button"
-        onClick={() => handleDeleteDabsItem(item.id)}
-        className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-      >
-        <X className="h-3 w-3" />
-      </button>
-    )}
+              {gate1.length === 0 ? (
+                <div className="text-slate-400">입력 없음</div>
+              ) : (
+                gate1.map((item) => (
+                  <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3">
+                    <div className="text-xs font-medium text-slate-500">{item.company}</div>
+                    <div className="mt-1 text-sm">자재명: {item.material}</div>
+                    <div className="text-sm">차종: {item.vehicle}</div>
+
+                    <div className="mt-1 flex items-start justify-between gap-2 text-sm">
+                      <span>하역장소: {item.location}</span>
+
+                      {!isCapturingImage && (
+                        <div className="flex shrink-0 gap-1">
+                          {canAdminEditDabsItem && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditMaterialPopup({
+                                  open: true,
+                                  itemId: item.id,
+                                  gate: item.gate || "",
+                                  time: item.time || "",
+                                  company: item.company || "",
+                                  material: item.material || "",
+                                  vehicle: item.vehicle || "",
+                                  location: item.location || "",
+                                })
+                              }
+                              className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
+                            >
+                              수정
+                            </button>
+                          )}
+
+                          {canDeleteOwnItem(item) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDabsItem(item.id)}
+                              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div>
+              <div className="mb-2 text-xs font-semibold text-slate-500">7게이트</div>
+
+              {gate7.length === 0 ? (
+                <div className="text-slate-400">입력 없음</div>
+              ) : (
+                gate7.map((item) => (
+                  <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3">
+                    <div className="text-xs font-medium text-slate-500">{item.company}</div>
+                    <div className="mt-1 text-sm">자재명: {item.material}</div>
+                    <div className="text-sm">차종: {item.vehicle}</div>
+
+                    <div className="mt-1 flex items-start justify-between gap-2 text-sm">
+                      <span>하역장소: {item.location}</span>
+
+                      {!isCapturingImage && (
+                        <div className="flex shrink-0 gap-1">
+                          {canAdminEditDabsItem && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditMaterialPopup({
+                                  open: true,
+                                  itemId: item.id,
+                                  gate: item.gate || "",
+                                  time: item.time || "",
+                                  company: item.company || "",
+                                  material: item.material || "",
+                                  vehicle: item.vehicle || "",
+                                  location: item.location || "",
+                                })
+                              }
+                              className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
+                            >
+                              수정
+                            </button>
+                          )}
+
+                          {canDeleteOwnItem(item) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDabsItem(item.id)}
+                              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </MobileListCard>
+      );
+    })}
   </div>
-</div></div>)}</div><div><div className="mb-2 text-xs font-semibold text-slate-500">7게이트</div>{gate7.length === 0 ? <div className="text-slate-400">입력 없음</div> : gate7.map((item) => <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3"><div className="text-xs font-medium text-slate-500">{item.company}</div><div className="mt-1 text-sm">자재명: {item.material}</div><div className="text-sm">차종: {item.vehicle}</div><div className="mt-1 flex items-start justify-between gap-2 text-sm">
-  <span>하역장소: {item.location}</span>
-
-  <div className="flex shrink-0 gap-1">
-    {canAdminEditDabsItem && (
-      <button
-        type="button"
-        onClick={() =>
-          setEditMaterialPopup({
-            open: true,
-            itemId: item.id,
-            gate: item.gate || "",
-            time: item.time || "",
-            company: item.company || "",
-            material: item.material || "",
-            vehicle: item.vehicle || "",
-            location: item.location || "",
-          })
-        }
-        className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
-      >
-        수정
-      </button>
-    )}
-
-    {canDeleteOwnItem(item) && (
-      <button
-        type="button"
-        onClick={() => handleDeleteDabsItem(item.id)}
-        className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-      >
-        <X className="h-3 w-3" />
-      </button>
-    )}
-  </div>
-</div></div>)}</div></div></MobileListCard>;
-      })}
-    </div>
-  );
+);
 
   const renderSoloWorkerDesktopTable = () => (
   <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
@@ -3322,7 +3377,8 @@ const posY = marker.y;
                         {item.content}
                       </span>
 
-                      <div className="flex shrink-0 gap-1">
+                      {!isCapturingImage && (
+<div className="flex shrink-0 gap-1">
                         {canAdminEditDabsItem && (
                           <button
                             type="button"
@@ -3353,7 +3409,8 @@ const posY = marker.y;
                             <X className="h-3 w-3" />
                           </button>
                         )}
-                      </div>
+</div>
+)}
                     </div>
                   </td>
 
@@ -3410,38 +3467,40 @@ const posY = marker.y;
                   </div>
                 </div>
 
-                <div className="flex shrink-0 gap-1">
-                  {canAdminEditDabsItem && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setEditSoloPopup({
-                          open: true,
-                          itemId: item.id,
-                          oldBuilding: item.building,
-                          building: item.building,
-                          company: item.company || "",
-                          name: item.name || "",
-                          content: item.content || "",
-                          elderly: item.elderly || "x",
-                        })
-                      }
-                      className="rounded-full border border-slate-300 px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
-                    >
-                      수정
-                    </button>
-                  )}
+                {!isCapturingImage && (
+                  <div className="flex shrink-0 gap-1">
+                    {canAdminEditDabsItem && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditSoloPopup({
+                            open: true,
+                            itemId: item.id,
+                            oldBuilding: item.building,
+                            building: item.building,
+                            company: item.company || "",
+                            name: item.name || "",
+                            content: item.content || "",
+                            elderly: item.elderly || "x",
+                          })
+                        }
+                        className="rounded-full border border-slate-300 px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
+                      >
+                        수정
+                      </button>
+                    )}
 
-                  {canDeleteOwnItem(item) && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteSoloWorker(item.id, item.building)}
-                      className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
+                    {canDeleteOwnItem(item) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSoloWorker(item.id, item.building)}
+                        className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2 text-sm">
@@ -4025,100 +4084,109 @@ const activeColumns =
 
 <div ref={dabsCaptureRef} className="bg-white">
   {renderSectionMobileCards(activeColumns, sectionRows)}
+
   <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block">
-  <table className={TABLE_BASE_CLASS}>
-    <thead>
-      <tr className="bg-slate-100 text-slate-700">
-        <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
-        <th className="border border-black px-3 py-2 text-left w-[18%]">업체명</th>
-        <th className="border border-black px-3 py-2 text-left">작업내용</th>
-      </tr>
-    </thead>
+    <table className={TABLE_BASE_CLASS}>
+      <colgroup>
+        <col style={{ width: "9%" }} />
+        <col style={{ width: "18%" }} />
+        <col style={{ width: "36.5%" }} />
+      </colgroup>
 
-    <tbody>
-      {activeColumns.map((col) => {
-        const list = sectionRows[col] || [];
+      <thead>
+        <tr className="bg-slate-100 text-slate-700">
+          <th className="border border-black px-3 py-2 text-left">동</th>
+          <th className="border border-black px-3 py-2 text-left">업체명</th>
+          <th className="border border-black px-3 py-2 text-left">작업내용</th>
+        </tr>
+      </thead>
 
-        return (
-          <tr key={col}>
-            <td className="border border-black px-3 py-2 font-medium text-slate-700">
-              {col}
-            </td>
+      <tbody>
+        {activeColumns.map((col) => {
+          const list = sectionRows[col] || [];
 
-            <td className="border border-black px-3 py-2 align-top">
-              {list.length === 0 ? (
-                <span className="text-slate-300">-</span>
-              ) : (
-                list.map((item, index) => (
-                  <div
-                    key={`company-${item.id}`}
-                    className={cn("mb-2", dottedRow(index))}
-                  >
-                    {item.company}
-                  </div>
-                ))
-              )}
-            </td>
+          return (
+            <tr key={col}>
+              <td className="border border-black px-3 py-2 font-medium text-slate-700">
+                {col}
+              </td>
 
-            <td className="border border-black px-3 py-2 align-top">
-  {list.length === 0 ? (
-    <span className="text-slate-300">-</span>
-  ) : (
-    list.map((item, index) => (
-      <div
-        key={`content-${item.id}`}
-        className={cn(
-          "mb-2 flex items-center justify-between gap-2",
-          dottedRow(index)
-        )}
-      >
-        <span className="whitespace-pre-wrap break-all leading-relaxed">
-          {renderTextWithRedRanges(item.content, item.contentRedRanges)}
-        </span>
+              <td className="border border-black px-3 py-2 align-top">
+                {list.length === 0 ? (
+                  <span className="text-slate-300">-</span>
+                ) : (
+                  list.map((item, index) => (
+                    <div
+                      key={`company-${item.id}`}
+                      className={cn("mb-2", dottedRow(index))}
+                    >
+                      {item.company}
+                    </div>
+                  ))
+                )}
+              </td>
 
-        <div className="flex shrink-0 items-center gap-1">
-          {canAdminEditDabsItem && (
-            <button
-              type="button"
-              onClick={() =>
-                setEditSectionPopup({
-                  open: true,
-                  itemId: item.id,
-                  oldBuilding: col,
-                  building: col,
-                  company: item.company || "",
-                  content: item.content || "",
-                  contentRedRanges: item.contentRedRanges || [],
-                })
-              }
-              className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-              title="수정"
-            >
-              수정
-            </button>
-          )}
+              <td className="border border-black px-3 py-2 align-top">
+                {list.length === 0 ? (
+                  <span className="text-slate-300">-</span>
+                ) : (
+                  list.map((item, index) => (
+                    <div
+                      key={`content-${item.id}`}
+                      className={cn(
+                        "mb-2 flex items-start justify-between gap-2",
+                        dottedRow(index)
+                      )}
+                    >
+                      <span className="block w-full whitespace-pre-wrap break-all leading-relaxed">
+                        {renderTextWithRedRanges(item.content, item.contentRedRanges)}
+                      </span>
 
-          {canDeleteOwnItem(item) && (
-            <button
-              type="button"
-              onClick={() => handleDeleteDabsItem(item.id, col)}
-              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-              title="삭제"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-      </div>
-    ))
-  )}
-</td>
-          </tr>
-        );
-      })}
-    </tbody>
-  </table>
-</div>
+                      {!isCapturingImage && (
+                        <div className="flex shrink-0 items-center gap-1">
+                          {canAdminEditDabsItem && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditSectionPopup({
+                                  open: true,
+                                  itemId: item.id,
+                                  oldBuilding: col,
+                                  building: col,
+                                  company: item.company || "",
+                                  content: item.content || "",
+                                  contentRedRanges: item.contentRedRanges || [],
+                                })
+                              }
+                              className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                              title="수정"
+                            >
+                              수정
+                            </button>
+                          )}
+
+                          {canDeleteOwnItem(item) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteDabsItem(item.id, col)}
+                              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                              title="삭제"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
 </div></>}
                 {isMaterialTab && <><div className="grid gap-3 md:grid-cols-7">
   <select
@@ -4199,10 +4267,10 @@ const activeColumns =
       )}
     >
       <span className="whitespace-pre-wrap break-all leading-relaxed">
-  {String(item[field] || "")}
-</span>
+        {String(item[field] || "")}
+      </span>
 
-      {field === "location" && (
+      {field === "location" && !isCapturingImage && (
         <div className="flex shrink-0 gap-1">
           {canAdminEditDabsItem && (
             <button
