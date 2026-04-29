@@ -4199,8 +4199,8 @@ const activeColumns =
       )}
     >
       <span className="whitespace-pre-wrap break-all leading-relaxed">
-        {item[field]}
-      </span>
+  {String(item[field] || "")}
+</span>
 
       {field === "location" && (
         <div className="flex shrink-0 gap-1">
