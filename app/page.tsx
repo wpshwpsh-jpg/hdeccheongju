@@ -3713,7 +3713,7 @@ const activeColumns =
 
   <div className="grid gap-3 md:grid-cols-[220px_1fr_auto]"><select value={sectionInput.building} onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{activeColumns.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={sectionInput.content} onChange={(e) => setSectionInput({ ...sectionInput, content: e.target.value })} placeholder="작업내용 입력" /><Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div><div ref={dabsCaptureRef} className="bg-white">
   {renderSectionMobileCards(activeColumns, sectionRows)}
-  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block [&_td]:border-black [&_th]:border-black"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-slate-200 px-3 py-2 text-left w-[9%]">동</th><th className="border border-slate-200 px-3 py-2 text-left w-[18%]">업체명</th><th className="border border-slate-200 px-3 py-2 text-left">작업내용</th></tr></thead><tbody>{activeColumns.map((col) => { const list = sectionRows[col] || []; return <tr key={col}><td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{col}</td><td className="border border-slate-200 px-3 py-2 align-top">
+  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block [&_td]:border-black [&_th]:border-black"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-slate-200 px-3 py-2 text-left w-[9%]">동</th><th className="border border-slate-200 px-3 py-2 text-left w-[18%]">업체명</th><th className="border border-slate-200 px-3 py-2 text-left">작업내용</th></tr></thead><tbody>{activeColumns.map((col) => { const list = sectionRows[col] || []; return <tr key={col}><td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{col}<td className="border border-slate-200 px-3 py-2 align-top">
   {list.length === 0 ? (
     <span className="text-slate-300">-</span>
   ) : (
@@ -3726,11 +3726,17 @@ const activeColumns =
       </div>
     ))
   )}
-</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => (
-  <div
-    key={`content-${item.id}`}
-    className="mb-2 border-b border-dashed border-black pb-2 last:mb-0 last:border-b-0 last:pb-0 flex items-center justify-between gap-2"
-  ><span className="whitespace-pre-wrap break-all leading-relaxed">
+</td>
+
+<td className="border border-slate-200 px-3 py-2 align-top">
+  {list.length === 0 ? (
+    <span className="text-slate-300">-</span>
+  ) : (
+    list.map((item) => (
+      <div
+        key={`content-${item.id}`}
+        className="mb-2 border-b border-dashed border-black pb-2 last:mb-0 last:border-b-0 last:pb-0 flex items-center justify-between gap-2"
+      ><span className="whitespace-pre-wrap break-all leading-relaxed">
   {item.content}
 </span>
 
