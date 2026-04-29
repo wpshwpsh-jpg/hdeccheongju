@@ -586,7 +586,7 @@ const [editEntryPopup, setEditEntryPopup] = useState({
 >({});
   const [dabsDraft, setDabsDraft] = useState("");
   const [dabsMessage, setDabsMessage] = useState("");
-  const [sectionInput, setSectionInput] = useState({ building: "", content: "" });
+  const [sectionInput, setSectionInput] = useState({ building: "", company: "", content: "" });
   const [editSectionPopup, setEditSectionPopup] = useState<{
   open: boolean;
   itemId: string;
@@ -602,7 +602,7 @@ const [editEntryPopup, setEditEntryPopup] = useState({
   company: "",
   content: "",
 });
-  const [materialsInput, setMaterialsInput] = useState({ gate: "1", material: "", vehicle: "", location: "", time: "06" });
+  const [materialsInput, setMaterialsInput] = useState({ gate: "1", company: "", material: "", vehicle: "", location: "", time: "06" });
   const [imagePopup, setImagePopup] = useState({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
 
 const [editOverlayPopup, setEditOverlayPopup] = useState({
@@ -634,7 +634,7 @@ const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   createdByUid?: string;
   createdByName?: string;
 } | null>(null);
-  const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", name: "", content: "", elderly: "x" });
+  const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
   const [editSoloPopup, setEditSoloPopup] = useState({
   open: false,
   itemId: "",
@@ -1486,7 +1486,17 @@ const cancelApprovalUser = async (uid: string) => {
 };
 
   const handleAddSectionWork = async () => {
-  if (!canEditDabs || !sectionInput.building || !sectionInput.content) return;
+  if (!canEditDabs || !sectionInput.building || !sectionInput.content.trim()) return;
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? sectionInput.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
 
   const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
   const currentRows =
@@ -1494,7 +1504,6 @@ const cancelApprovalUser = async (uid: string) => {
       ? currentTabValue.rows || {}
       : {};
 
-  const companyName = currentUser?.companyName || "";
   const buildingRows = currentRows[sectionInput.building] || [];
   const existingIndex = buildingRows.findIndex((item) => item.company === companyName);
 
@@ -1504,19 +1513,19 @@ const cancelApprovalUser = async (uid: string) => {
           index === existingIndex
             ? {
                 ...item,
-                content: `${item.content || ""}/${sectionInput.content}`,
+                content: `${item.content || ""}/${sectionInput.content.trim()}`,
               }
             : item
         )
       : [
           ...buildingRows,
           {
-  id: createLocalId("section"),
-  company: companyName,
-  content: sectionInput.content,
-  createdByUid: currentUser?.uid,
-  createdByName: currentUser?.name,
-},
+            id: createLocalId("section"),
+            company: companyName,
+            content: sectionInput.content.trim(),
+            createdByUid: currentUser?.uid,
+            createdByName: currentUser?.name,
+          },
         ];
 
   const nextRows = {
@@ -1533,15 +1542,25 @@ const cancelApprovalUser = async (uid: string) => {
   };
 
   setDabsData(nextData);
-  
+
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
-  setSectionInput({ building: "", content: "" });
+  setSectionInput({ building: "", company: "", content: "" });
   setDabsMessage("저장되었습니다.");
 };
 
   const handleAddMaterial = async () => {
   const { gate, material, vehicle, location, time } = materialsInput;
-  if (!canEditDabs || !material || !vehicle || !location) return;
+  if (!canEditDabs || !material.trim() || !vehicle.trim() || !location.trim()) return;
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? materialsInput.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
 
   const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
   const list =
@@ -1549,21 +1568,19 @@ const cancelApprovalUser = async (uid: string) => {
       ? currentTabValue.list || []
       : [];
 
-  const companyName = currentUser?.companyName || "";
-
   const nextList = [
     ...list,
     {
-  id: createLocalId("material"),
-  gate,
-  material,
-  vehicle,
-  location,
-  time,
-  company: companyName,
-  createdByUid: currentUser?.uid,
-  createdByName: currentUser?.name,
-},
+      id: createLocalId("material"),
+      gate,
+      material: material.trim(),
+      vehicle: vehicle.trim(),
+      location: location.trim(),
+      time,
+      company: companyName,
+      createdByUid: currentUser?.uid,
+      createdByName: currentUser?.name,
+    },
   ];
 
   const nextData = {
@@ -1575,9 +1592,9 @@ const cancelApprovalUser = async (uid: string) => {
   };
 
   setDabsData(nextData);
-  
+
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
-  setMaterialsInput({ gate: "1", material: "", vehicle: "", location: "", time: "06" });
+  setMaterialsInput({ gate: "1", company: "", material: "", vehicle: "", location: "", time: "06" });
   setDabsMessage("저장되었습니다.");
 };
 
@@ -1860,6 +1877,16 @@ const handleLoadPreviousCompanyData = async (targetKey: "section1" | "section2" 
 const handleAddSoloWorker = async () => {
   if (!canEditDabs || !soloWorkerInput.building || !soloWorkerInput.name.trim() || !soloWorkerInput.content.trim()) return;
 
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? soloWorkerInput.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
+
   const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
 
   const nextRows = {
@@ -1868,7 +1895,7 @@ const handleAddSoloWorker = async () => {
       ...(currentRows[soloWorkerInput.building] || []),
       {
         id: createLocalId("solo-worker"),
-        company: currentUser?.companyName || "",
+        company: companyName,
         name: soloWorkerInput.name.trim(),
         content: soloWorkerInput.content.trim(),
         elderly: soloWorkerInput.elderly,
@@ -1888,7 +1915,7 @@ const handleAddSoloWorker = async () => {
 
   setDabsData(nextData);
   await saveSoloWorkersToFirestore(selectedDate, nextRows);
-  setSoloWorkerInput({ building: "", name: "", content: "", elderly: "x" });
+  setSoloWorkerInput({ building: "", company: "", name: "", content: "", elderly: "x" });
 };
 
   const handleUpdateSoloWorker = async () => {
@@ -3725,7 +3752,40 @@ const activeColumns =
     </Button>
   </div>
 
-  <div className="grid gap-3 md:grid-cols-[220px_1fr_auto]"><select value={sectionInput.building} onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{activeColumns.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={sectionInput.content} onChange={(e) => setSectionInput({ ...sectionInput, content: e.target.value })} placeholder="작업내용 입력" /><Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div><div ref={dabsCaptureRef} className="bg-white">
+  <div className="grid gap-3 md:grid-cols-[180px_200px_1fr_auto]">
+  <select
+    value={sectionInput.building}
+    onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })}
+    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+  >
+    <option value="">동 선택</option>
+    {activeColumns.map((column) => (
+      <option key={column} value={column}>
+        {column}
+      </option>
+    ))}
+  </select>
+
+  {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+    <Input
+      value={sectionInput.company}
+      onChange={(e) => setSectionInput({ ...sectionInput, company: e.target.value })}
+      placeholder="업체명 입력"
+    />
+  )}
+
+  <Input
+    value={sectionInput.content}
+    onChange={(e) => setSectionInput({ ...sectionInput, content: e.target.value })}
+    placeholder="작업내용 입력"
+  />
+
+  <Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">
+    추가
+  </Button>
+</div>
+
+<div ref={dabsCaptureRef} className="bg-white">
   {renderSectionMobileCards(activeColumns, sectionRows)}
   <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block">
   <table className={TABLE_BASE_CLASS}>
@@ -3821,7 +3881,58 @@ const activeColumns =
   </table>
 </div>
 </div></>}
-                {isMaterialTab && <><div className="grid gap-3 md:grid-cols-6"><select value={materialsInput.gate} onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="1">1게이트</option><option value="7">7게이트</option></select><select value={materialsInput.time} onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500">{MATERIAL_TIMES.map((time) => <option key={time} value={time}>{time}시</option>)}</select><Input value={materialsInput.material} onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })} placeholder="자재명" /><Input value={materialsInput.vehicle} onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })} placeholder="차종" /><Input value={materialsInput.location} onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })} placeholder="하역장소" /><Button onClick={handleAddMaterial} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div><div ref={dabsCaptureRef} className="bg-white">
+                {isMaterialTab && <><div className="grid gap-3 md:grid-cols-7">
+  <select
+    value={materialsInput.gate}
+    onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })}
+    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+  >
+    <option value="1">1게이트</option>
+    <option value="7">7게이트</option>
+  </select>
+
+  <select
+    value={materialsInput.time}
+    onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })}
+    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+  >
+    {MATERIAL_TIMES.map((time) => (
+      <option key={time} value={time}>
+        {time}시
+      </option>
+    ))}
+  </select>
+
+  {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+    <Input
+      value={materialsInput.company}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, company: e.target.value })}
+      placeholder="업체명"
+    />
+  )}
+
+  <Input
+    value={materialsInput.material}
+    onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })}
+    placeholder="자재명"
+  />
+
+  <Input
+    value={materialsInput.vehicle}
+    onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })}
+    placeholder="차종"
+  />
+
+  <Input
+    value={materialsInput.location}
+    onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })}
+    placeholder="하역장소"
+  />
+
+  <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="w-full md:w-auto">
+    추가
+  </Button>
+</div><div ref={dabsCaptureRef} className="bg-white">
   {renderMaterialsMobileCards(materialList)}
   <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block"><table className={TABLE_BASE_CLASS}><thead>
   <tr className="bg-slate-100 text-slate-700">
@@ -4040,7 +4151,53 @@ const activeColumns =
   </Button>
 </div>
 
-<div className="grid gap-3 xl:grid-cols-[150px_150px_1fr_120px_auto]"><select value={soloWorkerInput.building} onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{SOLO_WORKER_COLUMNS.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={soloWorkerInput.name} onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, name: e.target.value })} placeholder="성명 입력" /><Input value={soloWorkerInput.content} onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, content: e.target.value })} placeholder="작업 내용 입력" /><select value={soloWorkerInput.elderly} onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, elderly: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="o">고령자 o</option><option value="x">고령자 x</option></select><Button onClick={handleAddSoloWorker} disabled={!canEditDabs} className="w-full xl:w-auto">추가</Button></div><div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input className="pl-9" value={soloCompanyFilter} onChange={(e) => setSoloCompanyFilter(e.target.value)} placeholder="업체명 검색" /></div><div className="text-xs text-slate-500">고령자 o는 강조 표시되며, 업체별 색상이 자동 적용됩니다.</div></div>{dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
+<div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
+  <select
+    value={soloWorkerInput.building}
+    onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, building: e.target.value })}
+    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+  >
+    <option value="">동 선택</option>
+    {SOLO_WORKER_COLUMNS.map((column) => (
+      <option key={column} value={column}>
+        {column}
+      </option>
+    ))}
+  </select>
+
+  {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+    <Input
+      value={soloWorkerInput.company}
+      onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, company: e.target.value })}
+      placeholder="업체명 입력"
+    />
+  )}
+
+  <Input
+    value={soloWorkerInput.name}
+    onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, name: e.target.value })}
+    placeholder="성명 입력"
+  />
+
+  <Input
+    value={soloWorkerInput.content}
+    onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, content: e.target.value })}
+    placeholder="작업 내용 입력"
+  />
+
+  <select
+    value={soloWorkerInput.elderly}
+    onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, elderly: e.target.value })}
+    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+  >
+    <option value="o">고령자 o</option>
+    <option value="x">고령자 x</option>
+  </select>
+
+  <Button onClick={handleAddSoloWorker} disabled={!canEditDabs} className="w-full xl:w-auto">
+    추가
+  </Button>
+</div><div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input className="pl-9" value={soloCompanyFilter} onChange={(e) => setSoloCompanyFilter(e.target.value)} placeholder="업체명 검색" /></div><div className="text-xs text-slate-500">고령자 o는 강조 표시되며, 업체별 색상이 자동 적용됩니다.</div></div>{dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
 <div ref={soloWorkerCaptureRef} className="bg-white">
   {renderSoloWorkerMobileCards()}
   {renderSoloWorkerDesktopTable()}
