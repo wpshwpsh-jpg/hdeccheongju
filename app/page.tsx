@@ -4082,7 +4082,10 @@ const activeColumns =
   </Button>
 </div>
 
-<div ref={dabsCaptureRef} className="bg-white">
+<div
+  ref={dabsCaptureRef}
+  className={cn("bg-white", isCapturingImage && "inline-block")}
+>
   {renderSectionMobileCards(activeColumns, sectionRows)}
 
   <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block">
