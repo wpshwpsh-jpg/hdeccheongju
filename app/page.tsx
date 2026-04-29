@@ -2949,7 +2949,10 @@ const posY = marker.y;
             <div className="text-slate-400">입력 없음</div>
           ) : (
             list.map((item) => (
-              <div key={item.id} className="rounded-xl bg-slate-50 p-3">
+              <div
+  key={item.id}
+  className="rounded-xl bg-slate-50 p-3 border-b border-dashed border-black last:border-b-0"
+>
                 <div className="text-xs font-medium text-slate-500">
                   {item.company}
                 </div>
@@ -3712,12 +3715,16 @@ const activeColumns =
   {renderSectionMobileCards(activeColumns, sectionRows)}
   <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block [&_td]:border-black [&_th]:border-black"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-slate-200 px-3 py-2 text-left w-[9%]">동</th><th className="border border-slate-200 px-3 py-2 text-left w-[18%]">업체명</th><th className="border border-slate-200 px-3 py-2 text-left">작업내용</th></tr></thead><tbody>{activeColumns.map((col) => { const list = sectionRows[col] || []; return <tr key={col}><td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{col}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => (
   <div
-    key={`company-${item.id}`}
-    className="mb-2 border-b border-dashed border-black pb-2 last:mb-0 last:border-b-0 last:pb-0"
-  >
-    {item.company}
-  </div>
-))}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`content-${item.id}`} className="mb-2 flex items-center justify-between gap-2"><span className="whitespace-pre-wrap break-all leading-relaxed">
+  key={`company-${item.id}`}
+  className="mb-2 border-b border-dashed border-black pb-2 last:mb-0 last:border-b-0 last:pb-0"
+>
+  {item.company}
+</div>
+))}</td><td className="border border-slate-200 px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => (
+  <div
+    key={`content-${item.id}`}
+    className="mb-2 border-b border-dashed border-black pb-2 last:mb-0 last:border-b-0 last:pb-0 flex items-center justify-between gap-2"
+  ><span className="whitespace-pre-wrap break-all leading-relaxed">
   {item.content}
 </span>
 
@@ -3778,8 +3785,7 @@ const activeColumns =
   key={`${field}-${item.id}`}
   className={cn(
     "mb-2 flex items-center justify-between gap-1",
-    field === "company" &&
-      "border-b border-dashed border-black pb-2 last:mb-0 last:border-b-0 last:pb-0"
+    field === "company" && ""
   )}
 >
       <span className="whitespace-pre-wrap break-all leading-relaxed">
