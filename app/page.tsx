@@ -4088,10 +4088,10 @@ const activeColumns =
   <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block">
     <table className={TABLE_BASE_CLASS}>
       <colgroup>
-        <col style={{ width: "9%" }} />
-        <col style={{ width: "18%" }} />
-        <col style={{ width: "36.5%" }} />
-      </colgroup>
+  <col style={{ width: "9%" }} />
+  <col style={{ width: "18%" }} />
+  <col style={{ width: isCapturingImage ? "36.5%" : "73%" }} />
+</colgroup>
 
       <thead>
         <tr className="bg-slate-100 text-slate-700">
