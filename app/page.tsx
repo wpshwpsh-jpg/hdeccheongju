@@ -326,6 +326,7 @@ type DabsRowItem = {
   createdByUid?: string;
   createdByName?: string;
   content?: string;
+  contentRedRanges?: TextColorRange[];
   name?: string;
   elderly?: string;
   gate?: string;
@@ -526,6 +527,83 @@ const TABLE_BASE_CLASS = "w-full table-fixed border-collapse text-[21px]";
 const dottedRow = (index: number) =>
   index > 0 ? "border-t border-dashed border-black pt-2" : "";
 
+type TextColorRange = {
+  start: number;
+  end: number;
+};
+
+const normalizeTextColorRanges = (ranges: TextColorRange[], textLength: number) =>
+  ranges
+    .map((range) => ({
+      start: Math.max(0, Math.min(range.start, textLength)),
+      end: Math.max(0, Math.min(range.end, textLength)),
+    }))
+    .filter((range) => range.start < range.end)
+    .sort((a, b) => a.start - b.start);
+
+const addRedTextRange = (ranges: TextColorRange[], start: number, end: number, textLength: number) => {
+  if (start === end) return ranges;
+
+  const nextRange = {
+    start: Math.min(start, end),
+    end: Math.max(start, end),
+  };
+
+  return normalizeTextColorRanges([...ranges, nextRange], textLength);
+};
+
+const removeRedTextRange = (ranges: TextColorRange[], start: number, end: number) => {
+  if (start === end) return ranges;
+
+  const removeStart = Math.min(start, end);
+  const removeEnd = Math.max(start, end);
+
+  return ranges.flatMap((range) => {
+    if (range.end <= removeStart || range.start >= removeEnd) return [range];
+
+    const next: TextColorRange[] = [];
+
+    if (range.start < removeStart) {
+      next.push({ start: range.start, end: removeStart });
+    }
+
+    if (range.end > removeEnd) {
+      next.push({ start: removeEnd, end: range.end });
+    }
+
+    return next;
+  });
+};
+
+const renderTextWithRedRanges = (text = "", ranges: TextColorRange[] = []) => {
+  const safeRanges = normalizeTextColorRanges(ranges, text.length);
+
+  if (safeRanges.length === 0) return text;
+
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+
+  safeRanges.forEach((range, index) => {
+    if (cursor < range.start) {
+      nodes.push(text.slice(cursor, range.start));
+    }
+
+    nodes.push(
+      <span key={`red-${index}`} className="text-red-600">
+        {text.slice(range.start, range.end)}
+      </span>
+    );
+
+    cursor = range.end;
+  });
+
+  if (cursor < text.length) {
+    nodes.push(text.slice(cursor));
+  }
+
+  return nodes;
+};
+
 export default function MonthlyCalendarTextEntrySite() {
   const { auth, db, isConfigured } = getFirebaseServices();
 const isDemoMode = false;
@@ -586,14 +664,28 @@ const [editEntryPopup, setEditEntryPopup] = useState({
 >({});
   const [dabsDraft, setDabsDraft] = useState("");
   const [dabsMessage, setDabsMessage] = useState("");
-  const [sectionInput, setSectionInput] = useState({ building: "", company: "", content: "" });
-  const [editSectionPopup, setEditSectionPopup] = useState<{
+  const [sectionInput, setSectionInput] = useState<{
+  building: string;
+  company: string;
+  content: string;
+  contentRedRanges: TextColorRange[];
+}>({
+  building: "",
+  company: "",
+  content: "",
+  contentRedRanges: [],
+});
+
+const [sectionTextSelection, setSectionTextSelection] = useState({ start: 0, end: 0 });
+
+const [editSectionPopup, setEditSectionPopup] = useState<{
   open: boolean;
   itemId: string;
   oldBuilding: string;
   building: string;
   company: string;
   content: string;
+  contentRedRanges: TextColorRange[];
 }>({
   open: false,
   itemId: "",
@@ -601,7 +693,10 @@ const [editEntryPopup, setEditEntryPopup] = useState({
   building: "",
   company: "",
   content: "",
+  contentRedRanges: [],
 });
+
+const [editSectionTextSelection, setEditSectionTextSelection] = useState({ start: 0, end: 0 });
   const [materialsInput, setMaterialsInput] = useState({ gate: "1", company: "", material: "", vehicle: "", location: "", time: "06" });
   const [imagePopup, setImagePopup] = useState({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
 
@@ -1498,6 +1593,12 @@ const cancelApprovalUser = async (uid: string) => {
     return;
   }
 
+  const inputContent = sectionInput.content.trim();
+  const inputRedRanges = normalizeTextColorRanges(
+    sectionInput.contentRedRanges,
+    inputContent.length
+  );
+
   const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
   const currentRows =
     typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
@@ -1509,20 +1610,32 @@ const cancelApprovalUser = async (uid: string) => {
 
   const nextBuildingRows =
     existingIndex >= 0
-      ? buildingRows.map((item, index) =>
-          index === existingIndex
-            ? {
-                ...item,
-                content: `${item.content || ""}/${sectionInput.content.trim()}`,
-              }
-            : item
-        )
+      ? buildingRows.map((item, index) => {
+          if (index !== existingIndex) return item;
+
+          const oldContent = item.content || "";
+          const joiner = oldContent ? "/" : "";
+          const offset = oldContent.length + joiner.length;
+
+          return {
+            ...item,
+            content: `${oldContent}${joiner}${inputContent}`,
+            contentRedRanges: [
+              ...(item.contentRedRanges || []),
+              ...inputRedRanges.map((range) => ({
+                start: range.start + offset,
+                end: range.end + offset,
+              })),
+            ],
+          };
+        })
       : [
           ...buildingRows,
           {
             id: createLocalId("section"),
             company: companyName,
-            content: sectionInput.content.trim(),
+            content: inputContent,
+            contentRedRanges: inputRedRanges,
             createdByUid: currentUser?.uid,
             createdByName: currentUser?.name,
           },
@@ -1544,7 +1657,8 @@ const cancelApprovalUser = async (uid: string) => {
   setDabsData(nextData);
 
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
-  setSectionInput({ building: "", company: "", content: "" });
+  setSectionInput({ building: "", company: "", content: "", contentRedRanges: [] });
+  setSectionTextSelection({ start: 0, end: 0 });
   setDabsMessage("저장되었습니다.");
 };
 
@@ -1678,6 +1792,8 @@ const handleUpdateMaterial = async () => {
   const targetItem = (nextRows[oldBuilding] || []).find((item) => item.id === editSectionPopup.itemId);
   if (!targetItem) return;
 
+  const nextContent = editSectionPopup.content.trim();
+
   nextRows[oldBuilding] = (nextRows[oldBuilding] || []).filter(
     (item) => item.id !== editSectionPopup.itemId
   );
@@ -1687,7 +1803,11 @@ const handleUpdateMaterial = async () => {
     {
       ...targetItem,
       company: editSectionPopup.company.trim(),
-      content: editSectionPopup.content.trim(),
+      content: nextContent,
+      contentRedRanges: normalizeTextColorRanges(
+        editSectionPopup.contentRedRanges,
+        nextContent.length
+      ),
     },
   ];
 
@@ -1710,8 +1830,10 @@ const handleUpdateMaterial = async () => {
     building: "",
     company: "",
     content: "",
+    contentRedRanges: [],
   });
 
+  setEditSectionTextSelection({ start: 0, end: 0 });
   setDabsMessage("수정되었습니다.");
 };
   const handleDeleteDabsItem = async (itemId: string, building: string | null = null) => {
@@ -2987,7 +3109,9 @@ const posY = marker.y;
                 </div>
 
                 <div className="mt-1 flex items-start justify-between gap-2">
-                  <span className="text-slate-900">{item.content}</span>
+                  <span className="text-slate-900">
+                    {renderTextWithRedRanges(item.content, item.contentRedRanges)}
+                  </span>
 
                   <div className="flex shrink-0 gap-1">
                     {canAdminEditDabsItem && (
@@ -3001,6 +3125,7 @@ const posY = marker.y;
                             building: col,
                             company: item.company || "",
                             content: item.content || "",
+                            contentRedRanges: item.contentRedRanges || [],
                           })
                         }
                         className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
@@ -3416,15 +3541,69 @@ const activeColumns =
       </div>
 
       <div className="mt-4 space-y-2">
-        <label className="text-xs font-medium text-slate-600">작업내용</label>
-        <Input
-          value={editSectionPopup.content}
-          onChange={(e) =>
-            setEditSectionPopup((prev) => ({ ...prev, content: e.target.value }))
-          }
-          placeholder="작업내용 입력"
-        />
-      </div>
+  <label className="text-xs font-medium text-slate-600">작업내용</label>
+  <Input
+    value={editSectionPopup.content}
+    onSelect={(e) =>
+      setEditSectionTextSelection({
+        start: e.currentTarget.selectionStart || 0,
+        end: e.currentTarget.selectionEnd || 0,
+      })
+    }
+    onChange={(e) =>
+      setEditSectionPopup((prev) => ({
+        ...prev,
+        content: e.target.value,
+        contentRedRanges: normalizeTextColorRanges(
+          prev.contentRedRanges,
+          e.target.value.length
+        ),
+      }))
+    }
+    placeholder="작업내용 입력"
+  />
+
+  {activeDabsKey !== "fireWork" && (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() =>
+          setEditSectionPopup((prev) => ({
+            ...prev,
+            contentRedRanges: addRedTextRange(
+              prev.contentRedRanges,
+              editSectionTextSelection.start,
+              editSectionTextSelection.end,
+              prev.content.length
+            ),
+          }))
+        }
+      >
+        선택 빨강
+      </Button>
+
+      <Button
+        variant="outline"
+        size="sm"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() =>
+          setEditSectionPopup((prev) => ({
+            ...prev,
+            contentRedRanges: removeRedTextRange(
+              prev.contentRedRanges,
+              editSectionTextSelection.start,
+              editSectionTextSelection.end
+            ),
+          }))
+        }
+      >
+        선택 해제
+      </Button>
+    </div>
+  )}
+</div>
 
       <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
         <Button
@@ -3432,13 +3611,14 @@ const activeColumns =
           className="w-full lg:w-auto"
           onClick={() =>
             setEditSectionPopup({
-              open: false,
-              itemId: "",
-              oldBuilding: "",
-              building: "",
-              company: "",
-              content: "",
-            })
+  open: false,
+  itemId: "",
+  oldBuilding: "",
+  building: "",
+  company: "",
+  content: "",
+  contentRedRanges: [],
+})
           }
         >
           취소
@@ -3774,11 +3954,69 @@ const activeColumns =
     />
   )}
 
-  <Input
-    value={sectionInput.content}
-    onChange={(e) => setSectionInput({ ...sectionInput, content: e.target.value })}
-    placeholder="작업내용 입력"
-  />
+  <div className="space-y-2">
+    <Input
+      value={sectionInput.content}
+      onSelect={(e) =>
+        setSectionTextSelection({
+          start: e.currentTarget.selectionStart || 0,
+          end: e.currentTarget.selectionEnd || 0,
+        })
+      }
+      onChange={(e) =>
+        setSectionInput({
+          ...sectionInput,
+          content: e.target.value,
+          contentRedRanges: normalizeTextColorRanges(
+            sectionInput.contentRedRanges,
+            e.target.value.length
+          ),
+        })
+      }
+      placeholder="작업내용 입력"
+    />
+
+    {activeDabsKey !== "fireWork" && (
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() =>
+            setSectionInput((prev) => ({
+              ...prev,
+              contentRedRanges: addRedTextRange(
+                prev.contentRedRanges,
+                sectionTextSelection.start,
+                sectionTextSelection.end,
+                prev.content.length
+              ),
+            }))
+          }
+        >
+          선택 빨강
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() =>
+            setSectionInput((prev) => ({
+              ...prev,
+              contentRedRanges: removeRedTextRange(
+                prev.contentRedRanges,
+                sectionTextSelection.start,
+                sectionTextSelection.end
+              ),
+            }))
+          }
+        >
+          선택 해제
+        </Button>
+      </div>
+    )}
+  </div>
 
   <Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">
     추가
@@ -3823,57 +4061,58 @@ const activeColumns =
             </td>
 
             <td className="border border-black px-3 py-2 align-top">
-              {list.length === 0 ? (
-                <span className="text-slate-300">-</span>
-              ) : (
-                list.map((item, index) => (
-                  <div
-                    key={`content-${item.id}`}
-                    className={cn(
-                      "mb-2 flex items-center justify-between gap-2",
-                      dottedRow(index)
-                    )}
-                  >
-                    <span className="whitespace-pre-wrap break-all leading-relaxed">
-                      {item.content}
-                    </span>
+  {list.length === 0 ? (
+    <span className="text-slate-300">-</span>
+  ) : (
+    list.map((item, index) => (
+      <div
+        key={`content-${item.id}`}
+        className={cn(
+          "mb-2 flex items-center justify-between gap-2",
+          dottedRow(index)
+        )}
+      >
+        <span className="whitespace-pre-wrap break-all leading-relaxed">
+          {renderTextWithRedRanges(item.content, item.contentRedRanges)}
+        </span>
 
-                    <div className="flex shrink-0 items-center gap-1">
-                      {canAdminEditDabsItem && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditSectionPopup({
-                              open: true,
-                              itemId: item.id,
-                              oldBuilding: col,
-                              building: col,
-                              company: item.company || "",
-                              content: item.content || "",
-                            })
-                          }
-                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-                          title="수정"
-                        >
-                          수정
-                        </button>
-                      )}
+        <div className="flex shrink-0 items-center gap-1">
+          {canAdminEditDabsItem && (
+            <button
+              type="button"
+              onClick={() =>
+                setEditSectionPopup({
+                  open: true,
+                  itemId: item.id,
+                  oldBuilding: col,
+                  building: col,
+                  company: item.company || "",
+                  content: item.content || "",
+                  contentRedRanges: item.contentRedRanges || [],
+                })
+              }
+              className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+              title="수정"
+            >
+              수정
+            </button>
+          )}
 
-                      {canDeleteOwnItem(item) && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteDabsItem(item.id, col)}
-                          className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-                          title="삭제"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </td>
+          {canDeleteOwnItem(item) && (
+            <button
+              type="button"
+              onClick={() => handleDeleteDabsItem(item.id, col)}
+              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+              title="삭제"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+    ))
+  )}
+</td>
           </tr>
         );
       })}
@@ -4062,15 +4301,15 @@ const activeColumns =
             </div>
 
             <div className="mt-4 space-y-2">
-              <label className="text-xs font-medium text-slate-600">작업내용</label>
-              <Input
-                value={editSoloPopup.content}
-                onChange={(e) =>
-                  setEditSoloPopup((prev) => ({ ...prev, content: e.target.value }))
-                }
-                placeholder="작업내용 입력"
-              />
-            </div>
+  <label className="text-xs font-medium text-slate-600">작업내용</label>
+  <Input
+    value={editSoloPopup.content}
+    onChange={(e) =>
+      setEditSoloPopup((prev) => ({ ...prev, content: e.target.value }))
+    }
+    placeholder="작업내용 입력"
+  />
+</div>
 
             <div className="mt-4 space-y-2">
               <label className="text-xs font-medium text-slate-600">고령자</label>
