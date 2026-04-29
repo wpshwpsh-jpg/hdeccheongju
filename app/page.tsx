@@ -4246,12 +4246,7 @@ const activeColumns =
   </Button>
 </div><div ref={dabsCaptureRef} className="bg-white">
   {renderMaterialsMobileCards(materialList)}
-  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block"><table
-  className={TABLE_BASE_CLASS}
-  style={{
-    width: isCapturingImage ? "635px" : "1000px",
-  }}
-><thead>
+  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block"><table className={TABLE_BASE_CLASS}><thead>
   <tr className="bg-slate-100 text-slate-700">
     <th rowSpan={2} className="w-[8%] border border-black px-2 py-2 text-left">시간</th>
     <th colSpan={4} className="border border-black px-2 py-2 text-center">1게이트</th>
