@@ -81,7 +81,7 @@ function cn(...classes: Array<string | false | null | undefined>) {
 }
 
 function Card({ className = "", children }: { className?: string; children?: ReactNode }) {
-  return <div className={cn("rounded-[24px] border border-slate-200 bg-white shadow-sm", className)}>{children}</div>;
+  return <div className={cn("rounded-[24px] border border-black bg-white shadow-sm", className)}>{children}</div>;
 }
 
 function CardHeader({ className = "", children }: { className?: string; children?: ReactNode }) {
@@ -511,7 +511,7 @@ function EquipmentIcon({
 
 function MobileListCard({ title, children, action }: { title: ReactNode; children?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:hidden">
+    <div className="rounded-2xl border border-black bg-white p-4 shadow-sm lg:hidden">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="text-sm font-semibold text-slate-900">{title}</div>
         {action}
@@ -520,6 +520,11 @@ function MobileListCard({ title, children, action }: { title: ReactNode; childre
     </div>
   );
 }
+
+const TABLE_BASE_CLASS = "w-full table-fixed border-collapse text-[21px]";
+
+const dottedRow = (index: number) =>
+  index > 0 ? "border-t border-dashed border-black pt-2" : "";
 
 export default function MonthlyCalendarTextEntrySite() {
   const { auth, db, isConfigured } = getFirebaseServices();
@@ -2717,7 +2722,7 @@ if (touchGestureRef.current.moved) {
     return (
   <div
     ref={imageAreaRef}
-    className="relative h-[260px] overflow-hidden rounded-xl border border-slate-200 bg-slate-50 touch-none md:h-auto md:rounded-2xl"
+    className="relative h-[260px] overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:h-auto md:rounded-2xl"
     onClick={activeDabsKey === "highRisk" ? openMarkerPopup : activeDabsKey === "equipmentFlow" ? handleEquipmentClick : undefined}
         onMouseMove={activeDabsKey === "equipmentFlow" ? handleEquipmentMouseMove : undefined}
         onTouchStart={isImageTab ? handleOverlayTouchStart : undefined}
@@ -2931,7 +2936,7 @@ const posY = marker.y;
 )}
       <div className="grid gap-4 md:grid-cols-3 md:gap-6">{menuItems.map((item) => { const Icon = item.icon; return <button key={item.key} onClick={() => {
   setCurrentPage(item.key);
-}} className="rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md sm:p-6"><div className="flex items-center gap-3"><div className="rounded-2xl bg-slate-100 p-3 text-slate-700"><Icon className="h-6 w-6" /></div><div><div className="text-base font-semibold text-slate-900 lg:text-lg">{item.title}</div><div className="mt-1 text-sm text-slate-500">{item.description}</div></div></div></button>; })}</div>
+}} className="rounded-[24px] border border-black bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md sm:p-6"><div className="flex items-center gap-3"><div className="rounded-2xl bg-slate-100 p-3 text-slate-700"><Icon className="h-6 w-6" /></div><div><div className="text-base font-semibold text-slate-900 lg:text-lg">{item.title}</div><div className="mt-1 text-sm text-slate-500">{item.description}</div></div></div></button>; })}</div>
     </div>
   );
 
@@ -3080,7 +3085,7 @@ const posY = marker.y;
 
   const renderSoloWorkerDesktopTable = () => (
   <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
-    <table className="w-full table-fixed border-collapse text-sm">
+    <table className={TABLE_BASE_CLASS}>
       <thead>
         <tr className="bg-slate-100 text-slate-700">
           <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
@@ -3118,6 +3123,9 @@ const posY = marker.y;
                   ? "bg-amber-50 text-amber-700 font-semibold"
                   : "text-slate-600";
 
+              const companyDividerStyle =
+                groupIndex > 0 && idx === 0 ? { borderTop: "1px dashed #000" } : undefined;
+
               return (
                 <tr
                   key={`${col}-${item.id}`}
@@ -3135,25 +3143,28 @@ const posY = marker.y;
                   {idx === 0 && (
                     <td
                       rowSpan={items.length}
+                      style={companyDividerStyle}
                       className={cn(
                         "border border-black px-3 py-2 align-top font-semibold",
                         color.bg,
-                        color.border,
                         color.text
                       )}
                     >
-  <div className="flex items-center gap-2">
-    <span>{company}</span>
-    <span className="h-px flex-1 border-t border-dashed border-black"></span>
-  </div>
-</td>
+                      {company}
+                    </td>
                   )}
 
-                  <td className="border border-black px-3 py-2 align-top">
-  {item.name}
-</td>
+                  <td
+                    style={companyDividerStyle}
+                    className="border border-black px-3 py-2 align-top"
+                  >
+                    {item.name}
+                  </td>
 
-                  <td className="border border-black px-3 py-2 align-top">
+                  <td
+                    style={companyDividerStyle}
+                    className="border border-black px-3 py-2 align-top"
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <span className="whitespace-pre-wrap break-all leading-relaxed">
                         {item.content}
@@ -3194,7 +3205,10 @@ const posY = marker.y;
                     </div>
                   </td>
 
-                  <td className={cn("border border-black px-3 py-2 align-top", elderlyHighlight)}>
+                  <td
+                    style={companyDividerStyle}
+                    className={cn("border border-black px-3 py-2 align-top", elderlyHighlight)}
+                  >
                     {item.elderly}
                   </td>
                 </tr>
@@ -3228,7 +3242,7 @@ const posY = marker.y;
           const color = getCompanyColor(item.company || "-");
 
           return (
-            <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div key={item.id} className="rounded-2xl border border-black bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">{item.building}</div>
@@ -3657,7 +3671,7 @@ const activeColumns =
           <CardContent className="space-y-5">
             <div
   className={cn(
-    "fixed bottom-3 left-1/2 z-40 flex w-[calc(100%-24px)] max-w-md -translate-x-1/2 flex-wrap justify-center gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-xl backdrop-blur lg:static lg:w-auto lg:max-w-none lg:translate-x-0 lg:justify-start lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none",
+    "fixed bottom-3 left-1/2 z-40 flex w-[calc(100%-24px)] max-w-md -translate-x-1/2 flex-wrap justify-center gap-2 rounded-2xl border border-black bg-white/95 p-2 shadow-xl backdrop-blur lg:static lg:w-auto lg:max-w-none lg:translate-x-0 lg:justify-start lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none",
     imagePopup.open && "hidden lg:flex"
   )}
 >
@@ -3713,109 +3727,165 @@ const activeColumns =
 
   <div className="grid gap-3 md:grid-cols-[220px_1fr_auto]"><select value={sectionInput.building} onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{activeColumns.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={sectionInput.content} onChange={(e) => setSectionInput({ ...sectionInput, content: e.target.value })} placeholder="작업내용 입력" /><Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div><div ref={dabsCaptureRef} className="bg-white">
   {renderSectionMobileCards(activeColumns, sectionRows)}
-  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
-<th className="border border-black px-3 py-2 text-left w-[18%]">업체명</th>
-<th className="border border-black px-3 py-2 text-left">작업내용</th></tr></thead><tbody>{activeColumns.map((col) => { const list = sectionRows[col] || []; return <tr key={col}><td className="border border-black px-3 py-2 font-medium text-slate-700">{col}</td><td className="border border-black px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`company-${item.id}`} className="mb-2 flex items-center gap-2">
-  <span>{item.company}</span>
-  <span className="h-px flex-1 border-t border-dashed border-black"></span>
-</div>)}</td><td className="border border-black px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`content-${item.id}`} className="mb-2 flex items-center justify-between gap-2"><span className="whitespace-pre-wrap break-all leading-relaxed">
-  {item.content}
-</span>
+  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block">
+  <table className={TABLE_BASE_CLASS}>
+    <thead>
+      <tr className="bg-slate-100 text-slate-700">
+        <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
+        <th className="border border-black px-3 py-2 text-left w-[18%]">업체명</th>
+        <th className="border border-black px-3 py-2 text-left">작업내용</th>
+      </tr>
+    </thead>
 
-<div className="flex shrink-0 items-center gap-1">
-  {canAdminEditDabsItem && (
-  <button
-    type="button"
-    onClick={() =>
-      setEditSectionPopup({
-        open: true,
-        itemId: item.id,
-        oldBuilding: col,
-        building: col,
-        company: item.company || "",
-        content: item.content || "",
-      })
-    }
-    className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-    title="수정"
-  >
-    수정
-  </button>
-)}
+    <tbody>
+      {activeColumns.map((col) => {
+        const list = sectionRows[col] || [];
 
-  {canDeleteOwnItem(item) && (
-    <button
-      type="button"
-      onClick={() => handleDeleteDabsItem(item.id, col)}
-      className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-      title="삭제"
-    >
-      <X className="h-3 w-3" />
-    </button>
-  )}
-</div></div>)}</td></tr>; })}</tbody></table></div>
+        return (
+          <tr key={col}>
+            <td className="border border-black px-3 py-2 font-medium text-slate-700">
+              {col}
+            </td>
+
+            <td className="border border-black px-3 py-2 align-top">
+              {list.length === 0 ? (
+                <span className="text-slate-300">-</span>
+              ) : (
+                list.map((item, index) => (
+                  <div
+                    key={`company-${item.id}`}
+                    className={cn("mb-2", dottedRow(index))}
+                  >
+                    {item.company}
+                  </div>
+                ))
+              )}
+            </td>
+
+            <td className="border border-black px-3 py-2 align-top">
+              {list.length === 0 ? (
+                <span className="text-slate-300">-</span>
+              ) : (
+                list.map((item, index) => (
+                  <div
+                    key={`content-${item.id}`}
+                    className={cn(
+                      "mb-2 flex items-center justify-between gap-2",
+                      dottedRow(index)
+                    )}
+                  >
+                    <span className="whitespace-pre-wrap break-all leading-relaxed">
+                      {item.content}
+                    </span>
+
+                    <div className="flex shrink-0 items-center gap-1">
+                      {canAdminEditDabsItem && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditSectionPopup({
+                              open: true,
+                              itemId: item.id,
+                              oldBuilding: col,
+                              building: col,
+                              company: item.company || "",
+                              content: item.content || "",
+                            })
+                          }
+                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                          title="수정"
+                        >
+                          수정
+                        </button>
+                      )}
+
+                      {canDeleteOwnItem(item) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDabsItem(item.id, col)}
+                          className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                          title="삭제"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </td>
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+</div>
 </div></>}
                 {isMaterialTab && <><div className="grid gap-3 md:grid-cols-6"><select value={materialsInput.gate} onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="1">1게이트</option><option value="7">7게이트</option></select><select value={materialsInput.time} onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500">{MATERIAL_TIMES.map((time) => <option key={time} value={time}>{time}시</option>)}</select><Input value={materialsInput.material} onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })} placeholder="자재명" /><Input value={materialsInput.vehicle} onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })} placeholder="차종" /><Input value={materialsInput.location} onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })} placeholder="하역장소" /><Button onClick={handleAddMaterial} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div><div ref={dabsCaptureRef} className="bg-white">
   {renderMaterialsMobileCards(materialList)}
-  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead>
+  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block"><table className={TABLE_BASE_CLASS}><thead>
   <tr className="bg-slate-100 text-slate-700">
     <th rowSpan={2} className="w-[8%] border border-black px-2 py-2 text-left">시간</th>
-<th colSpan={4} className="border border-black px-2 py-2 text-center">1게이트</th>
-<th colSpan={4} className="border border-black px-2 py-2 text-center">7게이트</th>
+    <th colSpan={4} className="border border-black px-2 py-2 text-center">1게이트</th>
+    <th colSpan={4} className="border border-black px-2 py-2 text-center">7게이트</th>
   </tr>
   <tr className="bg-slate-100 text-slate-700">
     <th className="w-[9%] border border-black px-2 py-2 text-left">업체명</th>
-<th className="w-[10%] border border-black px-2 py-2 text-left">자재명</th>
-<th className="w-[8%] border border-black px-2 py-2 text-left">차종</th>
-<th className="w-[13%] border border-black px-2 py-2 text-left">하역장소</th>
-<th className="w-[9%] border border-black px-2 py-2 text-left">업체명</th>
-<th className="w-[10%] border border-black px-2 py-2 text-left">자재명</th>
-<th className="w-[8%] border border-black px-2 py-2 text-left">차종</th>
-<th className="w-[13%] border border-black px-2 py-2 text-left">하역장소</th>
+    <th className="w-[10%] border border-black px-2 py-2 text-left">자재명</th>
+    <th className="w-[8%] border border-black px-2 py-2 text-left">차종</th>
+    <th className="w-[13%] border border-black px-2 py-2 text-left">하역장소</th>
+    <th className="w-[9%] border border-black px-2 py-2 text-left">업체명</th>
+    <th className="w-[10%] border border-black px-2 py-2 text-left">자재명</th>
+    <th className="w-[8%] border border-black px-2 py-2 text-left">차종</th>
+    <th className="w-[13%] border border-black px-2 py-2 text-left">하역장소</th>
   </tr>
 </thead><tbody>{MATERIAL_TIMES.map((time) => { const row = materialList.filter((item) => item.time === time); const gate1 = row.filter((item) => item.gate === "1"); const gate7 = row.filter((item) => item.gate === "7"); const renderCell = (items: DabsRowItem[], field: keyof DabsRowItem) =>
-  items.map((item) => (
-    <div key={`${field}-${item.id}`} className="mb-2 flex items-center justify-between gap-1">
+  items.map((item, index) => (
+    <div
+      key={`${field}-${item.id}`}
+      className={cn(
+        "mb-2 flex items-center justify-between gap-1",
+        dottedRow(index)
+      )}
+    >
       <span className="whitespace-pre-wrap break-all leading-relaxed">
-  {item[field]}
-</span>
-{field === "company" && (
-  <span className="h-px flex-1 border-t border-dashed border-black"></span>
-)}
-      {field === "location" && (
-  <div className="flex shrink-0 gap-1">
-    {canAdminEditDabsItem && (
-      <button
-        type="button"
-        onClick={() =>
-          setEditMaterialPopup({
-            open: true,
-            itemId: item.id,
-            gate: item.gate || "",
-            time: item.time || "",
-            company: item.company || "",
-            material: item.material || "",
-            vehicle: item.vehicle || "",
-            location: item.location || "",
-          })
-        }
-        className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-      >
-        수정
-      </button>
-    )}
+        {item[field]}
+      </span>
 
-    {canDeleteOwnItem(item) && (
-      <button
-        type="button"
-        onClick={() => handleDeleteDabsItem(item.id)}
-        className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-      >
-        <X className="h-3 w-3" />
-      </button>
-    )}
-  </div>
-)}
+      {field === "location" && (
+        <div className="flex shrink-0 gap-1">
+          {canAdminEditDabsItem && (
+            <button
+              type="button"
+              onClick={() =>
+                setEditMaterialPopup({
+                  open: true,
+                  itemId: item.id,
+                  gate: item.gate || "",
+                  time: item.time || "",
+                  company: item.company || "",
+                  material: item.material || "",
+                  vehicle: item.vehicle || "",
+                  location: item.location || "",
+                })
+              }
+              className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+            >
+              수정
+            </button>
+          )}
+
+          {canDeleteOwnItem(item) && (
+            <button
+              type="button"
+              onClick={() => handleDeleteDabsItem(item.id)}
+              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )); return <tr key={time}><td className="border border-black px-3 py-2 font-medium">{time}시</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "company")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "material")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "vehicle")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "location")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "company")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "material")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "vehicle")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "location")}</td></tr>; })}</tbody></table></div>
 </div></>}
@@ -4096,7 +4166,7 @@ const activeColumns =
   <div className="text-sm text-slate-600">{entryMessage}</div>
 )}
 
-<div className="mt-2 text-xs text-slate-400">시간 중복 불가</div></CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>선택 일자 등록 목록</CardTitle></CardHeader><CardContent className="space-y-3"><div><div className="text-sm text-slate-500">현재 선택 일자</div><div className="text-xl font-bold text-slate-900">{formatMonthDay(selectedDate)}</div></div>{dayEntries.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">등록된 일정이 없습니다.</div> : dayEntries.map((entry) => <motion.div key={entry.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-4"><div><div className="text-base font-semibold text-slate-900">{entry.companyName}</div><div className="mt-1 text-sm text-slate-600">{formatMonthDay(entry.date)}</div><div className="mt-1 text-sm text-slate-600">{entry.startTime} ~ {entry.endTime}</div><div className="mt-1 text-xs text-slate-500">작성자: {entry.createdByName || "-"} ({getRoleLabel(entry.createdByRole || "general")})</div></div><div className="flex shrink-0 gap-1">
+<div className="mt-2 text-xs text-slate-400">시간 중복 불가</div></CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>선택 일자 등록 목록</CardTitle></CardHeader><CardContent className="space-y-3"><div><div className="text-sm text-slate-500">현재 선택 일자</div><div className="text-xl font-bold text-slate-900">{formatMonthDay(selectedDate)}</div></div>{dayEntries.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">등록된 일정이 없습니다.</div> : dayEntries.map((entry) => <motion.div key={entry.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-black bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-4"><div><div className="text-base font-semibold text-slate-900">{entry.companyName}</div><div className="mt-1 text-sm text-slate-600">{formatMonthDay(entry.date)}</div><div className="mt-1 text-sm text-slate-600">{entry.startTime} ~ {entry.endTime}</div><div className="mt-1 text-xs text-slate-500">작성자: {entry.createdByName || "-"} ({getRoleLabel(entry.createdByRole || "general")})</div></div><div className="flex shrink-0 gap-1">
   <button
     type="button"
     onClick={(e) => {
@@ -4170,7 +4240,7 @@ const activeColumns =
                 return (
                   <div
                     key={user.uid}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                    className="rounded-2xl border border-black bg-white p-4 shadow-sm"
                   >
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div className="space-y-1">
@@ -4231,7 +4301,7 @@ const activeColumns =
             return (
               <div
                 key={user.uid}
-                className="rounded-2xl border border-slate-200 bg-white p-3 text-sm shadow-sm"
+                className="rounded-2xl border border-black bg-white p-3 text-sm shadow-sm"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
