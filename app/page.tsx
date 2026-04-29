@@ -2949,10 +2949,7 @@ const posY = marker.y;
             <div className="text-slate-400">입력 없음</div>
           ) : (
             list.map((item) => (
-              <div
-  key={item.id}
-  className="rounded-xl bg-slate-50 p-3 border-b border-dashed border-black last:border-b-0"
->
+              <div key={item.id} className="rounded-xl bg-slate-50 p-3">
                 <div className="text-xs font-medium text-slate-500">
                   {item.company}
                 </div>
@@ -3082,15 +3079,15 @@ const posY = marker.y;
   );
 
   const renderSoloWorkerDesktopTable = () => (
-  <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block [&_td]:border-black [&_th]:border-black">
+  <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
     <table className="w-full table-fixed border-collapse text-sm">
       <thead>
         <tr className="bg-slate-100 text-slate-700">
-          <th className="border border-slate-200 px-3 py-2 text-left w-[9%]">동</th>
-          <th className="border border-slate-200 px-3 py-2 text-left w-[16%]">업체명</th>
-          <th className="border border-slate-200 px-3 py-2 text-left w-[16%]">성명</th>
-          <th className="border border-slate-200 px-3 py-2 text-left">작업 내용</th>
-          <th className="border border-slate-200 px-3 py-2 text-left w-[10%]">고령자</th>
+          <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
+          <th className="border border-black px-3 py-2 text-left w-[16%]">업체명</th>
+          <th className="border border-black px-3 py-2 text-left w-[16%]">성명</th>
+          <th className="border border-black px-3 py-2 text-left">작업 내용</th>
+          <th className="border border-black px-3 py-2 text-left w-[10%]">고령자</th>
         </tr>
       </thead>
 
@@ -3106,8 +3103,8 @@ const posY = marker.y;
           if (totalRows === 0) {
             return (
               <tr key={col}>
-                <td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{col}</td>
-                <td className="border border-slate-200 px-3 py-2 text-slate-300" colSpan={4}>-</td>
+                <td className="border border-black px-3 py-2 font-medium text-slate-700">{col}</td>
+                <td className="border border-black px-3 py-2 text-slate-300" colSpan={4}>-</td>
               </tr>
             );
           }
@@ -3129,7 +3126,7 @@ const posY = marker.y;
                   {groupIndex === 0 && idx === 0 && (
                     <td
                       rowSpan={totalRows}
-                      className="border border-slate-200 px-3 py-2 align-top font-medium text-slate-700"
+                      className="border border-black px-3 py-2 align-top font-medium text-slate-700"
                     >
                       {col}
                     </td>
@@ -3139,21 +3136,24 @@ const posY = marker.y;
                     <td
                       rowSpan={items.length}
                       className={cn(
-                        "border border-slate-200 px-3 py-2 align-top font-semibold",
+                        "border border-black px-3 py-2 align-top font-semibold",
                         color.bg,
                         color.border,
                         color.text
                       )}
                     >
-                      {company}
-                    </td>
+  <div className="flex items-center gap-2">
+    <span>{company}</span>
+    <span className="h-px flex-1 border-t border-dashed border-black"></span>
+  </div>
+</td>
                   )}
 
-                  <td className="border border-slate-200 px-3 py-2 align-top">
-                    {item.name}
-                  </td>
+                  <td className="border border-black px-3 py-2 align-top">
+  {item.name}
+</td>
 
-                  <td className="border border-slate-200 px-3 py-2 align-top">
+                  <td className="border border-black px-3 py-2 align-top">
                     <div className="flex items-center justify-between gap-2">
                       <span className="whitespace-pre-wrap break-all leading-relaxed">
                         {item.content}
@@ -3194,7 +3194,7 @@ const posY = marker.y;
                     </div>
                   </td>
 
-                  <td className={cn("border border-slate-200 px-3 py-2 align-top", elderlyHighlight)}>
+                  <td className={cn("border border-black px-3 py-2 align-top", elderlyHighlight)}>
                     {item.elderly}
                   </td>
                 </tr>
@@ -3713,30 +3713,12 @@ const activeColumns =
 
   <div className="grid gap-3 md:grid-cols-[220px_1fr_auto]"><select value={sectionInput.building} onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="">동 선택</option>{activeColumns.map((column) => <option key={column} value={column}>{column}</option>)}</select><Input value={sectionInput.content} onChange={(e) => setSectionInput({ ...sectionInput, content: e.target.value })} placeholder="작업내용 입력" /><Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div><div ref={dabsCaptureRef} className="bg-white">
   {renderSectionMobileCards(activeColumns, sectionRows)}
-  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block [&_td]:border-black [&_th]:border-black"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-slate-200 px-3 py-2 text-left w-[9%]">동</th><th className="border border-slate-200 px-3 py-2 text-left w-[18%]">업체명</th><th className="border border-slate-200 px-3 py-2 text-left">작업내용</th></tr></thead><tbody>{activeColumns.map((col) => { const list = sectionRows[col] || []; return <tr key={col}><td className="border border-slate-200 px-3 py-2 font-medium text-slate-700">{col}<td className="border border-slate-200 px-3 py-2 align-top">
-  {list.length === 0 ? (
-    <span className="text-slate-300">-</span>
-  ) : (
-    list.map((item) => (
-      <div
-        key={`company-${item.id}`}
-        className="mb-2 border-b border-dashed border-black pb-2 last:mb-0 last:border-b-0 last:pb-0"
-      >
-        {item.company}
-      </div>
-    ))
-  )}
-</td>
-
-<td className="border border-slate-200 px-3 py-2 align-top">
-  {list.length === 0 ? (
-    <span className="text-slate-300">-</span>
-  ) : (
-    list.map((item) => (
-      <div
-        key={`content-${item.id}`}
-        className="mb-2 border-b border-dashed border-black pb-2 last:mb-0 last:border-b-0 last:pb-0 flex items-center justify-between gap-2"
-      ><span className="whitespace-pre-wrap break-all leading-relaxed">
+  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead><tr className="bg-slate-100 text-slate-700"><th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
+<th className="border border-black px-3 py-2 text-left w-[18%]">업체명</th>
+<th className="border border-black px-3 py-2 text-left">작업내용</th></tr></thead><tbody>{activeColumns.map((col) => { const list = sectionRows[col] || []; return <tr key={col}><td className="border border-black px-3 py-2 font-medium text-slate-700">{col}</td><td className="border border-black px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`company-${item.id}`} className="mb-2 flex items-center gap-2">
+  <span>{item.company}</span>
+  <span className="h-px flex-1 border-t border-dashed border-black"></span>
+</div>)}</td><td className="border border-black px-3 py-2 align-top">{list.length === 0 ? <span className="text-slate-300">-</span> : list.map((item) => <div key={`content-${item.id}`} className="mb-2 flex items-center justify-between gap-2"><span className="whitespace-pre-wrap break-all leading-relaxed">
   {item.content}
 </span>
 
@@ -3771,41 +3753,35 @@ const activeColumns =
       <X className="h-3 w-3" />
     </button>
   )}
-</div>
-    ))
-  )}
-</td></tr>; })}</tbody></table></div>
+</div></div>)}</td></tr>; })}</tbody></table></div>
 </div></>}
                 {isMaterialTab && <><div className="grid gap-3 md:grid-cols-6"><select value={materialsInput.gate} onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"><option value="1">1게이트</option><option value="7">7게이트</option></select><select value={materialsInput.time} onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })} className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500">{MATERIAL_TIMES.map((time) => <option key={time} value={time}>{time}시</option>)}</select><Input value={materialsInput.material} onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })} placeholder="자재명" /><Input value={materialsInput.vehicle} onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })} placeholder="차종" /><Input value={materialsInput.location} onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })} placeholder="하역장소" /><Button onClick={handleAddMaterial} disabled={!canEditDabs} className="w-full md:w-auto">추가</Button></div><div ref={dabsCaptureRef} className="bg-white">
   {renderMaterialsMobileCards(materialList)}
-  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block [&_td]:border-black [&_th]:border-black"><table className="w-full table-fixed border-collapse text-sm"><thead>
+  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block"><table className="w-full table-fixed border-collapse text-sm"><thead>
   <tr className="bg-slate-100 text-slate-700">
-    <th rowSpan={2} className="w-[8%] border border-slate-200 px-2 py-2 text-left">시간</th>
-    <th colSpan={4} className="border border-slate-200 px-2 py-2 text-center">1게이트</th>
-    <th colSpan={4} className="border border-slate-200 px-2 py-2 text-center">7게이트</th>
+    <th rowSpan={2} className="w-[8%] border border-black px-2 py-2 text-left">시간</th>
+<th colSpan={4} className="border border-black px-2 py-2 text-center">1게이트</th>
+<th colSpan={4} className="border border-black px-2 py-2 text-center">7게이트</th>
   </tr>
   <tr className="bg-slate-100 text-slate-700">
-    <th className="w-[9%] border border-slate-200 px-2 py-2 text-left">업체명</th>
-    <th className="w-[10%] border border-slate-200 px-2 py-2 text-left">자재명</th>
-    <th className="w-[8%] border border-slate-200 px-2 py-2 text-left">차종</th>
-    <th className="w-[13%] border border-slate-200 px-2 py-2 text-left">하역장소</th>
-    <th className="w-[9%] border border-slate-200 px-2 py-2 text-left">업체명</th>
-    <th className="w-[10%] border border-slate-200 px-2 py-2 text-left">자재명</th>
-    <th className="w-[8%] border border-slate-200 px-2 py-2 text-left">차종</th>
-    <th className="w-[13%] border border-slate-200 px-2 py-2 text-left">하역장소</th>
+    <th className="w-[9%] border border-black px-2 py-2 text-left">업체명</th>
+<th className="w-[10%] border border-black px-2 py-2 text-left">자재명</th>
+<th className="w-[8%] border border-black px-2 py-2 text-left">차종</th>
+<th className="w-[13%] border border-black px-2 py-2 text-left">하역장소</th>
+<th className="w-[9%] border border-black px-2 py-2 text-left">업체명</th>
+<th className="w-[10%] border border-black px-2 py-2 text-left">자재명</th>
+<th className="w-[8%] border border-black px-2 py-2 text-left">차종</th>
+<th className="w-[13%] border border-black px-2 py-2 text-left">하역장소</th>
   </tr>
 </thead><tbody>{MATERIAL_TIMES.map((time) => { const row = materialList.filter((item) => item.time === time); const gate1 = row.filter((item) => item.gate === "1"); const gate7 = row.filter((item) => item.gate === "7"); const renderCell = (items: DabsRowItem[], field: keyof DabsRowItem) =>
   items.map((item) => (
-    <div
-  key={`${field}-${item.id}`}
-  className={cn(
-    "mb-2 flex items-center justify-between gap-1",
-    field === "company" && ""
-  )}
->
+    <div key={`${field}-${item.id}`} className="mb-2 flex items-center justify-between gap-1">
       <span className="whitespace-pre-wrap break-all leading-relaxed">
   {item[field]}
 </span>
+{field === "company" && (
+  <span className="h-px flex-1 border-t border-dashed border-black"></span>
+)}
       {field === "location" && (
   <div className="flex shrink-0 gap-1">
     {canAdminEditDabsItem && (
@@ -3841,7 +3817,7 @@ const activeColumns =
   </div>
 )}
     </div>
-  )); return <tr key={time}><td className="border border-slate-200 px-3 py-2 font-medium">{time}시</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate1, "company")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate1, "material")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate1, "vehicle")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate1, "location")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate7, "company")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate7, "material")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate7, "vehicle")}</td><td className="border border-slate-200 px-3 py-2 align-top">{renderCell(gate7, "location")}</td></tr>; })}</tbody></table></div>
+  )); return <tr key={time}><td className="border border-black px-3 py-2 font-medium">{time}시</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "company")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "material")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "vehicle")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "location")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "company")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "material")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "vehicle")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "location")}</td></tr>; })}</tbody></table></div>
 </div></>}
                 {!isImageTab && !isSectionTab && !isMaterialTab && <><TextArea value={dabsDraft} onChange={(e) => setDabsDraft(e.target.value)} placeholder="회의 내용, 작업사항, 확인사항 등을 입력하세요." /><div className="flex justify-end"><Button onClick={handleSaveDabsText} disabled={!canEditDabs} className="w-full lg:w-auto">저장</Button></div></>}
                 {dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
