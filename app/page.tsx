@@ -468,13 +468,30 @@ function chunkArray<T>(items: T[], size: number) {
   return chunks;
 }
 
+function getItemVisualRowCount(item: DabsRowItem) {
+  const content = String(item.content || "");
+
+  // 줄바꿈 기준 + 최소 1줄
+  const lines = content.split("\n").length;
+
+  return Math.max(lines, 1);
+}
+
 function getRowCountByColumns(
   columns: string[],
   rows: Record<string, DabsRowItem[]>
 ) {
   return columns.reduce((sum, column) => {
     const list = rows[column] || [];
-    return sum + Math.max(list.length, 1);
+
+    if (list.length === 0) return sum + 1;
+
+    const visualRows = list.reduce(
+      (acc, item) => acc + getItemVisualRowCount(item),
+      0
+    );
+
+    return sum + visualRows;
   }, 0);
 }
 
@@ -488,7 +505,15 @@ function splitColumnsByMaxRows(
   let currentRows = 0;
 
   columns.forEach((column) => {
-    const rowCount = Math.max((rows[column] || []).length, 1);
+    const list = rows[column] || [];
+
+const rowCount =
+  list.length === 0
+    ? 1
+    : list.reduce(
+        (sum, item) => sum + getItemVisualRowCount(item),
+        0
+      );
 
     if (currentChunk.length > 0 && currentRows + rowCount > maxRows) {
       chunks.push(currentChunk);
@@ -613,9 +638,25 @@ function splitSoloWorkersByMaxRows(
 ) {
   const chunks: Array<Array<DabsRowItem & { building: string }>> = [];
 
-  for (let i = 0; i < rows.length; i += maxRows) {
-    chunks.push(rows.slice(i, i + maxRows));
+  let currentChunk: Array<DabsRowItem & { building: string }> = [];
+let currentRows = 0;
+
+rows.forEach((item) => {
+  const rowCount = getItemVisualRowCount(item);
+
+  if (currentChunk.length > 0 && currentRows + rowCount > maxRows) {
+    chunks.push(currentChunk);
+    currentChunk = [];
+    currentRows = 0;
   }
+
+  currentChunk.push(item);
+  currentRows += rowCount;
+});
+
+if (currentChunk.length > 0) {
+  chunks.push(currentChunk);
+}
 
   return chunks.length > 0 ? chunks : [[]];
 }
