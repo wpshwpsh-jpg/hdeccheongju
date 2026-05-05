@@ -453,6 +453,23 @@ function getBuildingColor(building: string) {
   return buildingColorMap[building] || "text-slate-800";
 }
 
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+
+  return chunks;
+}
+
+function getDabsColumnsByTabKey(tabKey: string) {
+  if (tabKey === "section1_arch" || tabKey === "section1_mep") return SECTION1_COLUMNS;
+  if (tabKey === "section2_arch" || tabKey === "section2_mep") return SECTION2_COLUMNS;
+  if (tabKey === "fireWork") return FIRE_WORK_COLUMNS;
+  return [];
+}
+
 function groupSoloWorkersByCompany(list: DabsRowItem[]): Array<[string, DabsRowItem[]]> {
   const sorted = [...list].sort((a, b) => {
     const companyCompare = String(a.company || "").localeCompare(String(b.company || ""), "ko");
@@ -709,6 +726,7 @@ const [editEntryPopup, setEditEntryPopup] = useState({
 });
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [currentPage, setCurrentPage] = useState("menu");
+const [portfolioSlideIndex, setPortfolioSlideIndex] = useState(0);
   const [dabsTabIndex, setDabsTabIndex] = useState(0);
   const [dabsData, setDabsData] = useState<Record<string, DabsDateValue>>({});
   const [dabsImages, setDabsImages] = useState<Record<string, string>>({});
@@ -1158,7 +1176,79 @@ const selectedDatePlusOne = useMemo(() => {
 ], [selectedDatePlusZero, selectedDatePlusOne]);
 
   const activeDabsTab = dabsTabs[dabsTabIndex] || dabsTabs[0];
-  const activeDabsKey = activeDabsTab.key;
+const activeDabsKey = activeDabsTab.key;
+
+const portfolioSlides = useMemo(() => {
+  const slides: Array<{
+    type: "overlay" | "section" | "material" | "soloWorker";
+    key: string;
+    tabKey?: string;
+    label: string;
+    columns?: string[];
+  }> = [];
+
+  dabsTabs.forEach((tab) => {
+    if (tab.key === "highRisk" || tab.key === "equipmentFlow") {
+      slides.push({
+        type: "overlay",
+        key: tab.key,
+        tabKey: tab.key,
+        label: tab.label,
+      });
+      return;
+    }
+
+    if (
+      tab.key === "section1_arch" ||
+      tab.key === "section1_mep" ||
+      tab.key === "section2_arch" ||
+      tab.key === "section2_mep" ||
+      tab.key === "fireWork"
+    ) {
+      const columnChunks = chunkArray(getDabsColumnsByTabKey(tab.key), 6);
+
+      columnChunks.forEach((columns, index) => {
+        slides.push({
+          type: "section",
+          key: `${tab.key}-${index}`,
+          tabKey: tab.key,
+          label:
+            columnChunks.length > 1
+              ? `${tab.label} (${index + 1}/${columnChunks.length})`
+              : tab.label,
+          columns,
+        });
+      });
+
+      return;
+    }
+
+    if (tab.key === "materialsAfter0" || tab.key === "materialsAfter1") {
+      slides.push({
+        type: "material",
+        key: tab.key,
+        tabKey: tab.key,
+        label: tab.label,
+      });
+    }
+  });
+
+  const soloChunks = chunkArray(SOLO_WORKER_COLUMNS, 6);
+
+  soloChunks.forEach((columns, index) => {
+    slides.push({
+      type: "soloWorker",
+      key: `soloWorker-${index}`,
+      label:
+        soloChunks.length > 1
+          ? `단독작업자 (${index + 1}/${soloChunks.length})`
+          : "단독작업자",
+      columns,
+    });
+  });
+
+  return slides;
+}, [dabsTabs]);
   const soloRows = useMemo<Record<string, DabsRowItem[]>>(
   () => dabsData[selectedDate]?.soloWorker?.rows || {},
   [dabsData, selectedDate]
@@ -1168,6 +1258,25 @@ const soloCompanyColorList = useMemo(
   () => getUniqueCompaniesFromRows(soloRows),
   [soloRows]
 );
+
+useEffect(() => {
+  if (portfolioSlideIndex >= portfolioSlides.length) {
+    setPortfolioSlideIndex(0);
+  }
+}, [portfolioSlideIndex, portfolioSlides.length]);
+
+useEffect(() => {
+  if (currentPage !== "portfolio") return;
+
+  const slide = portfolioSlides[portfolioSlideIndex];
+  if (!slide?.tabKey) return;
+
+  const nextDabsTabIndex = dabsTabs.findIndex((tab) => tab.key === slide.tabKey);
+
+  if (nextDabsTabIndex >= 0 && nextDabsTabIndex !== dabsTabIndex) {
+    setDabsTabIndex(nextDabsTabIndex);
+  }
+}, [currentPage, portfolioSlideIndex, portfolioSlides, dabsTabs, dabsTabIndex]);
 
  useEffect(() => {
   const nextValue = dabsData[selectedDate]?.[activeDabsKey];
@@ -3343,6 +3452,28 @@ const posY = adjustedPosition?.y ?? marker.y;
         </Card>
       )}
 
+      <Card className="border-slate-200 shadow-none">
+        <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-sm font-semibold text-slate-900">
+              전체화면 발표 모드
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              DAB&apos;s 회의와 단독작업자를 PPT처럼 넘겨서 볼 수 있습니다.
+            </div>
+          </div>
+
+          <Button
+            onClick={() => {
+              setPortfolioSlideIndex(0);
+              setCurrentPage("portfolio");
+            }}
+          >
+            발표 모드 보기
+          </Button>
+        </CardContent>
+      </Card>
+
       {!isConfigured && (
   <Card className="border-amber-300 bg-amber-50">
     <CardContent className="p-4">
@@ -4711,6 +4842,345 @@ return (
     );
   };
 
+const renderPortfolioSectionTable = (tabKey: string, columns: string[]) => {
+  const tabValue = dabsData[selectedDate]?.[tabKey];
+  const rows =
+    typeof tabValue === "object" && tabValue && "rows" in tabValue
+      ? tabValue.rows || {}
+      : {};
+
+  return (
+    <div className="flex h-full w-full items-start justify-center overflow-auto p-6">
+      <table className="w-[88vw] table-fixed border-collapse bg-white text-[22px]">
+        <colgroup>
+          <col style={{ width: "13%" }} />
+          <col style={{ width: "22%" }} />
+          <col />
+        </colgroup>
+
+        <thead>
+          <tr className="bg-slate-100 text-slate-800">
+            <th className="border border-black px-4 py-3 text-left">동</th>
+            <th className="border border-black px-4 py-3 text-left">업체명</th>
+            <th className="border border-black px-4 py-3 text-left">작업내용</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {columns.flatMap((col) => {
+            const list = rows[col] || [];
+
+            if (list.length === 0) {
+              return [
+                <tr key={col}>
+                  <td className="border border-black px-4 py-3 font-semibold text-slate-700">
+                    {col}
+                  </td>
+                  <td className="border border-black px-4 py-3 text-slate-300">-</td>
+                  <td className="border border-black px-4 py-3 text-slate-300">-</td>
+                </tr>,
+              ];
+            }
+
+            return list.map((item, index) => (
+              <tr key={`${col}-${item.id}`}>
+                {index === 0 && (
+                  <td
+                    rowSpan={list.length}
+                    className="border border-black px-4 py-3 align-top font-semibold text-slate-700"
+                  >
+                    {col}
+                  </td>
+                )}
+
+                <td
+                  className={cn(
+                    "border border-black px-4 py-3 align-top font-semibold",
+                    index > 0 && "border-t border-dashed border-black"
+                  )}
+                >
+                  {item.company}
+                </td>
+
+                <td
+                  className={cn(
+                    "border border-black px-4 py-3 align-top",
+                    index > 0 && "border-t border-dashed border-black"
+                  )}
+                >
+                  <span className="whitespace-pre-wrap break-all leading-relaxed">
+                    {renderTextWithRedRanges(item.content, item.contentRedRanges)}
+                  </span>
+                </td>
+              </tr>
+            ));
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const renderPortfolioMaterialTable = (tabKey: string) => {
+  const tabValue = dabsData[selectedDate]?.[tabKey];
+  const list =
+    typeof tabValue === "object" && tabValue && "list" in tabValue
+      ? tabValue.list || []
+      : [];
+
+  return (
+    <div className="flex h-full w-full items-start justify-center overflow-auto p-6">
+      <table className="w-[88vw] table-fixed border-collapse bg-white text-[20px]">
+        <thead>
+          <tr className="bg-slate-100 text-slate-800">
+            <th rowSpan={2} className="w-[8%] border border-black px-3 py-3 text-left">
+              시간
+            </th>
+            <th colSpan={4} className="border border-black px-3 py-3 text-center">
+              1게이트
+            </th>
+            <th colSpan={4} className="border border-black px-3 py-3 text-center">
+              7게이트
+            </th>
+          </tr>
+          <tr className="bg-slate-100 text-slate-800">
+            <th className="border border-black px-3 py-3 text-left">업체명</th>
+            <th className="border border-black px-3 py-3 text-left">자재명</th>
+            <th className="border border-black px-3 py-3 text-left">차종</th>
+            <th className="border border-black px-3 py-3 text-left">하역장소</th>
+            <th className="border border-black px-3 py-3 text-left">업체명</th>
+            <th className="border border-black px-3 py-3 text-left">자재명</th>
+            <th className="border border-black px-3 py-3 text-left">차종</th>
+            <th className="border border-black px-3 py-3 text-left">하역장소</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {MATERIAL_TIMES.map((time) => {
+            const row = list.filter((item) => item.time === time);
+            const gate1 = row.filter((item) => item.gate === "1");
+            const gate7 = row.filter((item) => item.gate === "7");
+
+            const renderCell = (items: DabsRowItem[], field: keyof DabsRowItem) =>
+              items.length === 0
+                ? "-"
+                : items.map((item, index) => (
+                    <div
+                      key={`${field}-${item.id}`}
+                      className={cn(
+                        "whitespace-pre-wrap break-all leading-relaxed",
+                        index > 0 && "mt-2 border-t border-dashed border-black pt-2"
+                      )}
+                    >
+                      {String(item[field] || "")}
+                    </div>
+                  ));
+
+            return (
+              <tr key={time}>
+                <td className="border border-black px-3 py-3 font-semibold">{time}시</td>
+                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "company")}</td>
+                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "material")}</td>
+                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "vehicle")}</td>
+                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "location")}</td>
+                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "company")}</td>
+                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "material")}</td>
+                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "vehicle")}</td>
+                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "location")}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const renderPortfolioSoloWorkerTable = (columns: string[]) => {
+  return (
+    <div className="flex h-full w-full items-start justify-center overflow-auto p-6">
+      <table className="w-[88vw] table-fixed border-collapse bg-white text-[21px]">
+        <colgroup>
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "20%" }} />
+          <col style={{ width: "16%" }} />
+          <col />
+          <col style={{ width: "10%" }} />
+        </colgroup>
+
+        <thead>
+          <tr className="bg-slate-100 text-slate-800">
+            <th className="border border-black px-4 py-3 text-left">동</th>
+            <th className="border border-black px-4 py-3 text-left">업체명</th>
+            <th className="border border-black px-4 py-3 text-left">성명</th>
+            <th className="border border-black px-4 py-3 text-left">작업내용</th>
+            <th className="border border-black px-4 py-3 text-left">고령자</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {columns.flatMap((col) => {
+            const list = soloRows[col] || [];
+
+            if (list.length === 0) {
+              return [
+                <tr key={col}>
+                  <td className="border border-black px-4 py-3 font-semibold text-slate-700">
+                    {col}
+                  </td>
+                  <td className="border border-black px-4 py-3 text-slate-300" colSpan={4}>
+                    -
+                  </td>
+                </tr>,
+              ];
+            }
+
+            return list.map((item, index) => (
+              <tr key={`${col}-${item.id}`}>
+                {index === 0 && (
+                  <td
+                    rowSpan={list.length}
+                    className="border border-black px-4 py-3 align-top font-semibold text-slate-700"
+                  >
+                    {col}
+                  </td>
+                )}
+
+                <td
+                  className={cn(
+                    "border border-black px-4 py-3 align-top font-semibold",
+                    index > 0 && "border-t border-dashed border-black"
+                  )}
+                >
+                  {item.company}
+                </td>
+                <td
+                  className={cn(
+                    "border border-black px-4 py-3 align-top",
+                    index > 0 && "border-t border-dashed border-black"
+                  )}
+                >
+                  {item.name}
+                </td>
+                <td
+                  className={cn(
+                    "border border-black px-4 py-3 align-top",
+                    index > 0 && "border-t border-dashed border-black"
+                  )}
+                >
+                  {item.content}
+                </td>
+                <td
+                  className={cn(
+                    "border border-black px-4 py-3 align-top",
+                    item.elderly === "o" ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600",
+                    index > 0 && "border-t border-dashed border-black"
+                  )}
+                >
+                  {item.elderly}
+                </td>
+              </tr>
+            ));
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const renderPortfolioPage = () => {
+  const slide = portfolioSlides[portfolioSlideIndex];
+
+  if (!slide) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        표시할 페이지가 없습니다.
+      </div>
+    );
+  }
+
+  const goPrev = () => {
+    setPortfolioSlideIndex((prev) =>
+      prev <= 0 ? portfolioSlides.length - 1 : prev - 1
+    );
+  };
+
+  const goNext = () => {
+    setPortfolioSlideIndex((prev) =>
+      prev >= portfolioSlides.length - 1 ? 0 : prev + 1
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] flex flex-col bg-slate-950 text-white">
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 px-4">
+        <div>
+          <div className="text-lg font-bold">{slide.label}</div>
+          <div className="text-xs text-slate-300">
+            기준일: {formatMonthDay(selectedDate)} · {portfolioSlideIndex + 1} / {portfolioSlides.length}
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={goPrev}>
+            이전
+          </Button>
+          <Button variant="outline" onClick={goNext}>
+            다음
+          </Button>
+          <Button
+            onClick={() => {
+              setCurrentPage("menu");
+              setPortfolioSlideIndex(0);
+            }}
+          >
+            종료
+          </Button>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 bg-white text-slate-900">
+        {slide.type === "overlay" && (
+          <div className="h-full w-full p-4">
+            {renderOverlayImage(
+              slide.key === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow,
+              true
+            )}
+          </div>
+        )}
+
+        {slide.type === "section" &&
+          slide.tabKey &&
+          renderPortfolioSectionTable(slide.tabKey, slide.columns || [])}
+
+        {slide.type === "material" &&
+          slide.tabKey &&
+          renderPortfolioMaterialTable(slide.tabKey)}
+
+        {slide.type === "soloWorker" &&
+          renderPortfolioSoloWorkerTable(slide.columns || [])}
+      </div>
+
+      <div className="flex h-12 shrink-0 items-center justify-center gap-2 border-t border-white/10 bg-slate-950 px-4">
+        {portfolioSlides.map((item, index) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => setPortfolioSlideIndex(index)}
+            className={cn(
+              "h-2.5 rounded-full transition-all",
+              index === portfolioSlideIndex
+                ? "w-8 bg-white"
+                : "w-2.5 bg-white/30 hover:bg-white/60"
+            )}
+            title={item.label}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
   const renderSoloWorkerPage = () => (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
@@ -5205,6 +5675,8 @@ return (
     ? renderMenuScreen()
     : currentPage === "dabs"
       ? renderDabsPage()
+      : currentPage === "portfolio"
+        ? renderPortfolioPage()
       : currentPage === "soloWorker"
         ? renderSoloWorkerPage()
         : currentPage === "approval"
