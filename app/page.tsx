@@ -2896,9 +2896,8 @@ if (touchGestureRef.current.moved) {
   const renderOverlayImage = (selectedImage: string | undefined, isImageTab: boolean) => {
     const overlayBundle = getOverlayBundle();
     const markers = overlayBundle.markers || [];
-const arrows = overlayBundle.arrows || [];
-
-return (
+    const arrows = overlayBundle.arrows || [];
+    return (
   <div
     ref={imageAreaRef}
     className="relative h-[260px] overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:h-auto md:rounded-2xl"
@@ -2931,7 +2930,7 @@ return (
               {activeDabsKey === "equipmentFlow" && arrowStart && <circle cx={arrowStart.x} cy={arrowStart.y} r="1.3" fill="#f97316" />}
             </svg>
             {markers.map((marker) => {
-  const posX = marker.x;
+              const posX = marker.x;
 const posY = marker.y;
               const color = getCompanyColor(marker.company || "-");
               const isHighRiskMarker = activeDabsKey === "highRisk";
