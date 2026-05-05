@@ -485,7 +485,7 @@ function getTextVisualLineCount(text: string, charsPerLine: number) {
 function getItemVisualRowCount(item: DabsRowItem, mode: "section" | "solo" = "section") {
   const content = String(item.content || "");
 
-  const charsPerLine = mode === "solo" ? 100 : 140;
+  const charsPerLine = mode === "solo" ? 120 : 160;
 
   return Math.max(getTextVisualLineCount(content, charsPerLine), 1);
 }
@@ -5243,6 +5243,16 @@ const renderPortfolioSoloWorkerTable = (
   items: Array<DabsRowItem & { building: string }>,
   title: string
 ) => {
+  const grouped = items.reduce<Record<string, Array<DabsRowItem & { building: string }>>>(
+    (acc, item) => {
+      const key = item.company || "-";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    },
+    {}
+  );
+
   return (
     <div className="flex h-full w-full items-center justify-center overflow-hidden p-1">
       <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[17px] xl:text-[18px]">
@@ -5251,11 +5261,11 @@ const renderPortfolioSoloWorkerTable = (
         </caption>
 
         <colgroup>
-          <col style={{ width: "20%" }} />
-          <col style={{ width: "12%" }} />
-          <col style={{ width: "16%" }} />
-          <col />
           <col style={{ width: "10%" }} />
+          <col style={{ width: "6%" }} />
+          <col style={{ width: "14%" }} />
+          <col />
+          <col style={{ width: "8%" }} />
         </colgroup>
 
         <thead>
@@ -5279,38 +5289,45 @@ const renderPortfolioSoloWorkerTable = (
               </td>
             </tr>
           ) : (
-            items.map((item) => (
-              <tr key={`${item.building}-${item.id}`}>
-                <td className="border border-black px-3 py-2 align-top font-semibold">
-                  {item.company}
-                </td>
-
-                <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
-                  {item.building}
-                </td>
-
-                <td className="border border-black px-3 py-2 align-top">
-                  {item.name}
-                </td>
-
-                <td className="border border-black px-3 py-2 align-top">
-                  <span className="whitespace-pre-wrap break-all leading-relaxed">
-                    {item.content}
-                  </span>
-                </td>
-
-                <td
-                  className={cn(
-                    "border border-black px-3 py-2 align-top",
-                    item.elderly === "o"
-                      ? "bg-amber-50 font-semibold text-amber-700"
-                      : "text-slate-600"
+            Object.entries(grouped).map(([company, list]) =>
+              list.map((item, index) => (
+                <tr key={`${item.building}-${item.id}`}>
+                  {index === 0 && (
+                    <td
+                      rowSpan={list.length}
+                      className="border border-black px-3 py-2 align-top font-semibold"
+                    >
+                      {company}
+                    </td>
                   )}
-                >
-                  {item.elderly}
-                </td>
-              </tr>
-            ))
+
+                  <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
+                    {item.building}
+                  </td>
+
+                  <td className="border border-black px-3 py-2 align-top">
+                    {item.name}
+                  </td>
+
+                  <td className="border border-black px-3 py-2 align-top">
+                    <span className="whitespace-pre-wrap break-all leading-relaxed">
+                      {item.content}
+                    </span>
+                  </td>
+
+                  <td
+                    className={cn(
+                      "border border-black px-3 py-2 align-top",
+                      item.elderly === "o"
+                        ? "bg-amber-50 font-semibold text-amber-700"
+                        : "text-slate-600"
+                    )}
+                  >
+                    {item.elderly}
+                  </td>
+                </tr>
+              ))
+            )
           )}
         </tbody>
       </table>
