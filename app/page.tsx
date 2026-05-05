@@ -2891,8 +2891,8 @@ const handleUpdateOverlayInfo = async () => {
 );
 };
 
-const handleDeleteOverlayItem = async (itemId: string) => {
-  const currentValue = getOverlayBundle();
+const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey) => {
+  const currentValue = getOverlayBundle(targetKey);
 
   const targetMarker = (currentValue.markers || []).find((item) => item.id === itemId);
   const targetArrow = (currentValue.arrows || []).find((item) => item.id === itemId);
@@ -2904,7 +2904,7 @@ const handleDeleteOverlayItem = async (itemId: string) => {
     ...dabsOverlays,
     [selectedDate]: {
       ...(dabsOverlays[selectedDate] || {}),
-      [activeDabsKey]: {
+      [targetKey]: {
         markers: (currentValue.markers || []).filter((item) => item.id !== itemId),
         arrows: (currentValue.arrows || []).filter((item) => item.id !== itemId),
       },
@@ -3495,8 +3495,12 @@ if (touchGestureRef.current.moved) {
     );
   };
 
-  const renderOverlayImage = (selectedImage: string | undefined, isImageTab: boolean) => {
-    const overlayBundle = getOverlayBundle();
+  const renderOverlayImage = (
+  selectedImage: string | undefined,
+  isImageTab: boolean,
+  targetKey = activeDabsKey
+) => {
+  const overlayBundle = getOverlayBundle(targetKey);
     const markers = overlayBundle.markers || [];
 const arrows = overlayBundle.arrows || [];
 const overlayCompanyList = getUniqueCompaniesFromMarkers(markers);
@@ -3534,13 +3538,13 @@ return (
               {activeDabsKey === "equipmentFlow" && arrowStart && <circle cx={arrowStart.x} cy={arrowStart.y} r="1.3" fill="#f97316" />}
             </svg>
             {markers.map((marker) => {
-              const markerKey = `${activeDabsKey}-${marker.id}`;
+              const markerKey = `${targetKey}-${marker.id}`;
               const adjustedPosition = adjustedOverlayPositions[markerKey];
               const posX = adjustedPosition?.x ?? marker.x;
 const posY = adjustedPosition?.y ?? marker.y;
               const color = getCompanyColorByList(marker.company || "-", overlayCompanyList);
               const buildingColor = getBuildingColor(marker.building || "");
-              const isHighRiskMarker = activeDabsKey === "highRisk";
+              const isHighRiskMarker = targetKey === "highRisk";
               return (
                 <div
   key={marker.id}
@@ -3599,7 +3603,7 @@ const posY = adjustedPosition?.y ?? marker.y;
         setEditOverlayPopup({
           open: true,
           itemId: marker.id,
-          targetKey: activeDabsKey,
+          targetKey,
           company: marker.company || "",
           note: marker.note || "",
           building: marker.building || "",
@@ -3621,7 +3625,7 @@ const posY = adjustedPosition?.y ?? marker.y;
       onClick={(e) => {
         e.stopPropagation();
         e.preventDefault();
-        handleDeleteOverlayItem(marker.id);
+        handleDeleteOverlayItem(marker.id, targetKey);
       }}
       onTouchStart={(e) => e.stopPropagation()}
       onTouchEnd={(e) => e.stopPropagation()}
@@ -4487,114 +4491,7 @@ return (
           </div>
         )}
 
-                {editOverlayPopup.open && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
-            <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
-              <div className="text-base font-semibold text-slate-900">
-                {editOverlayPopup.targetKey === "equipmentFlow"
-                  ? "장비동선 수정"
-                  : "고위험작업 수정"}
-              </div>
-
-              {editOverlayPopup.targetKey === "highRisk" && (
-                <div className="mt-4 space-y-2">
-                  <label className="text-xs font-medium text-slate-600">동 선택</label>
-                  <select
-                    value={editOverlayPopup.building}
-                    onChange={(e) =>
-                      setEditOverlayPopup((prev) => ({
-                        ...prev,
-                        building: e.target.value,
-                      }))
-                    }
-                    className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                  >
-                    <option value="">동 선택</option>
-                    {HIGH_RISK_BUILDINGS.map((building) => (
-                      <option key={building} value={building}>
-                        {building}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {editOverlayPopup.targetKey === "equipmentFlow" && (
-                <div className="mt-4 space-y-2">
-                  <label className="text-xs font-medium text-slate-600">장비 선택</label>
-                  <select
-                    value={editOverlayPopup.equipmentType}
-                    onChange={(e) =>
-                      setEditOverlayPopup((prev) => ({
-                        ...prev,
-                        equipmentType: e.target.value,
-                      }))
-                    }
-                    className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-                  >
-                    {EQUIPMENT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="mt-4 space-y-2">
-                <label className="text-xs font-medium text-slate-600">업체명</label>
-                <Input
-                  value={editOverlayPopup.company}
-                  onChange={(e) =>
-                    setEditOverlayPopup((prev) => ({
-                      ...prev,
-                      company: e.target.value,
-                    }))
-                  }
-                  placeholder="업체명 입력"
-                />
-              </div>
-
-              <div className="mt-4 space-y-2">
-                <label className="text-xs font-medium text-slate-600">작업내용</label>
-                <Input
-                  value={editOverlayPopup.note}
-                  onChange={(e) =>
-                    setEditOverlayPopup((prev) => ({
-                      ...prev,
-                      note: e.target.value,
-                    }))
-                  }
-                  placeholder="작업내용 입력"
-                />
-              </div>
-
-              <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <Button
-                  variant="outline"
-                  className="w-full lg:w-auto"
-                  onClick={() =>
-                    setEditOverlayPopup({
-                      open: false,
-                      itemId: "",
-                      targetKey: "highRisk",
-                      company: "",
-                      note: "",
-                      building: "",
-                      equipmentType: "concrete_pump_truck",
-                    })
-                  }
-                >
-                  취소
-                </Button>
-
-                <Button className="w-full lg:w-auto" onClick={handleUpdateOverlayInfo}>
-                  저장 후 위치 수정
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+                
 
         {imagePopup.open && (
   <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
@@ -5421,9 +5318,10 @@ const renderPortfolioPage = () => {
         {slide.type === "overlay" && (
           <div className="h-full w-full p-4">
             {renderOverlayImage(
-              slide.key === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow,
-              true
-            )}
+  slide.key === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow,
+  true,
+  slide.key
+)}
           </div>
         )}
 
@@ -5947,21 +5845,130 @@ const renderPortfolioPage = () => {
 
   if (!mounted) return null;
 
-  return (
+return (
   <div className="min-h-screen bg-slate-50 p-2 pb-28 sm:p-4 md:p-8">
-    {!currentUser
-  ? renderAuthScreen()
-  : currentPage === "menu"
-    ? renderMenuScreen()
-    : currentPage === "dabs"
-      ? renderDabsPage()
-      : currentPage === "portfolio"
-        ? renderPortfolioPage()
-      : currentPage === "soloWorker"
-        ? renderSoloWorkerPage()
-        : currentPage === "approval"
-  ? renderApprovalPage()
-  : renderEducationPage()}
+    {editOverlayPopup.open && (
+      <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+        <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+          <div className="text-base font-semibold text-slate-900">
+            {editOverlayPopup.targetKey === "equipmentFlow"
+              ? "장비동선 수정"
+              : "고위험작업 수정"}
+          </div>
+
+          {editOverlayPopup.targetKey === "highRisk" && (
+            <div className="mt-4 space-y-2">
+              <label className="text-xs font-medium text-slate-600">동 선택</label>
+              <select
+                value={editOverlayPopup.building}
+                onChange={(e) =>
+                  setEditOverlayPopup((prev) => ({
+                    ...prev,
+                    building: e.target.value,
+                  }))
+                }
+                className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              >
+                <option value="">동 선택</option>
+                {HIGH_RISK_BUILDINGS.map((building) => (
+                  <option key={building} value={building}>
+                    {building}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {editOverlayPopup.targetKey === "equipmentFlow" && (
+            <div className="mt-4 space-y-2">
+              <label className="text-xs font-medium text-slate-600">장비 선택</label>
+              <select
+                value={editOverlayPopup.equipmentType}
+                onChange={(e) =>
+                  setEditOverlayPopup((prev) => ({
+                    ...prev,
+                    equipmentType: e.target.value,
+                  }))
+                }
+                className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              >
+                {EQUIPMENT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">업체명</label>
+            <Input
+              value={editOverlayPopup.company}
+              onChange={(e) =>
+                setEditOverlayPopup((prev) => ({
+                  ...prev,
+                  company: e.target.value,
+                }))
+              }
+              placeholder="업체명 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">작업내용</label>
+            <Input
+              value={editOverlayPopup.note}
+              onChange={(e) =>
+                setEditOverlayPopup((prev) => ({
+                  ...prev,
+                  note: e.target.value,
+                }))
+              }
+              placeholder="작업내용 입력"
+            />
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              className="w-full lg:w-auto"
+              onClick={() =>
+                setEditOverlayPopup({
+                  open: false,
+                  itemId: "",
+                  targetKey: "highRisk",
+                  company: "",
+                  note: "",
+                  building: "",
+                  equipmentType: "concrete_pump_truck",
+                })
+              }
+            >
+              취소
+            </Button>
+
+            <Button className="w-full lg:w-auto" onClick={handleUpdateOverlayInfo}>
+              저장 후 위치 수정
+            </Button>
+          </div>
         </div>
-  );
+      </div>
+    )}
+
+    {!currentUser
+      ? renderAuthScreen()
+      : currentPage === "menu"
+        ? renderMenuScreen()
+        : currentPage === "dabs"
+          ? renderDabsPage()
+          : currentPage === "portfolio"
+            ? renderPortfolioPage()
+            : currentPage === "soloWorker"
+              ? renderSoloWorkerPage()
+              : currentPage === "approval"
+                ? renderApprovalPage()
+                : renderEducationPage()}
+  </div>
+);
 }
