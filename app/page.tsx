@@ -52,18 +52,22 @@ const DEMO_MASTER_ID = "GH45";
 const DEMO_MASTER_PASSWORD = "2706";
 const DEMO_USERS_KEY = "demo-calendar-users";
 const DEMO_ENTRIES_KEY = "demo-calendar-entries";
-const SECTION1_COLUMNS = ["101동", "102동", "103동", "104동", "114동", "115동", "116동", "117동", "상가"];
-const SECTION2_COLUMNS = ["105동", "106동", "107동", "108동", "109동", "110동", "111동", "112동", "113동"];
+const ALL_BUILDING_LABEL = "전체";
+
+const SECTION1_COLUMNS = [ALL_BUILDING_LABEL, "101동", "102동", "103동", "104동", "114동", "115동", "116동", "117동", "상가"];
+const SECTION2_COLUMNS = [ALL_BUILDING_LABEL, "105동", "106동", "107동", "108동", "109동", "110동", "111동", "112동", "113동"];
 
 const FIRE_WORK_COLUMNS = [
+  ALL_BUILDING_LABEL,
   ...Array.from({ length: 17 }, (_, i) => `${101 + i}동`),
   "상가",
 ];
 const HIGH_RISK_BUILDINGS = [
+  ALL_BUILDING_LABEL,
   "101동", "102동", "103동", "104동", "105동", "106동", "107동", "108동", "109동",
   "110동", "111동", "112동", "113동", "114동", "115동", "116동", "117동", "상가",
 ];
-const SOLO_WORKER_COLUMNS = [...Array.from({ length: 17 }, (_, i) => `${101 + i}동`), "상가"];
+const SOLO_WORKER_COLUMNS = [ALL_BUILDING_LABEL, ...Array.from({ length: 17 }, (_, i) => `${101 + i}동`), "상가"];
 const MATERIAL_TIMES = Array.from({ length: 12 }, (_, i) => String(i + 6).padStart(2, "0"));
 const EQUIPMENT_OPTIONS = [
   { value: "concrete_pump_truck", label: "콘크리트 펌프카" },
@@ -430,7 +434,8 @@ function getCompanyColorByList(company: string, companyList: string[]) {
 
 function getBuildingColor(building: string) {
   const buildingColorMap: Record<string, string> = {
-    "101동": "text-red-700",
+  "전체": "text-black",
+  "101동": "text-red-700",
     "102동": "text-blue-700",
     "103동": "text-emerald-700",
     "104동": "text-amber-700",
@@ -502,7 +507,47 @@ function splitColumnsByMaxRows(
   return chunks;
 }
 
+function uniqueColumns(columns: string[]) {
+  return Array.from(new Set(columns));
+}
+
+function isSectionWorkTabKey(tabKey: string) {
+  return [
+    "archWork",
+    "mepWork",
+    "section1_arch",
+    "section1_mep",
+    "section2_arch",
+    "section2_mep",
+    "fireWork",
+  ].includes(tabKey);
+}
+
+function getMergedSectionKeys(tabKey: string) {
+  if (tabKey === "archWork") return ["section1_arch", "section2_arch"];
+  if (tabKey === "mepWork") return ["section1_mep", "section2_mep"];
+  return [tabKey];
+}
+
+function getSectionStorageKey(tabKey: string, building: string) {
+  if (tabKey === "archWork") {
+    if (building !== ALL_BUILDING_LABEL && SECTION2_COLUMNS.includes(building)) return "section2_arch";
+    return "section1_arch";
+  }
+
+  if (tabKey === "mepWork") {
+    if (building !== ALL_BUILDING_LABEL && SECTION2_COLUMNS.includes(building)) return "section2_mep";
+    return "section1_mep";
+  }
+
+  return tabKey;
+}
+
 function getDabsColumnsByTabKey(tabKey: string) {
+  if (tabKey === "archWork" || tabKey === "mepWork") {
+    return uniqueColumns([...SECTION1_COLUMNS, ...SECTION2_COLUMNS]);
+  }
+
   if (tabKey === "section1_arch" || tabKey === "section1_mep") return SECTION1_COLUMNS;
   if (tabKey === "section2_arch" || tabKey === "section2_mep") return SECTION2_COLUMNS;
   if (tabKey === "fireWork") return FIRE_WORK_COLUMNS;
@@ -1205,13 +1250,11 @@ const selectedDatePlusOne = useMemo(() => {
   const dabsTabs = useMemo(() => [
   { key: "highRisk", label: "고위험작업" },
   { key: "equipmentFlow", label: "장비동선" },
-  { key: "section1_arch", label: "1공구 작업(건축토목)" },
-{ key: "section1_mep", label: "1공구 작업(기전부)" },
-{ key: "section2_arch", label: "2공구 작업(건축토목)" },
-{ key: "section2_mep", label: "2공구 작업(기전부)" },
+  { key: "archWork", label: "건축토목 작업" },
+  { key: "mepWork", label: "기전부 작업" },
   { key: "fireWork", label: "화기작업" },
   { key: "materialsAfter0", label: `${formatShortDate(selectedDatePlusZero)} 자재반입` },
-{ key: "materialsAfter1", label: `${formatShortDate(selectedDatePlusOne)} 자재반입` },
+  { key: "materialsAfter1", label: `${formatShortDate(selectedDatePlusOne)} 자재반입` },
 ], [selectedDatePlusZero, selectedDatePlusOne]);
 
   const activeDabsTab = dabsTabs[dabsTabIndex] || dabsTabs[0];
@@ -1221,6 +1264,27 @@ const soloRows = useMemo<Record<string, DabsRowItem[]>>(
   () => dabsData[selectedDate]?.soloWorker?.rows || {},
   [dabsData, selectedDate]
 );
+
+const getMergedSectionRows = (tabKey: string) => {
+  const mergedRows: Record<string, DabsRowItem[]> = {};
+
+  getMergedSectionKeys(tabKey).forEach((sourceKey) => {
+    const tabValue = dabsData[selectedDate]?.[sourceKey];
+    const rows =
+      typeof tabValue === "object" && tabValue && "rows" in tabValue
+        ? tabValue.rows || {}
+        : {};
+
+    Object.entries(rows).forEach(([building, list]) => {
+      mergedRows[building] = [
+        ...(mergedRows[building] || []),
+        ...(list || []),
+      ];
+    });
+  });
+
+  return mergedRows;
+};
 
 const portfolioSlides = useMemo(() => {
   const slides: Array<{
@@ -1245,17 +1309,11 @@ const portfolioSlides = useMemo(() => {
     }
 
     if (
-      tab.key === "section1_arch" ||
-      tab.key === "section1_mep" ||
-      tab.key === "section2_arch" ||
-      tab.key === "section2_mep" ||
-      tab.key === "fireWork"
+      tab.key === "archWork" ||
+tab.key === "mepWork" ||
+tab.key === "fireWork"
     ) {
-      const tabValue = dabsData[selectedDate]?.[tab.key];
-      const rows =
-        typeof tabValue === "object" && tabValue && "rows" in tabValue
-          ? tabValue.rows || {}
-          : {};
+      const rows = getMergedSectionRows(tab.key);
 
       const columnChunks = splitColumnsByMaxRows(
         getDabsColumnsByTabKey(tab.key),
@@ -2021,11 +2079,12 @@ const cancelApprovalUser = async (uid: string) => {
     inputContent.length
   );
 
-  const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
-  const currentRows =
-    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
-      ? currentTabValue.rows || {}
-      : {};
+  const storageKey = getSectionStorageKey(activeDabsKey, sectionInput.building);
+const currentTabValue = dabsData[selectedDate]?.[storageKey];
+const currentRows =
+  typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+    ? currentTabValue.rows || {}
+    : {};
 
   const buildingRows = currentRows[sectionInput.building] || [];
   const existingIndex = buildingRows.findIndex((item) => item.company === companyName);
@@ -2072,7 +2131,7 @@ const cancelApprovalUser = async (uid: string) => {
     ...dabsData,
     [selectedDate]: {
       ...(dabsData[selectedDate] || {}),
-      [activeDabsKey]: { rows: nextRows },
+      [storageKey]: { rows: nextRows },
     },
   };
 
@@ -2200,28 +2259,58 @@ const handleUpdateMaterial = async () => {
   if (!canAdminEditDabsItem) return;
   if (!editSectionPopup.itemId || !editSectionPopup.building || !editSectionPopup.company.trim() || !editSectionPopup.content.trim()) return;
 
-  const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
-  const currentRows =
-    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
-      ? currentTabValue.rows || {}
-      : {};
-
-  const nextRows = { ...currentRows };
-
   const oldBuilding = editSectionPopup.oldBuilding;
-  const newBuilding = editSectionPopup.building;
+const newBuilding = editSectionPopup.building;
 
-  const targetItem = (nextRows[oldBuilding] || []).find((item) => item.id === editSectionPopup.itemId);
-  if (!targetItem) return;
+const sourceKey =
+  getMergedSectionKeys(activeDabsKey).find((key) => {
+    const tabValue = dabsData[selectedDate]?.[key];
+    const rows =
+      typeof tabValue === "object" && tabValue && "rows" in tabValue
+        ? tabValue.rows || {}
+        : {};
 
-  const nextContent = editSectionPopup.content.trim();
+    return (rows[oldBuilding] || []).some((item) => item.id === editSectionPopup.itemId);
+  }) || getSectionStorageKey(activeDabsKey, oldBuilding);
 
-  nextRows[oldBuilding] = (nextRows[oldBuilding] || []).filter(
+const targetKey = getSectionStorageKey(activeDabsKey, newBuilding);
+
+const sourceTabValue = dabsData[selectedDate]?.[sourceKey];
+const sourceRows =
+  typeof sourceTabValue === "object" && sourceTabValue && "rows" in sourceTabValue
+    ? sourceTabValue.rows || {}
+    : {};
+
+const targetItem = (sourceRows[oldBuilding] || []).find(
+  (item) => item.id === editSectionPopup.itemId
+);
+if (!targetItem) return;
+
+const nextContent = editSectionPopup.content.trim();
+
+const nextDateData = {
+  ...(dabsData[selectedDate] || {}),
+};
+
+const nextSourceRows = {
+  ...sourceRows,
+  [oldBuilding]: (sourceRows[oldBuilding] || []).filter(
     (item) => item.id !== editSectionPopup.itemId
-  );
+  ),
+};
 
-  nextRows[newBuilding] = [
-    ...(nextRows[newBuilding] || []),
+nextDateData[sourceKey] = { rows: nextSourceRows };
+
+const targetTabValue = sourceKey === targetKey ? nextDateData[targetKey] : dabsData[selectedDate]?.[targetKey];
+const targetRows =
+  typeof targetTabValue === "object" && targetTabValue && "rows" in targetTabValue
+    ? targetTabValue.rows || {}
+    : {};
+
+const nextTargetRows = {
+  ...targetRows,
+  [newBuilding]: [
+    ...(targetRows[newBuilding] || []),
     {
       ...targetItem,
       company: editSectionPopup.company.trim(),
@@ -2231,15 +2320,15 @@ const handleUpdateMaterial = async () => {
         nextContent.length
       ),
     },
-  ];
+  ],
+};
 
-  const nextData = {
-    ...dabsData,
-    [selectedDate]: {
-      ...(dabsData[selectedDate] || {}),
-      [activeDabsKey]: { rows: nextRows },
-    },
-  };
+nextDateData[targetKey] = { rows: nextTargetRows };
+
+const nextData = {
+  ...dabsData,
+  [selectedDate]: nextDateData,
+};
 
   setDabsData(nextData);
 
@@ -2260,35 +2349,40 @@ const handleUpdateMaterial = async () => {
 };
   const handleDeleteDabsItem = async (itemId: string, building: string | null = null) => {
 
-  if (
-  activeDabsKey === "section1_arch" ||
-  activeDabsKey === "section1_mep" ||
-  activeDabsKey === "section2_arch" ||
-  activeDabsKey === "section2_mep" ||
-  activeDabsKey === "fireWork"
-) {
-    const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
-    const currentRows =
-      typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
-        ? currentTabValue.rows || {}
+  if (isSectionWorkTabKey(activeDabsKey)) {
+    const sourceKey =
+  getMergedSectionKeys(activeDabsKey).find((key) => {
+    const tabValue = dabsData[selectedDate]?.[key];
+    const rows =
+      typeof tabValue === "object" && tabValue && "rows" in tabValue
+        ? tabValue.rows || {}
         : {};
 
-    const nextRows = { ...currentRows };
+    return building ? (rows[building] || []).some((item) => item.id === itemId) : false;
+  }) || activeDabsKey;
 
-    if (building) {
+const currentTabValue = dabsData[selectedDate]?.[sourceKey];
+const currentRows =
+  typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+    ? currentTabValue.rows || {}
+    : {};
+
+const nextRows = { ...currentRows };
+
+if (building) {
   const targetItem = (nextRows[building] || []).find((item) => item.id === itemId);
   if (!canDeleteOwnItem(targetItem)) return;
 
   nextRows[building] = (nextRows[building] || []).filter((item) => item.id !== itemId);
 }
 
-    const nextData = {
-      ...dabsData,
-      [selectedDate]: {
-        ...(dabsData[selectedDate] || {}),
-        [activeDabsKey]: { rows: nextRows },
-      },
-    };
+const nextData = {
+  ...dabsData,
+  [selectedDate]: {
+    ...(dabsData[selectedDate] || {}),
+    [sourceKey]: { rows: nextRows },
+  },
+};
 
     setDabsData(nextData);
     
@@ -2320,7 +2414,7 @@ const handleUpdateMaterial = async () => {
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
 };
 
-const handleLoadPreviousCompanyData = async (targetKey: "section1" | "section2" | "fireWork" | "soloWorker") => {
+const handleLoadPreviousCompanyData = async (targetKey: string) => {
   if (!currentUser?.companyName) return;
 
   if (!loadSourceDate || loadSourceDate === selectedDate) {
@@ -2375,14 +2469,20 @@ const handleLoadPreviousCompanyData = async (targetKey: "section1" | "section2" 
 
   const sourceSnap = await getDoc(doc(db, "dabsMeetings", loadSourceDate));
   const sourceData = sourceSnap.exists() ? (sourceSnap.data() as DabsDateValue) : {};
-  const sourceTabValue = sourceData[targetKey];
+  const sourceKeys = getMergedSectionKeys(targetKey);
+const nextDateData = {
+  ...(dabsData[selectedDate] || {}),
+};
+
+sourceKeys.forEach((sourceKey) => {
+  const sourceTabValue = sourceData[sourceKey];
 
   const sourceRows =
     typeof sourceTabValue === "object" && sourceTabValue && "rows" in sourceTabValue
       ? sourceTabValue.rows || {}
       : {};
 
-  const currentTabValue = dabsData[selectedDate]?.[targetKey];
+  const currentTabValue = dabsData[selectedDate]?.[sourceKey];
   const currentRows =
     typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
       ? currentTabValue.rows || {}
@@ -2405,13 +2505,13 @@ const handleLoadPreviousCompanyData = async (targetKey: "section1" | "section2" 
     ];
   });
 
-  const nextData = {
-    ...dabsData,
-    [selectedDate]: {
-      ...(dabsData[selectedDate] || {}),
-      [targetKey]: { rows: nextRows },
-    },
-  };
+  nextDateData[sourceKey] = { rows: nextRows };
+});
+
+const nextData = {
+  ...dabsData,
+  [selectedDate]: nextDateData,
+};
 
   setDabsData(nextData);
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
@@ -3990,25 +4090,12 @@ const posY = adjustedPosition?.y ?? marker.y;
   const renderDabsPage = () => {
     const selectedTabValue = dabsData[selectedDate]?.[activeDabsKey];
     const isImageTab = activeDabsKey === "highRisk" || activeDabsKey === "equipmentFlow";
-    const isSectionTab =
-  activeDabsKey === "section1_arch" ||
-  activeDabsKey === "section1_mep" ||
-  activeDabsKey === "section2_arch" ||
-  activeDabsKey === "section2_mep" ||
-  activeDabsKey === "fireWork";
+    const isSectionTab = isSectionWorkTabKey(activeDabsKey);
 
 const isMaterialTab = activeDabsKey === "materialsAfter1" || activeDabsKey === "materialsAfter0";
 
-const activeColumns =
-  activeDabsKey === "section1_arch" || activeDabsKey === "section1_mep"
-    ? SECTION1_COLUMNS
-    : activeDabsKey === "fireWork"
-      ? FIRE_WORK_COLUMNS
-      : SECTION2_COLUMNS;
-    const sectionRows =
-  typeof selectedTabValue === "object" && selectedTabValue && "rows" in selectedTabValue
-    ? selectedTabValue.rows || {}
-    : {};
+const activeColumns = getDabsColumnsByTabKey(activeDabsKey);
+    const sectionRows = getMergedSectionRows(activeDabsKey);
     const materialList =
   typeof selectedTabValue === "object" && selectedTabValue && "list" in selectedTabValue
     ? selectedTabValue.list || []
@@ -4522,7 +4609,7 @@ return (
     <Button
       variant="outline"
       onClick={() =>
-  handleLoadPreviousCompanyData(activeDabsKey as "section1" | "section2" | "fireWork")
+  handleLoadPreviousCompanyData(activeDabsKey)
 }
     >
       내 업체 작업 불러오기
@@ -4898,16 +4985,15 @@ return (
     );
   };
 
-const renderPortfolioSectionTable = (tabKey: string, columns: string[]) => {
-  const tabValue = dabsData[selectedDate]?.[tabKey];
-  const rows =
-    typeof tabValue === "object" && tabValue && "rows" in tabValue
-      ? tabValue.rows || {}
-      : {};
+const renderPortfolioSectionTable = (tabKey: string, columns: string[], title: string) => {
+  const rows = getMergedSectionRows(tabKey);
 
   return (
     <div className="flex h-full w-full items-center justify-center overflow-hidden p-4">
   <table className="w-[92vw] max-w-[100vw] table-fixed border-collapse bg-white text-[18px] xl:text-[20px]">
+  <caption className="caption-top pb-1 text-left font-bold text-slate-900">
+    {title}
+  </caption>
         <colgroup>
           <col style={{ width: "13%" }} />
           <col style={{ width: "22%" }} />
@@ -4977,7 +5063,7 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[]) => {
   );
 };
 
-const renderPortfolioMaterialTable = (tabKey: string) => {
+const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
   const tabValue = dabsData[selectedDate]?.[tabKey];
   const list =
     typeof tabValue === "object" && tabValue && "list" in tabValue
@@ -4987,6 +5073,9 @@ const renderPortfolioMaterialTable = (tabKey: string) => {
   return (
     <div className="flex h-full w-full items-start justify-center overflow-auto p-6">
       <table className="w-[88vw] table-fixed border-collapse bg-white text-[20px]">
+  <caption className="caption-top pb-1 text-left font-bold text-slate-900">
+    {title}
+  </caption>
         <thead>
           <tr className="bg-slate-100 text-slate-800">
             <th rowSpan={2} className="w-[8%] border border-black px-3 py-3 text-left">
@@ -5052,10 +5141,13 @@ const renderPortfolioMaterialTable = (tabKey: string) => {
   );
 };
 
-const renderPortfolioSoloWorkerTable = (columns: string[]) => {
+const renderPortfolioSoloWorkerTable = (columns: string[], title: string) => {
   return (
     <div className="flex h-full w-full items-center justify-center overflow-hidden p-4">
   <table className="w-[92vw] max-w-[100vw] table-fixed border-collapse bg-white text-[18px] xl:text-[20px]">
+  <caption className="caption-top pb-1 text-left font-bold text-slate-900">
+    {title}
+  </caption>
         <colgroup>
           <col style={{ width: "12%" }} />
           <col style={{ width: "20%" }} />
@@ -5207,14 +5299,14 @@ const renderPortfolioPage = () => {
 
         {slide.type === "section" &&
           slide.tabKey &&
-          renderPortfolioSectionTable(slide.tabKey, slide.columns || [])}
+          renderPortfolioSectionTable(slide.tabKey, slide.columns || [], slide.label)}
 
         {slide.type === "material" &&
           slide.tabKey &&
-          renderPortfolioMaterialTable(slide.tabKey)}
+          renderPortfolioMaterialTable(slide.tabKey, slide.label)}
 
         {slide.type === "soloWorker" &&
-          renderPortfolioSoloWorkerTable(slide.columns || [])}
+          renderPortfolioSoloWorkerTable(slide.columns || [], slide.label)}
       </div>
 
       <div className="flex h-12 shrink-0 items-center justify-center gap-2 border-t border-white/10 bg-slate-950 px-4">
