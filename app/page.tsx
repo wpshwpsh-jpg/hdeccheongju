@@ -913,6 +913,7 @@ const [editEntryPopup, setEditEntryPopup] = useState({
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [currentPage, setCurrentPage] = useState("menu");
 const [portfolioSlideIndex, setPortfolioSlideIndex] = useState(0);
+const [isExportingPortfolioImages, setIsExportingPortfolioImages] = useState(false);
   const [dabsTabIndex, setDabsTabIndex] = useState(0);
   const [dabsData, setDabsData] = useState<Record<string, DabsDateValue>>({});
   const [dabsImages, setDabsImages] = useState<Record<string, string>>({});
@@ -1048,7 +1049,8 @@ const overlayMarkerRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const imageAreaRef = useRef<HTMLDivElement | null>(null);
 const dabsCaptureRef = useRef<HTMLDivElement | null>(null);
 const sectionTableRef = useRef<HTMLTableElement | null>(null);
-const soloWorkerCaptureRef = useRef<HTMLDivElement | null>(null);const educationCaptureRef = useRef<HTMLDivElement | null>(null);
+const soloWorkerCaptureRef = useRef<HTMLDivElement | null>(null);
+const portfolioCaptureRef = useRef<HTMLDivElement | null>(null);const educationCaptureRef = useRef<HTMLDivElement | null>(null);
   const lastTouchTimeRef = useRef(0);
   const touchGestureRef = useRef({ moved: false, startX: 0, startY: 0 });
 
@@ -1712,6 +1714,65 @@ await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
   } finally {
     setIsCapturingImage(false);
     setSectionCaptureWidths(null);
+  }
+};
+
+const waitForNextPaint = async () => {
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+};
+
+const handleDownloadPortfolioImages = async () => {
+  if (portfolioSlides.length === 0) {
+    alert("저장할 발표 페이지가 없습니다.");
+    return;
+  }
+
+  setIsExportingPortfolioImages(true);
+  setIsCapturingImage(true);
+  setCurrentPage("portfolio");
+
+  await waitForNextPaint();
+
+  try {
+    for (let index = 0; index < portfolioSlides.length; index += 1) {
+      setPortfolioSlideIndex(index);
+      await waitForNextPaint();
+
+      const target = portfolioCaptureRef.current;
+
+      if (!target) continue;
+
+      const slide = portfolioSlides[index];
+      const safeLabel = String(slide.label || `page-${index + 1}`).replace(/[\\/:*?"<>|]/g, "-");
+
+      const image = await toJpeg(target, {
+        cacheBust: true,
+        quality: 0.9,
+        pixelRatio: 1,
+        backgroundColor: "#ffffff",
+        style: {
+          backgroundColor: "#ffffff",
+        },
+      });
+
+      const link = document.createElement("a");
+      link.href = image;
+      link.download = `${String(index + 1).padStart(2, "0")}-${safeLabel}-${selectedDate}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  } catch (error) {
+    console.log("PORTFOLIO IMAGE DOWNLOAD ERROR:", error);
+    alert("발표 이미지 저장 중 오류가 발생했습니다. 콘솔을 확인하세요.");
+  } finally {
+    setIsExportingPortfolioImages(false);
+setIsCapturingImage(false);
+setCurrentPage("menu");
+setPortfolioSlideIndex(0);
   }
 };
 
@@ -3743,14 +3804,25 @@ const posY = adjustedPosition?.y ?? marker.y;
             </div>
           </div>
 
-          <Button
-            onClick={() => {
-              setPortfolioSlideIndex(0);
-              setCurrentPage("portfolio");
-            }}
-          >
-            발표 모드 보기
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+  <Button
+    variant="outline"
+    onClick={handleDownloadPortfolioImages}
+    disabled={isExportingPortfolioImages}
+  >
+    {isExportingPortfolioImages ? "저장 중..." : "발표 이미지 저장"}
+  </Button>
+
+  <Button
+    onClick={() => {
+      setPortfolioSlideIndex(0);
+      setCurrentPage("portfolio");
+    }}
+    disabled={isExportingPortfolioImages}
+  >
+    발표 모드 보기
+  </Button>
+</div>
         </CardContent>
       </Card>
 
@@ -5359,7 +5431,10 @@ const renderPortfolioPage = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex flex-col bg-slate-950 text-white">
+    <div
+  ref={portfolioCaptureRef}
+  className="fixed inset-0 z-[80] flex flex-col bg-slate-950 text-white"
+>
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/10 px-3">
         <div>
           <div className="text-sm font-bold leading-tight">{slide.label}</div>
@@ -5368,22 +5443,24 @@ const renderPortfolioPage = () => {
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={goPrev}>
-            이전
-          </Button>
-          <Button variant="outline" onClick={goNext}>
-            다음
-          </Button>
-          <Button
-            onClick={() => {
-              setCurrentPage("menu");
-              setPortfolioSlideIndex(0);
-            }}
-          >
-            종료
-          </Button>
-        </div>
+        {!isExportingPortfolioImages && (
+  <div className="flex gap-2">
+    <Button variant="outline" onClick={goPrev}>
+      이전
+    </Button>
+    <Button variant="outline" onClick={goNext}>
+      다음
+    </Button>
+    <Button
+      onClick={() => {
+        setCurrentPage("menu");
+        setPortfolioSlideIndex(0);
+      }}
+    >
+      종료
+    </Button>
+  </div>
+)}
       </div>
 
       <div className="min-h-0 flex-1 bg-white text-slate-900">
@@ -5408,7 +5485,8 @@ const renderPortfolioPage = () => {
           renderPortfolioSoloWorkerTable(slide.soloItems || [], slide.label)}
       </div>
 
-      <div className="flex h-6 shrink-0 items-center justify-center gap-1 border-t border-white/10 bg-slate-950 px-2">
+      {!isExportingPortfolioImages && (
+  <div className="flex h-6 shrink-0 items-center justify-center gap-1 border-t border-white/10 bg-slate-950 px-2">
         {portfolioSlides.map((item, index) => (
           <button
             key={item.key}
@@ -5423,7 +5501,8 @@ const renderPortfolioPage = () => {
             title={item.label}
           />
         ))}
-      </div>
+        </div>
+)}
     </div>
   );
 };
