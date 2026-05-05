@@ -390,18 +390,57 @@ type DabsDateValue = {
 function getCompanyColor(company: string) {
   const palette = [
     { bg: "bg-rose-50/95", border: "border-rose-300", text: "text-rose-800" },
+    { bg: "bg-orange-50/95", border: "border-orange-300", text: "text-orange-800" },
     { bg: "bg-amber-50/95", border: "border-amber-300", text: "text-amber-800" },
-    { bg: "bg-emerald-50/95", border: "border-emerald-300", text: "text-emerald-800" },
-    { bg: "bg-sky-50/95", border: "border-sky-300", text: "text-sky-800" },
-    { bg: "bg-violet-50/95", border: "border-violet-300", text: "text-violet-800" },
-    { bg: "bg-pink-50/95", border: "border-pink-300", text: "text-pink-800" },
-    { bg: "bg-cyan-50/95", border: "border-cyan-300", text: "text-cyan-800" },
+    { bg: "bg-yellow-50/95", border: "border-yellow-300", text: "text-yellow-800" },
     { bg: "bg-lime-50/95", border: "border-lime-300", text: "text-lime-800" },
+    { bg: "bg-green-50/95", border: "border-green-300", text: "text-green-800" },
+    { bg: "bg-emerald-50/95", border: "border-emerald-300", text: "text-emerald-800" },
+    { bg: "bg-teal-50/95", border: "border-teal-300", text: "text-teal-800" },
+    { bg: "bg-cyan-50/95", border: "border-cyan-300", text: "text-cyan-800" },
+    { bg: "bg-sky-50/95", border: "border-sky-300", text: "text-sky-800" },
+    { bg: "bg-blue-50/95", border: "border-blue-300", text: "text-blue-800" },
+    { bg: "bg-indigo-50/95", border: "border-indigo-300", text: "text-indigo-800" },
+    { bg: "bg-violet-50/95", border: "border-violet-300", text: "text-violet-800" },
+    { bg: "bg-purple-50/95", border: "border-purple-300", text: "text-purple-800" },
+    { bg: "bg-fuchsia-50/95", border: "border-fuchsia-300", text: "text-fuchsia-800" },
+    { bg: "bg-pink-50/95", border: "border-pink-300", text: "text-pink-800" },
   ];
-  const source = String(company || "-");
+
+  const source = String(company || "-").trim();
   let hash = 0;
-  for (let i = 0; i < source.length; i += 1) hash = (hash + source.charCodeAt(i) * (i + 1)) % 9973;
+
+  for (let i = 0; i < source.length; i += 1) {
+    hash = (hash * 31 + source.charCodeAt(i)) % 2147483647;
+  }
+
   return palette[hash % palette.length];
+}
+
+function getBuildingColor(building: string) {
+  const palette = [
+    "text-red-700",
+    "text-orange-700",
+    "text-amber-700",
+    "text-lime-700",
+    "text-green-700",
+    "text-emerald-700",
+    "text-teal-700",
+    "text-cyan-700",
+    "text-sky-700",
+    "text-blue-700",
+    "text-indigo-700",
+    "text-violet-700",
+    "text-purple-700",
+    "text-fuchsia-700",
+    "text-pink-700",
+    "text-rose-700",
+    "text-slate-700",
+    "text-stone-700",
+  ];
+
+  const index = HIGH_RISK_BUILDINGS.indexOf(building);
+  return palette[index >= 0 ? index % palette.length : palette.length - 1];
 }
 
 function groupSoloWorkersByCompany(list: DabsRowItem[]): Array<[string, DabsRowItem[]]> {
@@ -711,7 +750,16 @@ const [editSectionPopup, setEditSectionPopup] = useState<{
 
 const [editSectionTextSelection, setEditSectionTextSelection] = useState({ start: 0, end: 0 });
   const [materialsInput, setMaterialsInput] = useState({ gate: "1", company: "", material: "", vehicle: "", location: "", time: "06" });
-  const [imagePopup, setImagePopup] = useState({ open: false, x: 0, y: 0, note: "", equipmentType: "concrete_pump_truck", building: "", targetKey: "highRisk" });
+  const [imagePopup, setImagePopup] = useState({
+  open: false,
+  x: 0,
+  y: 0,
+  company: "",
+  note: "",
+  equipmentType: "concrete_pump_truck",
+  building: "",
+  targetKey: "highRisk",
+});
 
 const [editOverlayPopup, setEditOverlayPopup] = useState({
   open: false,
@@ -2532,6 +2580,7 @@ if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "m
     open: true,
     x: point.x,
     y: point.y,
+    company: "",
     note: "",
     equipmentType: "concrete_pump_truck",
     building: "",
@@ -2584,6 +2633,7 @@ lastTouchTimeRef.current = Date.now();
     open: true,
     x: point.x,
     y: point.y,
+    company: "",
     note: "",
     equipmentType: "concrete_pump_truck",
     building: "",
@@ -2620,6 +2670,7 @@ lastTouchTimeRef.current = Date.now();
     open: false,
     x: 0,
     y: 0,
+    company: "",
     note: "",
     equipmentType: "concrete_pump_truck",
     building: "",
@@ -2631,6 +2682,16 @@ lastTouchTimeRef.current = Date.now();
   if (!canEditDabs || !imagePopup.note.trim()) return;
   if (imagePopup.targetKey === "highRisk" && !imagePopup.building) return;
 
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? imagePopup.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
+
   const targetKey = imagePopup.targetKey || activeDabsKey;
   const currentValue = getOverlayBundle(targetKey);
 
@@ -2640,7 +2701,7 @@ lastTouchTimeRef.current = Date.now();
 
     setPendingEquipmentMarker({
       arrowId: lastArrow.id,
-      company: currentUser?.companyName || "",
+      company: companyName,
       note: imagePopup.note.trim(),
       equipmentType: imagePopup.equipmentType,
       createdByUid: currentUser?.uid,
@@ -2648,14 +2709,15 @@ lastTouchTimeRef.current = Date.now();
     });
 
     setImagePopup({
-      open: false,
-      x: 0,
-      y: 0,
-      note: "",
-      equipmentType: "concrete_pump_truck",
-      building: "",
-      targetKey: "highRisk",
-    });
+    open: false,
+    x: 0,
+    y: 0,
+    company: "",
+    note: "",
+    equipmentType: "concrete_pump_truck",
+    building: "",
+    targetKey: "highRisk",
+  });
 
     setDabsMessage("상자를 표시할 위치를 한 번 더 클릭하세요.");
     return;
@@ -2666,7 +2728,7 @@ lastTouchTimeRef.current = Date.now();
     x: imagePopup.x,
     y: imagePopup.y,
     building: imagePopup.building,
-    company: currentUser?.companyName || "",
+    company: companyName,
     note: imagePopup.note.trim(),
     equipmentType: "",
     createdByUid: currentUser?.uid,
@@ -2691,6 +2753,7 @@ lastTouchTimeRef.current = Date.now();
     open: false,
     x: 0,
     y: 0,
+    company: "",
     note: "",
     equipmentType: "concrete_pump_truck",
     building: "",
@@ -2771,6 +2834,7 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
     open: true,
     x: (arrow.startX + arrow.endX) / 2,
     y: (arrow.startY + arrow.endY) / 2,
+    company: "",
     note: "",
     equipmentType: "concrete_pump_truck",
     building: "",
@@ -3030,6 +3094,7 @@ if (touchGestureRef.current.moved) {
               const posX = adjustedPosition?.x ?? marker.x;
 const posY = adjustedPosition?.y ?? marker.y;
               const color = getCompanyColor(marker.company || "-");
+              const buildingColor = getBuildingColor(marker.building || "");
               const isHighRiskMarker = activeDabsKey === "highRisk";
               return (
                 <div
@@ -3055,7 +3120,28 @@ const posY = adjustedPosition?.y ?? marker.y;
   ? "min-w-[69px] max-w-[96px] gap-0 lg:min-w-[139px] lg:max-w-[187px] lg:gap-1"
 : "min-w-[85px] max-w-[112px] gap-0 lg:min-w-[200px] lg:max-w-[253px] lg:gap-1")}>
                     {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold leading-none shadow-sm lg:text-[11px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm lg:p-1"><EquipmentIcon type={marker.equipmentType} className="h-4 w-4 lg:h-10 lg:w-10" /></span></> : null}
-                    {isHighRiskMarker ? <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2"><div className="text-[12px] font-bold leading-none tracking-tight lg:text-[13px]">{marker.building || "동 미선택"}</div><div className="mt-1 text-[13px] font-semibold leading-tight lg:text-[15px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[17px]">{marker.note || "작업내용 없음"}</div></div> : <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2"><div className="text-[13px] font-semibold leading-tight lg:text-[16px]">{marker.company || "업체명 없음"}</div><div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[17px]">{marker.note || "작업내용 없음"}</div></div>}
+                    {isHighRiskMarker ? (
+  <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2">
+    <div className={cn("text-[15px] font-bold leading-tight tracking-tight lg:text-[17px]", buildingColor)}>
+      {marker.building || "동 미선택"}
+    </div>
+    <div className="mt-1 text-[15px] font-bold leading-tight lg:text-[17px]">
+      {marker.company || "업체명 없음"}
+    </div>
+    <div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[17px]">
+      {marker.note || "작업내용 없음"}
+    </div>
+  </div>
+) : (
+  <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2">
+    <div className="text-[15px] font-bold leading-tight lg:text-[17px]">
+      {marker.company || "업체명 없음"}
+    </div>
+    <div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[17px]">
+      {marker.note || "작업내용 없음"}
+    </div>
+  </div>
+)}
                   </div>
                   {!isCapturingImage && (
 <div className="absolute -top-8 -right-2 z-20 flex gap-1 lg:-top-6 lg:right-1">
@@ -4077,7 +4163,85 @@ return (
           </div>
         )}
 
-        {imagePopup.open && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4"><div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6"><div className="text-base font-semibold text-slate-900">작업내용 입력</div>{imagePopup.targetKey === "highRisk" && <div className="mt-4 space-y-2"><label className="text-xs font-medium text-slate-600">동 선택</label><select value={imagePopup.building} onChange={(e) => setImagePopup((prev) => ({ ...prev, building: e.target.value }))} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"><option value="">동 선택</option>{HIGH_RISK_BUILDINGS.map((building) => <option key={building} value={building}>{building}</option>)}</select></div>}{imagePopup.targetKey === "equipmentFlow" && <div className="mt-4 space-y-2"><label className="text-xs font-medium text-slate-600">장비 선택</label><select value={imagePopup.equipmentType} onChange={(e) => setImagePopup((prev) => ({ ...prev, equipmentType: e.target.value }))} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200">{EQUIPMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>}<div className="mt-4"><Input value={imagePopup.note} onChange={(e) => setImagePopup((prev) => ({ ...prev, note: e.target.value }))} placeholder="작업내용 입력" /></div><div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end"><Button variant="outline" className="w-full lg:w-auto" onClick={cancelMarkerPopup}>취소</Button><Button className="w-full lg:w-auto" onClick={submitMarkerPopup}>입력</Button></div></div></div>}
+        {imagePopup.open && (
+  <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="text-base font-semibold text-slate-900">작업내용 입력</div>
+
+      {imagePopup.targetKey === "highRisk" && (
+        <div className="mt-4 space-y-2">
+          <label className="text-xs font-medium text-slate-600">동 선택</label>
+          <select
+            value={imagePopup.building}
+            onChange={(e) =>
+              setImagePopup((prev) => ({ ...prev, building: e.target.value }))
+            }
+            className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+          >
+            <option value="">동 선택</option>
+            {HIGH_RISK_BUILDINGS.map((building) => (
+              <option key={building} value={building}>
+                {building}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {imagePopup.targetKey === "equipmentFlow" && (
+        <div className="mt-4 space-y-2">
+          <label className="text-xs font-medium text-slate-600">장비 선택</label>
+          <select
+            value={imagePopup.equipmentType}
+            onChange={(e) =>
+              setImagePopup((prev) => ({ ...prev, equipmentType: e.target.value }))
+            }
+            className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+          >
+            {EQUIPMENT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {canAdminEditDabsItem && (
+        <div className="mt-4 space-y-2">
+          <label className="text-xs font-medium text-slate-600">업체명</label>
+          <Input
+            value={imagePopup.company}
+            onChange={(e) =>
+              setImagePopup((prev) => ({ ...prev, company: e.target.value }))
+            }
+            placeholder="업체명 입력"
+          />
+        </div>
+      )}
+
+      <div className="mt-4 space-y-2">
+        <label className="text-xs font-medium text-slate-600">작업내용</label>
+        <Input
+          value={imagePopup.note}
+          onChange={(e) =>
+            setImagePopup((prev) => ({ ...prev, note: e.target.value }))
+          }
+          placeholder="작업내용 입력"
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button variant="outline" className="w-full lg:w-auto" onClick={cancelMarkerPopup}>
+          취소
+        </Button>
+        <Button className="w-full lg:w-auto" onClick={submitMarkerPopup}>
+          입력
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
         <Card>
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
   <CardTitle className="flex items-center gap-2">
