@@ -194,6 +194,21 @@ function formatShortDate(date: Date) {
   return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
+function getDefaultSelectedDateKey() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+
+  if (d.getDay() === 0) {
+    d.setDate(d.getDate() + 1);
+  }
+
+  return formatDateKey(d);
+}
+
+function getTodayKey() {
+  return formatDateKey(new Date());
+}
+
 function getMonthGrid(currentDate: Date) {
   const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   const start = new Date(firstDay);
@@ -619,11 +634,9 @@ const storage = isConfigured ? getStorage() : null;
   const [currentUser, setCurrentUser] = useState<UserItem | null>(null);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [entries, setEntries] = useState<EntryItem[]>([]);
-  const [selectedDate, setSelectedDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return formatDateKey(d);
-  });
+  const [selectedDate, setSelectedDate] = useState(() => getDefaultSelectedDateKey());
+const [manualSelectedDate, setManualSelectedDate] = useState("");
+const [manualSelectedDateSavedToday, setManualSelectedDateSavedToday] = useState("");
   const [selectedTime, setSelectedTime] = useState("09:00");
   const [loginId, setLoginId] = useState("");
 const [loginPassword, setLoginPassword] = useState("");
@@ -967,10 +980,35 @@ const unsubscribeImages = onSnapshot(doc(db, "dabsImages", "shared"), (snap) => 
   const canEditDabs = Boolean(currentUser && currentUser.status === "approved");
   const canUploadDabsImage = currentUser?.role === "master" || currentUser?.role === "admin";
   const canAdminEditDabsItem = currentUser?.role === "master" || currentUser?.role === "admin";
+const canManualChangeSelectedDate = currentUser?.role === "master" || currentUser?.role === "admin";
   const canDeleteOwnItem = (item?: { createdByUid?: string }) => {
   if (!currentUser) return false;
   if (currentUser.role === "master" || currentUser.role === "admin") return true;
   return item?.createdByUid === currentUser.uid;
+};
+
+useEffect(() => {
+  const today = getTodayKey();
+
+  if (manualSelectedDate && manualSelectedDateSavedToday !== today) {
+    setManualSelectedDate("");
+    setManualSelectedDateSavedToday("");
+    setSelectedDate(getDefaultSelectedDateKey());
+  }
+}, [manualSelectedDate, manualSelectedDateSavedToday]);
+
+const handleManualSelectedDateChange = (dateKey: string) => {
+  if (!canManualChangeSelectedDate) return;
+
+  setManualSelectedDate(dateKey);
+  setManualSelectedDateSavedToday(getTodayKey());
+  setSelectedDate(dateKey);
+};
+
+const handleResetSelectedDateToDefault = () => {
+  setManualSelectedDate("");
+  setManualSelectedDateSavedToday("");
+  setSelectedDate(getDefaultSelectedDateKey());
 };
 
 const saveDabsMeetingToFirestore = async (dateKey: string, dateData: DabsDateValue) => {
@@ -4049,7 +4087,34 @@ return (
             <Card className="border-slate-200 shadow-none">
               <CardHeader><CardTitle className="text-base">{activeDabsTab.label}</CardTitle></CardHeader>
 <CardContent className="space-y-3 p-2 md:p-6">
-  <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">선택 날짜: {formatMonthDay(selectedDate)}</div>
+  <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+  <div>선택 날짜: {formatMonthDay(selectedDate)}</div>
+
+  {canManualChangeSelectedDate && (
+    <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto] md:items-center">
+      <Input
+        type="date"
+        value={selectedDate}
+        onChange={(e) => handleManualSelectedDateChange(e.target.value)}
+        className="h-9 bg-white"
+      />
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleResetSelectedDateToDefault}
+      >
+        자동 기준일로 복귀
+      </Button>
+    </div>
+  )}
+
+  {manualSelectedDate && manualSelectedDateSavedToday === getTodayKey() && (
+    <div className="mt-2 text-[11px] text-amber-700">
+      오늘만 수동 기준일 적용 중입니다. 다음날 접속 시 자동 기준일로 돌아갑니다.
+    </div>
+  )}
+</div>
   {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날짜와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && (
   <div className="text-xs text-slate-500">
     첫 번째 클릭은 시작점, 두 번째 클릭은 종료점입니다. 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요. 수정 시에도 화살표를 다시 지정한 뒤 상자 위치를 선택합니다.
@@ -4569,7 +4634,32 @@ return (
     메뉴로 돌아가기
   </Button>
 </div></CardHeader><CardContent className="space-y-6"><Card className="border-slate-200 shadow-none"><CardHeader><CardTitle className="text-base">단독작업자</CardTitle></CardHeader><CardContent className="space-y-4"><div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-  선택 날짜: {formatMonthDay(selectedDate)}
+  <div>선택 날짜: {formatMonthDay(selectedDate)}</div>
+
+  {canManualChangeSelectedDate && (
+    <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto] md:items-center">
+      <Input
+        type="date"
+        value={selectedDate}
+        onChange={(e) => handleManualSelectedDateChange(e.target.value)}
+        className="h-9 bg-white"
+      />
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleResetSelectedDateToDefault}
+      >
+        자동 기준일로 복귀
+      </Button>
+    </div>
+  )}
+
+  {manualSelectedDate && manualSelectedDateSavedToday === getTodayKey() && (
+    <div className="mt-2 text-[11px] text-amber-700">
+      오늘만 수동 기준일 적용 중입니다. 다음날 접속 시 자동 기준일로 돌아갑니다.
+    </div>
+  )}
 </div>
 
 <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
