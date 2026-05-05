@@ -2169,92 +2169,6 @@ return markers.some((marker) => {
 });
 };
 
-const clampNumber = (value: number, min: number, max: number) =>
-  Math.min(Math.max(value, min), max);
-
-const getOverlayBoxDisplayRule = (targetKey: string) => {
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 1024;
-
-  if (targetKey === "equipmentFlow") {
-    return isMobile
-      ? { halfWidth: 22, halfHeight: 17, gapX: 26, gapY: 20 }
-      : { halfWidth: 16, halfHeight: 13, gapX: 22, gapY: 17 };
-  }
-
-  return isMobile
-    ? { halfWidth: 20, halfHeight: 16, gapX: 24, gapY: 19 }
-    : { halfWidth: 13, halfHeight: 11, gapX: 19, gapY: 15 };
-};
-
-const isDisplayMarkerOverlapping = (
-  x: number,
-  y: number,
-  placedMarkers: Array<OverlayMarkerItem & { displayX: number; displayY: number }>,
-  gapX: number,
-  gapY: number
-) =>
-  placedMarkers.some(
-    (marker) =>
-      Math.abs(marker.displayX - x) < gapX &&
-      Math.abs(marker.displayY - y) < gapY
-  );
-
-const getAdjustedOverlayMarkers = (
-  markers: OverlayMarkerItem[],
-  targetKey: string
-) => {
-  const rule = getOverlayBoxDisplayRule(targetKey);
-  const placedMarkers: Array<OverlayMarkerItem & { displayX: number; displayY: number }> = [];
-
-  markers.forEach((marker) => {
-    const baseX = clampNumber(marker.x, rule.halfWidth, 100 - rule.halfWidth);
-    const baseY = clampNumber(marker.y, rule.halfHeight, 100 - rule.halfHeight);
-
-    const candidates: Array<{ x: number; y: number }> = [{ x: baseX, y: baseY }];
-
-    for (let ring = 1; ring <= 10; ring += 1) {
-      const offsetX = rule.gapX * ring;
-      const offsetY = rule.gapY * ring;
-
-      candidates.push(
-        { x: baseX + offsetX, y: baseY },
-        { x: baseX - offsetX, y: baseY },
-        { x: baseX, y: baseY + offsetY },
-        { x: baseX, y: baseY - offsetY },
-        { x: baseX + offsetX, y: baseY + offsetY },
-        { x: baseX - offsetX, y: baseY + offsetY },
-        { x: baseX + offsetX, y: baseY - offsetY },
-        { x: baseX - offsetX, y: baseY - offsetY }
-      );
-    }
-
-    const safePoint =
-      candidates
-        .map((candidate) => ({
-          x: clampNumber(candidate.x, rule.halfWidth, 100 - rule.halfWidth),
-          y: clampNumber(candidate.y, rule.halfHeight, 100 - rule.halfHeight),
-        }))
-        .find(
-          (candidate) =>
-            !isDisplayMarkerOverlapping(
-              candidate.x,
-              candidate.y,
-              placedMarkers,
-              rule.gapX,
-              rule.gapY
-            )
-        ) || { x: baseX, y: baseY };
-
-    placedMarkers.push({
-      ...marker,
-      displayX: safePoint.x,
-      displayY: safePoint.y,
-    });
-  });
-
-  return placedMarkers;
-};
-
 const handleUpdateOverlayInfo = async () => {
   if (!canAdminEditDabsItem) return;
 
@@ -2983,7 +2897,6 @@ if (touchGestureRef.current.moved) {
     const overlayBundle = getOverlayBundle();
     const markers = overlayBundle.markers || [];
 const arrows = overlayBundle.arrows || [];
-const displayMarkers = getAdjustedOverlayMarkers(markers, activeDabsKey);
 
 return (
   <div
@@ -3017,9 +2930,9 @@ return (
               {activeDabsKey === "equipmentFlow" && arrowPreview && <line x1={arrowPreview.startX} y1={arrowPreview.startY} x2={arrowPreview.endX} y2={arrowPreview.endY} stroke="#f97316" strokeWidth="0.5" strokeDasharray="1.5 1.5" markerEnd="url(#arrowhead)" />}
               {activeDabsKey === "equipmentFlow" && arrowStart && <circle cx={arrowStart.x} cy={arrowStart.y} r="1.3" fill="#f97316" />}
             </svg>
-            {displayMarkers.map((marker) => {
-  const posX = marker.displayX;
-const posY = marker.displayY;
+            {markers.map((marker) => {
+  const posX = marker.x;
+const posY = marker.y;
               const color = getCompanyColor(marker.company || "-");
               const isHighRiskMarker = activeDabsKey === "highRisk";
               return (
