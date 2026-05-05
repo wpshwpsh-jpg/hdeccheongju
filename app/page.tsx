@@ -468,13 +468,26 @@ function chunkArray<T>(items: T[], size: number) {
   return chunks;
 }
 
-function getItemVisualRowCount(item: DabsRowItem) {
+function getTextVisualLineCount(text: string, charsPerLine: number) {
+  const normalizedText = String(text || "").trim();
+
+  if (!normalizedText) return 1;
+
+  return normalizedText.split("\n").reduce((sum, line) => {
+    const safeLine = line.trim();
+
+    if (!safeLine) return sum + 1;
+
+    return sum + Math.max(1, Math.ceil(safeLine.length / charsPerLine));
+  }, 0);
+}
+
+function getItemVisualRowCount(item: DabsRowItem, mode: "section" | "solo" = "section") {
   const content = String(item.content || "");
 
-  // 줄바꿈 기준 + 최소 1줄
-  const lines = content.split("\n").length;
+  const charsPerLine = mode === "solo" ? 28 : 34;
 
-  return Math.max(lines, 1);
+  return Math.max(getTextVisualLineCount(content, charsPerLine), 1);
 }
 
 function getRowCountByColumns(
@@ -511,7 +524,7 @@ const rowCount =
   list.length === 0
     ? 1
     : list.reduce(
-        (sum, item) => sum + getItemVisualRowCount(item),
+        (sum, item) => sum + getItemVisualRowCount(item, "section"),
         0
       );
 
@@ -642,7 +655,7 @@ function splitSoloWorkersByMaxRows(
 let currentRows = 0;
 
 rows.forEach((item) => {
-  const rowCount = getItemVisualRowCount(item);
+  const rowCount = getItemVisualRowCount(item, "solo");
 
   if (currentChunk.length > 0 && currentRows + rowCount > maxRows) {
     chunks.push(currentChunk);
