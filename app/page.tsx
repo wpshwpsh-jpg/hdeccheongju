@@ -2177,13 +2177,13 @@ const getOverlayBoxDisplayRule = (targetKey: string) => {
 
   if (targetKey === "equipmentFlow") {
     return isMobile
-      ? { halfWidth: 17, halfHeight: 12, gapX: 16, gapY: 12 }
-      : { halfWidth: 13, halfHeight: 10, gapX: 13, gapY: 10 };
+      ? { halfWidth: 22, halfHeight: 17, gapX: 26, gapY: 20 }
+      : { halfWidth: 16, halfHeight: 13, gapX: 22, gapY: 17 };
   }
 
   return isMobile
-    ? { halfWidth: 15, halfHeight: 11, gapX: 14, gapY: 11 }
-    : { halfWidth: 10, halfHeight: 8, gapX: 10, gapY: 8 };
+    ? { halfWidth: 20, halfHeight: 16, gapX: 24, gapY: 19 }
+    : { halfWidth: 13, halfHeight: 11, gapX: 19, gapY: 15 };
 };
 
 const isDisplayMarkerOverlapping = (
@@ -2212,7 +2212,7 @@ const getAdjustedOverlayMarkers = (
 
     const candidates: Array<{ x: number; y: number }> = [{ x: baseX, y: baseY }];
 
-    for (let ring = 1; ring <= 6; ring += 1) {
+    for (let ring = 1; ring <= 10; ring += 1) {
       const offsetX = rule.gapX * ring;
       const offsetY = rule.gapY * ring;
 
