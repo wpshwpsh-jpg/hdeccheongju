@@ -387,60 +387,70 @@ type DabsDateValue = {
   [key: string]: DabsTabValue | { rows?: Record<string, DabsRowItem[]> } | undefined;
 };
 
-function getCompanyColor(company: string) {
-  const palette = [
-    { bg: "bg-rose-50/95", border: "border-rose-300", text: "text-rose-800" },
-    { bg: "bg-orange-50/95", border: "border-orange-300", text: "text-orange-800" },
-    { bg: "bg-amber-50/95", border: "border-amber-300", text: "text-amber-800" },
-    { bg: "bg-yellow-50/95", border: "border-yellow-300", text: "text-yellow-800" },
-    { bg: "bg-lime-50/95", border: "border-lime-300", text: "text-lime-800" },
-    { bg: "bg-green-50/95", border: "border-green-300", text: "text-green-800" },
-    { bg: "bg-emerald-50/95", border: "border-emerald-300", text: "text-emerald-800" },
-    { bg: "bg-teal-50/95", border: "border-teal-300", text: "text-teal-800" },
-    { bg: "bg-cyan-50/95", border: "border-cyan-300", text: "text-cyan-800" },
-    { bg: "bg-sky-50/95", border: "border-sky-300", text: "text-sky-800" },
-    { bg: "bg-blue-50/95", border: "border-blue-300", text: "text-blue-800" },
-    { bg: "bg-indigo-50/95", border: "border-indigo-300", text: "text-indigo-800" },
-    { bg: "bg-violet-50/95", border: "border-violet-300", text: "text-violet-800" },
-    { bg: "bg-purple-50/95", border: "border-purple-300", text: "text-purple-800" },
-    { bg: "bg-fuchsia-50/95", border: "border-fuchsia-300", text: "text-fuchsia-800" },
-    { bg: "bg-pink-50/95", border: "border-pink-300", text: "text-pink-800" },
+const COMPANY_COLOR_PALETTE = [
+  { bg: "bg-rose-50/95", border: "border-rose-300", text: "text-rose-800" },
+  { bg: "bg-blue-50/95", border: "border-blue-300", text: "text-blue-800" },
+  { bg: "bg-emerald-50/95", border: "border-emerald-300", text: "text-emerald-800" },
+  { bg: "bg-amber-50/95", border: "border-amber-300", text: "text-amber-800" },
+  { bg: "bg-violet-50/95", border: "border-violet-300", text: "text-violet-800" },
+  { bg: "bg-cyan-50/95", border: "border-cyan-300", text: "text-cyan-800" },
+  { bg: "bg-pink-50/95", border: "border-pink-300", text: "text-pink-800" },
+  { bg: "bg-lime-50/95", border: "border-lime-300", text: "text-lime-800" },
+];
+
+function getUniqueCompaniesFromMarkers(markers: OverlayMarkerItem[]) {
+  return Array.from(
+    new Set(
+      markers
+        .map((marker) => String(marker.company || "-").trim() || "-")
+        .sort((a, b) => a.localeCompare(b, "ko"))
+    )
+  );
+}
+
+function getUniqueCompaniesFromRows(rows: Record<string, DabsRowItem[]>) {
+  return Array.from(
+    new Set(
+      Object.values(rows)
+        .flat()
+        .map((item) => String(item.company || "-").trim() || "-")
+        .sort((a, b) => a.localeCompare(b, "ko"))
+    )
+  );
+}
+
+function getCompanyColorByList(company: string, companyList: string[]) {
+  const safeCompany = String(company || "-").trim() || "-";
+  const index = companyList.indexOf(safeCompany);
+
+  return COMPANY_COLOR_PALETTE[
+    index >= 0 ? index % COMPANY_COLOR_PALETTE.length : 0
   ];
-
-  const source = String(company || "-").trim();
-  let hash = 0;
-
-  for (let i = 0; i < source.length; i += 1) {
-    hash = (hash * 31 + source.charCodeAt(i)) % 2147483647;
-  }
-
-  return palette[hash % palette.length];
 }
 
 function getBuildingColor(building: string) {
-  const palette = [
-    "text-red-700",
-    "text-orange-700",
-    "text-amber-700",
-    "text-lime-700",
-    "text-green-700",
-    "text-emerald-700",
-    "text-teal-700",
-    "text-cyan-700",
-    "text-sky-700",
-    "text-blue-700",
-    "text-indigo-700",
-    "text-violet-700",
-    "text-purple-700",
-    "text-fuchsia-700",
-    "text-pink-700",
-    "text-rose-700",
-    "text-slate-700",
-    "text-stone-700",
-  ];
+  const buildingColorMap: Record<string, string> = {
+    "101동": "text-red-700",
+    "102동": "text-blue-700",
+    "103동": "text-emerald-700",
+    "104동": "text-amber-700",
+    "105동": "text-violet-700",
+    "106동": "text-cyan-700",
+    "107동": "text-pink-700",
+    "108동": "text-lime-700",
+    "109동": "text-orange-700",
+    "110동": "text-indigo-700",
+    "111동": "text-teal-700",
+    "112동": "text-rose-700",
+    "113동": "text-sky-700",
+    "114동": "text-fuchsia-700",
+    "115동": "text-green-700",
+    "116동": "text-purple-700",
+    "117동": "text-slate-800",
+    "상가": "text-stone-800",
+  };
 
-  const index = HIGH_RISK_BUILDINGS.indexOf(building);
-  return palette[index >= 0 ? index % palette.length : palette.length - 1];
+  return buildingColorMap[building] || "text-slate-800";
 }
 
 function groupSoloWorkersByCompany(list: DabsRowItem[]): Array<[string, DabsRowItem[]]> {
@@ -1152,6 +1162,11 @@ const selectedDatePlusOne = useMemo(() => {
   const soloRows = useMemo<Record<string, DabsRowItem[]>>(
   () => dabsData[selectedDate]?.soloWorker?.rows || {},
   [dabsData, selectedDate]
+);
+
+const soloCompanyColorList = useMemo(
+  () => getUniqueCompaniesFromRows(soloRows),
+  [soloRows]
 );
 
  useEffect(() => {
@@ -3055,8 +3070,10 @@ if (touchGestureRef.current.moved) {
   const renderOverlayImage = (selectedImage: string | undefined, isImageTab: boolean) => {
     const overlayBundle = getOverlayBundle();
     const markers = overlayBundle.markers || [];
-    const arrows = overlayBundle.arrows || [];
-    return (
+const arrows = overlayBundle.arrows || [];
+const overlayCompanyList = getUniqueCompaniesFromMarkers(markers);
+
+return (
   <div
     ref={imageAreaRef}
     className="relative h-[260px] overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:h-auto md:rounded-2xl"
@@ -3093,7 +3110,7 @@ if (touchGestureRef.current.moved) {
               const adjustedPosition = adjustedOverlayPositions[markerKey];
               const posX = adjustedPosition?.x ?? marker.x;
 const posY = adjustedPosition?.y ?? marker.y;
-              const color = getCompanyColor(marker.company || "-");
+              const color = getCompanyColorByList(marker.company || "-", overlayCompanyList);
               const buildingColor = getBuildingColor(marker.building || "");
               const isHighRiskMarker = activeDabsKey === "highRisk";
               return (
@@ -3569,7 +3586,7 @@ const posY = adjustedPosition?.y ?? marker.y;
           }
 
           return grouped.flatMap(([company, items], groupIndex) => {
-            const color = getCompanyColor(company);
+            const color = getCompanyColorByList(company, soloCompanyColorList);
 
             return items.map((item, idx) => {
               const elderlyHighlight =
@@ -3695,7 +3712,7 @@ const posY = adjustedPosition?.y ?? marker.y;
         </div>
       ) : (
         blocks.map((item) => {
-          const color = getCompanyColor(item.company || "-");
+          const color = getCompanyColorByList(item.company || "-", soloCompanyColorList);
 
           return (
             <div key={item.id} className="rounded-2xl border border-black bg-white p-4 shadow-sm">
