@@ -1034,11 +1034,6 @@ const [editMaterialPopup, setEditMaterialPopup] = useState({
 
 const [soloCompanyFilter, setSoloCompanyFilter] = useState("");
 const [isCapturingImage, setIsCapturingImage] = useState(false);
-const [sectionCaptureWidths, setSectionCaptureWidths] = useState<{
-  building: number;
-  company: number;
-  content: number;
-} | null>(null);
 
 const [adjustedOverlayPositions, setAdjustedOverlayPositions] = useState<
   Record<string, { x: number; y: number }>
@@ -1048,7 +1043,6 @@ const overlayMarkerRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const imageAreaRef = useRef<HTMLDivElement | null>(null);
 const dabsCaptureRef = useRef<HTMLDivElement | null>(null);
-const sectionTableRef = useRef<HTMLTableElement | null>(null);
 const soloWorkerCaptureRef = useRef<HTMLDivElement | null>(null);
 const portfolioCaptureRef = useRef<HTMLDivElement | null>(null);const educationCaptureRef = useRef<HTMLDivElement | null>(null);
   const lastTouchTimeRef = useRef(0);
@@ -1670,21 +1664,6 @@ const handleDownloadCaptureImage = async (
   }
 
   try {
-    if (targetRef === dabsCaptureRef && sectionTableRef.current) {
-      const headerCells = sectionTableRef.current.querySelectorAll("thead th");
-
-      const buildingWidth = headerCells[0]?.getBoundingClientRect().width || 0;
-      const companyWidth = headerCells[1]?.getBoundingClientRect().width || 0;
-      const contentWidth = headerCells[2]?.getBoundingClientRect().width || 0;
-
-      if (buildingWidth && companyWidth && contentWidth) {
-        setSectionCaptureWidths({
-          building: Math.round(buildingWidth),
-          company: Math.round(companyWidth),
-          content: Math.round(contentWidth),
-        });
-      }
-    }
 
     setIsCapturingImage(true);
 await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
@@ -1713,7 +1692,6 @@ await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
     alert("이미지 저장 중 오류가 발생했습니다. 콘솔을 확인하세요.");
   } finally {
     setIsCapturingImage(false);
-    setSectionCaptureWidths(null);
   }
 };
 
@@ -4271,12 +4249,6 @@ const activeColumns = getDabsColumnsByTabKey(activeDabsKey);
     ? selectedTabValue.list || []
     : [];
 
-const sectionCaptureTableWidth = sectionCaptureWidths
-  ? sectionCaptureWidths.building +
-    sectionCaptureWidths.company +
-    Math.round(sectionCaptureWidths.content / 2)
-  : undefined;
-
 return (
       <div className="space-y-4 sm:space-y-6">
         {renderTopBar()}
@@ -4881,7 +4853,6 @@ return (
   ref={dabsCaptureRef}
   className={cn(
     "bg-white",
-    isCapturingImage && sectionCaptureWidths && "inline-block w-auto"
   )}
 >
   {renderSectionMobileCards(activeColumns, sectionRows)}
@@ -4891,34 +4862,17 @@ return (
   "hidden rounded-2xl border border-black bg-white lg:block",
   !isCapturingImage && "overflow-x-auto"
 )}
-    style={
-      isCapturingImage && sectionCaptureTableWidth
-        ? { width: `${sectionCaptureTableWidth}px` }
-        : undefined
-    }
+    
   >
     <table
-      ref={sectionTableRef}
       className={TABLE_BASE_CLASS}
-      style={
-        isCapturingImage && sectionCaptureTableWidth
-          ? { width: `${sectionCaptureTableWidth}px` }
-          : undefined
-      }
+      
     >
-      {isCapturingImage && sectionCaptureWidths ? (
-        <colgroup>
-          <col style={{ width: `${sectionCaptureWidths.building}px` }} />
-          <col style={{ width: `${sectionCaptureWidths.company}px` }} />
-          <col style={{ width: `${Math.round(sectionCaptureWidths.content / 2)}px` }} />
-        </colgroup>
-      ) : (
-        <colgroup>
-          <col style={{ width: "9%" }} />
-          <col style={{ width: "18%" }} />
-          <col />
-        </colgroup>
-      )}
+      <colgroup>
+  <col style={{ width: "9%" }} />
+  <col style={{ width: "18%" }} />
+  <col />
+</colgroup>
 
       <thead>
         <tr className="bg-slate-100 text-slate-700">
