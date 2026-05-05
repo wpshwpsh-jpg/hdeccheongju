@@ -1079,15 +1079,11 @@ const saveDabsOverlaysToFirestore = async (
   return new Date(year, month - 1, day);
 }, [selectedDate]);
 
+const selectedDatePlusZero = selectedDateObject;
+
 const selectedDatePlusOne = useMemo(() => {
   const d = new Date(selectedDateObject);
   d.setDate(d.getDate() + 1);
-  return d;
-}, [selectedDateObject]);
-
-const selectedDatePlusTwo = useMemo(() => {
-  const d = new Date(selectedDateObject);
-  d.setDate(d.getDate() + 2);
   return d;
 }, [selectedDateObject]);
  
@@ -1099,9 +1095,9 @@ const selectedDatePlusTwo = useMemo(() => {
 { key: "section2_arch", label: "2공구 작업(건축토목)" },
 { key: "section2_mep", label: "2공구 작업(기전부)" },
   { key: "fireWork", label: "화기작업" },
-  { key: "materialsAfter2", label: `${formatShortDate(selectedDatePlusTwo)} 자재반입` },
+  { key: "materialsAfter0", label: `${formatShortDate(selectedDatePlusZero)} 자재반입` },
 { key: "materialsAfter1", label: `${formatShortDate(selectedDatePlusOne)} 자재반입` },
-], [selectedDatePlusOne, selectedDatePlusTwo]);
+], [selectedDatePlusZero, selectedDatePlusOne]);
 
   const activeDabsTab = dabsTabs[dabsTabIndex] || dabsTabs[0];
   const activeDabsKey = activeDabsTab.key;
@@ -3711,7 +3707,7 @@ const posY = adjustedPosition?.y ?? marker.y;
   activeDabsKey === "section2_mep" ||
   activeDabsKey === "fireWork";
 
-const isMaterialTab = activeDabsKey === "materialsAfter1" || activeDabsKey === "materialsAfter2";
+const isMaterialTab = activeDabsKey === "materialsAfter1" || activeDabsKey === "materialsAfter0";
 
 const activeColumns =
   activeDabsKey === "section1_arch" || activeDabsKey === "section1_mep"
