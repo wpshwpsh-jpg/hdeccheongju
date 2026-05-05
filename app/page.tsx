@@ -4164,89 +4164,99 @@ return (
       </thead>
 
       <tbody>
-        {activeColumns.map((col) => {
-          const list = sectionRows[col] || [];
+  {activeColumns.flatMap((col) => {
+    const list = sectionRows[col] || [];
 
-          return (
-            <tr key={col}>
-              <td className="border border-black px-3 py-2 font-medium text-slate-700">
-                {col}
-              </td>
+    if (list.length === 0) {
+      return [
+        <tr key={col}>
+          <td className="border border-black px-3 py-2 font-medium text-slate-700">
+            {col}
+          </td>
 
-              <td className="border border-black px-3 py-2 align-top">
-                {list.length === 0 ? (
-                  <span className="text-slate-300">-</span>
-                ) : (
-                  list.map((item, index) => (
-                    <div
-                      key={`company-${item.id}`}
-                      className={cn("mb-2", dottedRow(index))}
-                    >
-                      {item.company}
-                    </div>
-                  ))
+          <td className="border border-black px-3 py-2 text-slate-300">
+            -
+          </td>
+
+          <td className="border border-black px-3 py-2 text-slate-300">
+            -
+          </td>
+        </tr>,
+      ];
+    }
+
+    return list.map((item, index) => (
+      <tr key={`${col}-${item.id}`}>
+        {index === 0 && (
+          <td
+            rowSpan={list.length}
+            className="border border-black px-3 py-2 align-top font-medium text-slate-700"
+          >
+            {col}
+          </td>
+        )}
+
+        <td
+          className={cn(
+            "border border-black px-3 py-2 align-top",
+            index > 0 && "border-t border-dashed border-black"
+          )}
+        >
+          {item.company}
+        </td>
+
+        <td
+          className={cn(
+            "border border-black px-3 py-2 align-top",
+            index > 0 && "border-t border-dashed border-black"
+          )}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span className="block w-full whitespace-pre-wrap break-all leading-relaxed">
+              {renderTextWithRedRanges(item.content, item.contentRedRanges)}
+            </span>
+
+            {!isCapturingImage && (
+              <div className="flex shrink-0 items-center gap-1">
+                {canAdminEditDabsItem && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditSectionPopup({
+                        open: true,
+                        itemId: item.id,
+                        oldBuilding: col,
+                        building: col,
+                        company: item.company || "",
+                        content: item.content || "",
+                        contentRedRanges: item.contentRedRanges || [],
+                      })
+                    }
+                    className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                    title="수정"
+                  >
+                    수정
+                  </button>
                 )}
-              </td>
 
-              <td className="border border-black px-3 py-2 align-top">
-                {list.length === 0 ? (
-                  <span className="text-slate-300">-</span>
-                ) : (
-                  list.map((item, index) => (
-                    <div
-                      key={`content-${item.id}`}
-                      className={cn(
-                        "mb-2 flex items-start justify-between gap-2",
-                        dottedRow(index)
-                      )}
-                    >
-                      <span className="block w-full whitespace-pre-wrap break-all leading-relaxed">
-                        {renderTextWithRedRanges(item.content, item.contentRedRanges)}
-                      </span>
-
-                      {!isCapturingImage && (
-                        <div className="flex shrink-0 items-center gap-1">
-                          {canAdminEditDabsItem && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setEditSectionPopup({
-                                  open: true,
-                                  itemId: item.id,
-                                  oldBuilding: col,
-                                  building: col,
-                                  company: item.company || "",
-                                  content: item.content || "",
-                                  contentRedRanges: item.contentRedRanges || [],
-                                })
-                              }
-                              className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-                              title="수정"
-                            >
-                              수정
-                            </button>
-                          )}
-
-                          {canDeleteOwnItem(item) && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteDabsItem(item.id, col)}
-                              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-                              title="삭제"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))
+                {canDeleteOwnItem(item) && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteDabsItem(item.id, col)}
+                    className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                    title="삭제"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                 )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
+              </div>
+            )}
+          </div>
+        </td>
+      </tr>
+    ));
+  })}
+</tbody>
     </table>
   </div>
 </div></>}
