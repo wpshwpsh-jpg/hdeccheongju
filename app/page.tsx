@@ -485,7 +485,7 @@ function getTextVisualLineCount(text: string, charsPerLine: number) {
 function getItemVisualRowCount(item: DabsRowItem, mode: "section" | "solo" = "section") {
   const content = String(item.content || "");
 
-  const charsPerLine = mode === "solo" ? 28 : 34;
+  const charsPerLine = mode === "solo" ? 120 : 160;
 
   return Math.max(getTextVisualLineCount(content, charsPerLine), 1);
 }
@@ -5079,10 +5079,10 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[], title: s
     {title}
   </caption>
         <colgroup>
-          <col style={{ width: "13%" }} />
-          <col style={{ width: "22%" }} />
-          <col />
-        </colgroup>
+  <col style={{ width: "9%" }} />
+  <col style={{ width: "11%" }} />
+  <col />
+</colgroup>
 
         <thead>
           <tr className="bg-slate-100 text-slate-800">
