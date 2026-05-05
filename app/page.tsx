@@ -2272,28 +2272,6 @@ const handleAddSoloWorker = async () => {
 
 const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
 
-const isOverlayBoxTooClose = (
-  targetKey: string,
-  x: number,
-  y: number,
-  ignoreItemId = ""
-) => {
-  const currentValue = getOverlayBundle(targetKey);
-const markers = currentValue.markers || [];
-
-return markers.some((marker) => {
-  if (ignoreItemId && marker.id === ignoreItemId) return false;
-
-  const markerX = marker.x;
-  const markerY = marker.y;
-
-  const limitX = targetKey === "equipmentFlow" ? 12 : 9;
-  const limitY = targetKey === "equipmentFlow" ? 10 : 8;
-
-  return Math.abs(markerX - x) < limitX && Math.abs(markerY - y) < limitY;
-});
-};
-
 const handleUpdateOverlayInfo = async () => {
   if (!canAdminEditDabsItem) return;
 
@@ -2478,18 +2456,6 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
   const point = getRelativePoint(event.clientX, event.clientY);
 if (!point) return;
 
-if (
-  isOverlayBoxTooClose(
-    "highRisk",
-    point.x,
-    point.y,
-    moveOverlayTarget?.targetKey === "highRisk" ? moveOverlayTarget.itemId : ""
-  )
-) {
-  setDabsMessage("다른 박스와 너무 가까워 입력할 수 없습니다. 조금 떨어진 위치를 선택하세요.");
-  return;
-}
-
 if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
     const currentValue = getOverlayBundle("highRisk");
 
@@ -2538,18 +2504,6 @@ if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "m
 
   const point = getRelativePoint(touch.clientX, touch.clientY);
 if (!point) return;
-
-if (
-  isOverlayBoxTooClose(
-    "highRisk",
-    point.x,
-    point.y,
-    moveOverlayTarget?.targetKey === "highRisk" ? moveOverlayTarget.itemId : ""
-  )
-) {
-  setDabsMessage("다른 박스와 너무 가까워 입력할 수 없습니다. 조금 떨어진 위치를 선택하세요.");
-  return;
-}
 
 lastTouchTimeRef.current = Date.now();
   vibrateBriefly();
@@ -2796,18 +2750,6 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
   pendingEquipmentMarker &&
   !(moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow")
 ) {
-    if (
-      isOverlayBoxTooClose(
-        "equipmentFlow",
-        point.x,
-        point.y,
-        pendingEquipmentMarker.arrowId
-      )
-    ) {
-      setDabsMessage("다른 박스와 너무 가까워 입력할 수 없습니다. 조금 떨어진 위치를 선택하세요.");
-      return;
-    }
-
     const currentValue = getOverlayBundle("equipmentFlow");
 
     const marker = {
@@ -2911,18 +2853,6 @@ if (
   pendingEquipmentMarker &&
   !(moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow")
 ) {
-  if (
-    isOverlayBoxTooClose(
-      "equipmentFlow",
-      point.x,
-      point.y,
-      pendingEquipmentMarker.arrowId
-    )
-  ) {
-    setDabsMessage("다른 박스와 너무 가까워 입력할 수 없습니다. 조금 떨어진 위치를 선택하세요.");
-    return;
-  }
-
   const currentValue = getOverlayBundle("equipmentFlow");
 
   const marker = {
