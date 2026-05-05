@@ -572,6 +572,54 @@ function groupSoloWorkersByCompany(list: DabsRowItem[]): Array<[string, DabsRowI
   return Array.from(map.entries());
 }
 
+function getSoloWorkerRowsByCompany(
+  rows: Record<string, DabsRowItem[]>,
+  companyFilter = ""
+) {
+  const keyword = companyFilter.trim().toLowerCase();
+
+  return Object.entries(rows)
+    .flatMap(([building, list]) =>
+      (list || []).map((item) => ({
+        ...item,
+        building,
+      }))
+    )
+    .filter((item) =>
+      String(item.company || "").toLowerCase().includes(keyword)
+    )
+    .sort((a, b) => {
+      const companyCompare = String(a.company || "").localeCompare(
+        String(b.company || ""),
+        "ko"
+      );
+
+      if (companyCompare !== 0) return companyCompare;
+
+      const buildingCompare = String(a.building || "").localeCompare(
+        String(b.building || ""),
+        "ko"
+      );
+
+      if (buildingCompare !== 0) return buildingCompare;
+
+      return String(a.name || "").localeCompare(String(b.name || ""), "ko");
+    });
+}
+
+function splitSoloWorkersByMaxRows(
+  rows: Array<DabsRowItem & { building: string }>,
+  maxRows: number
+) {
+  const chunks: Array<Array<DabsRowItem & { building: string }>> = [];
+
+  for (let i = 0; i < rows.length; i += maxRows) {
+    chunks.push(rows.slice(i, i + maxRows));
+  }
+
+  return chunks.length > 0 ? chunks : [[]];
+}
+
 function getEquipmentLabel(type: string) {
   return EQUIPMENT_OPTIONS.find((item) => item.value === type)?.label || "장비";
 }
@@ -1293,6 +1341,7 @@ const portfolioSlides = useMemo(() => {
     tabKey?: string;
     label: string;
     columns?: string[];
+soloItems?: Array<DabsRowItem & { building: string }>;
   }> = [];
 
   const maxRowsPerSlide = 14
@@ -1347,23 +1396,20 @@ tab.key === "fireWork"
     }
   });
 
-  const soloChunks = splitColumnsByMaxRows(
-    SOLO_WORKER_COLUMNS,
-    soloRows,
-    maxRowsPerSlide
-  );
+  const sortedSoloItems = getSoloWorkerRowsByCompany(soloRows);
+const soloChunks = splitSoloWorkersByMaxRows(sortedSoloItems, maxRowsPerSlide);
 
-  soloChunks.forEach((columns, index) => {
-    slides.push({
-      type: "soloWorker",
-      key: `soloWorker-${index}`,
-      label:
-        soloChunks.length > 1
-          ? `단독작업자 (${index + 1}/${soloChunks.length})`
-          : "단독작업자",
-      columns,
-    });
+soloChunks.forEach((soloItems, index) => {
+  slides.push({
+    type: "soloWorker",
+    key: `soloWorker-${index}`,
+    label:
+      soloChunks.length > 1
+        ? `단독작업자 (${index + 1}/${soloChunks.length})`
+        : "단독작업자",
+    soloItems,
   });
+});
 
   return slides;
 }, [dabsTabs, dabsData, selectedDate, soloRows]);
@@ -1378,6 +1424,30 @@ useEffect(() => {
     setPortfolioSlideIndex(0);
   }
 }, [portfolioSlideIndex, portfolioSlides.length]);
+
+useEffect(() => {
+  if (currentPage !== "portfolio") return;
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "ArrowRight") {
+      setPortfolioSlideIndex((prev) =>
+        prev >= portfolioSlides.length - 1 ? 0 : prev + 1
+      );
+    }
+
+    if (event.key === "ArrowLeft") {
+      setPortfolioSlideIndex((prev) =>
+        prev <= 0 ? portfolioSlides.length - 1 : prev - 1
+      );
+    }
+  };
+
+  window.addEventListener("keydown", handleKeyDown);
+
+  return () => {
+    window.removeEventListener("keydown", handleKeyDown);
+  };
+}, [currentPage, portfolioSlides.length]);
 
 useEffect(() => {
   if (currentPage !== "portfolio") return;
@@ -3841,155 +3911,115 @@ const posY = adjustedPosition?.y ?? marker.y;
   </div>
 );
 
-  const renderSoloWorkerDesktopTable = () => (
-  <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
-    <table className={TABLE_BASE_CLASS}>
-      <thead>
-        <tr className="bg-slate-100 text-slate-700">
-          <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
-          <th className="border border-black px-3 py-2 text-left w-[16%]">업체명</th>
-          <th className="border border-black px-3 py-2 text-left w-[16%]">성명</th>
-          <th className="border border-black px-3 py-2 text-left">작업 내용</th>
-          <th className="border border-black px-3 py-2 text-left w-[10%]">고령자</th>
-        </tr>
-      </thead>
+  const renderSoloWorkerDesktopTable = () => {
+  const rows = getSoloWorkerRowsByCompany(soloRows, soloCompanyFilter);
 
-      <tbody>
-        {SOLO_WORKER_COLUMNS.map((col) => {
-          const rawList = soloRows[col] || [];
-          const list = rawList.filter((item) =>
-            String(item.company || "").toLowerCase().includes(soloCompanyFilter.trim().toLowerCase())
-          );
-          const grouped = groupSoloWorkersByCompany(list);
-          const totalRows = grouped.reduce((sum, [, items]) => sum + items.length, 0);
+  return (
+    <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
+      <table className={TABLE_BASE_CLASS}>
+        <thead>
+          <tr className="bg-slate-100 text-slate-700">
+            <th className="border border-black px-3 py-2 text-left w-[16%]">업체명</th>
+            <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
+            <th className="border border-black px-3 py-2 text-left w-[16%]">성명</th>
+            <th className="border border-black px-3 py-2 text-left">작업 내용</th>
+            <th className="border border-black px-3 py-2 text-left w-[10%]">고령자</th>
+          </tr>
+        </thead>
 
-          if (totalRows === 0) {
-            return (
-              <tr key={col}>
-                <td className="border border-black px-3 py-2 font-medium text-slate-700">{col}</td>
-                <td className="border border-black px-3 py-2 text-slate-300" colSpan={4}>-</td>
-              </tr>
-            );
-          }
-
-          return grouped.flatMap(([company, items], groupIndex) => {
-            const color = getCompanyColorByList(company, soloCompanyColorList);
-
-            return items.map((item, idx) => {
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td className="border border-black px-3 py-2 text-center text-slate-300" colSpan={5}>
+                입력 없음
+              </td>
+            </tr>
+          ) : (
+            rows.map((item) => {
+              const color = getCompanyColorByList(item.company || "-", soloCompanyColorList);
               const elderlyHighlight =
                 item.elderly === "o"
                   ? "bg-amber-50 text-amber-700 font-semibold"
                   : "text-slate-600";
 
-              const companyDividerStyle =
-                groupIndex > 0 && idx === 0 ? { borderTop: "1px dashed #000" } : undefined;
-
               return (
-                <tr
-                  key={`${col}-${item.id}`}
-                  className={groupIndex % 2 === 0 ? "bg-white" : "bg-slate-50/50"}
-                >
-                  {groupIndex === 0 && idx === 0 && (
-                    <td
-                      rowSpan={totalRows}
-                      className="border border-black px-3 py-2 align-top font-medium text-slate-700"
-                    >
-                      {col}
-                    </td>
-                  )}
-
-                  {idx === 0 && (
-                    <td
-                      rowSpan={items.length}
-                      style={companyDividerStyle}
-                      className={cn(
-                        "border border-black px-3 py-2 align-top font-semibold",
-                        color.bg,
-                        color.text
-                      )}
-                    >
-                      {company}
-                    </td>
-                  )}
-
+                <tr key={`${item.building}-${item.id}`}>
                   <td
-                    style={companyDividerStyle}
-                    className="border border-black px-3 py-2 align-top"
+                    className={cn(
+                      "border border-black px-3 py-2 align-top font-semibold",
+                      color.bg,
+                      color.text
+                    )}
                   >
+                    {item.company}
+                  </td>
+
+                  <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
+                    {item.building}
+                  </td>
+
+                  <td className="border border-black px-3 py-2 align-top">
                     {item.name}
                   </td>
 
-                  <td
-                    style={companyDividerStyle}
-                    className="border border-black px-3 py-2 align-top"
-                  >
+                  <td className="border border-black px-3 py-2 align-top">
                     <div className="flex items-center justify-between gap-2">
                       <span className="whitespace-pre-wrap break-all leading-relaxed">
                         {item.content}
                       </span>
 
                       {!isCapturingImage && (
-<div className="flex shrink-0 gap-1">
-                        {canAdminEditDabsItem && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditSoloPopup({
-                                open: true,
-                                itemId: item.id,
-                                oldBuilding: col,
-                                building: col,
-                                company: item.company || "",
-                                name: item.name || "",
-                                content: item.content || "",
-                                elderly: item.elderly || "x",
-                              })
-                            }
-                            className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-                          >
-                            수정
-                          </button>
-                        )}
+                        <div className="flex shrink-0 gap-1">
+                          {canAdminEditDabsItem && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditSoloPopup({
+                                  open: true,
+                                  itemId: item.id,
+                                  oldBuilding: item.building || "",
+                                  building: item.building || "",
+                                  company: item.company || "",
+                                  name: item.name || "",
+                                  content: item.content || "",
+                                  elderly: item.elderly || "x",
+                                })
+                              }
+                              className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                            >
+                              수정
+                            </button>
+                          )}
 
-                        {canDeleteOwnItem(item) && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSoloWorker(item.id, col)}
-                            className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        )}
-</div>
-)}
+                          {canDeleteOwnItem(item) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSoloWorker(item.id, item.building || "")}
+                              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </td>
 
-                  <td
-                    style={companyDividerStyle}
-                    className={cn("border border-black px-3 py-2 align-top", elderlyHighlight)}
-                  >
+                  <td className={cn("border border-black px-3 py-2 align-top", elderlyHighlight)}>
                     {item.elderly}
                   </td>
                 </tr>
               );
-            });
-          });
-        })}
-      </tbody>
-    </table>
-  </div>
-);
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+};
 
   const renderSoloWorkerMobileCards = () => {
-  const blocks = SOLO_WORKER_COLUMNS.flatMap((col) => {
-    const rawList = soloRows[col] || [];
-    const list = rawList.filter((item) =>
-      String(item.company || "").toLowerCase().includes(soloCompanyFilter.trim().toLowerCase())
-    );
-
-    return list.map((item) => ({ ...item, building: col }));
-  });
+  const blocks = getSoloWorkerRowsByCompany(soloRows, soloCompanyFilter);
 
   return (
     <div className="space-y-3 lg:hidden">
@@ -5141,16 +5171,20 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
   );
 };
 
-const renderPortfolioSoloWorkerTable = (columns: string[], title: string) => {
+const renderPortfolioSoloWorkerTable = (
+  items: Array<DabsRowItem & { building: string }>,
+  title: string
+) => {
   return (
     <div className="flex h-full w-full items-center justify-center overflow-hidden p-4">
-  <table className="w-[92vw] max-w-[100vw] table-fixed border-collapse bg-white text-[18px] xl:text-[20px]">
-  <caption className="caption-top pb-1 text-left font-bold text-slate-900">
-    {title}
-  </caption>
+      <table className="w-[92vw] max-w-[100vw] table-fixed border-collapse bg-white text-[18px] xl:text-[20px]">
+        <caption className="caption-top pb-1 text-left font-bold text-slate-900">
+          {title}
+        </caption>
+
         <colgroup>
-          <col style={{ width: "12%" }} />
           <col style={{ width: "20%" }} />
+          <col style={{ width: "12%" }} />
           <col style={{ width: "16%" }} />
           <col />
           <col style={{ width: "10%" }} />
@@ -5158,8 +5192,8 @@ const renderPortfolioSoloWorkerTable = (columns: string[], title: string) => {
 
         <thead>
           <tr className="bg-slate-100 text-slate-800">
-            <th className="border border-black px-3 py-2 text-left">동</th>
             <th className="border border-black px-3 py-2 text-left">업체명</th>
+            <th className="border border-black px-3 py-2 text-left">동</th>
             <th className="border border-black px-3 py-2 text-left">성명</th>
             <th className="border border-black px-3 py-2 text-left">작업내용</th>
             <th className="border border-black px-3 py-2 text-left">고령자</th>
@@ -5167,69 +5201,49 @@ const renderPortfolioSoloWorkerTable = (columns: string[], title: string) => {
         </thead>
 
         <tbody>
-          {columns.flatMap((col) => {
-            const list = soloRows[col] || [];
-
-            if (list.length === 0) {
-              return [
-                <tr key={col}>
-                  <td className="border border-black px-3 py-2 font-semibold text-slate-700">
-                    {col}
-                  </td>
-                  <td className="border border-black px-3 py-2 text-slate-300" colSpan={4}>
-                    -
-                  </td>
-                </tr>,
-              ];
-            }
-
-            return list.map((item, index) => (
-              <tr key={`${col}-${item.id}`}>
-                {index === 0 && (
-                  <td
-                    rowSpan={list.length}
-                    className="border border-black px-3 py-2 align-top font-semibold text-slate-700"
-                  >
-                    {col}
-                  </td>
-                )}
-
-                <td
-                  className={cn(
-                    "border border-black px-3 py-2 align-top font-semibold",
-                    index > 0 && "border-t border-dashed border-black"
-                  )}
-                >
+          {items.length === 0 ? (
+            <tr>
+              <td
+                className="border border-black px-3 py-2 text-center text-slate-300"
+                colSpan={5}
+              >
+                입력 없음
+              </td>
+            </tr>
+          ) : (
+            items.map((item) => (
+              <tr key={`${item.building}-${item.id}`}>
+                <td className="border border-black px-3 py-2 align-top font-semibold">
                   {item.company}
                 </td>
-                <td
-                  className={cn(
-                    "border border-black px-3 py-2 align-top",
-                    index > 0 && "border-t border-dashed border-black"
-                  )}
-                >
+
+                <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
+                  {item.building}
+                </td>
+
+                <td className="border border-black px-3 py-2 align-top">
                   {item.name}
                 </td>
-                <td
-                  className={cn(
-                    "border border-black px-3 py-2 align-top",
-                    index > 0 && "border-t border-dashed border-black"
-                  )}
-                >
-                  {item.content}
+
+                <td className="border border-black px-3 py-2 align-top">
+                  <span className="whitespace-pre-wrap break-all leading-relaxed">
+                    {item.content}
+                  </span>
                 </td>
+
                 <td
                   className={cn(
                     "border border-black px-3 py-2 align-top",
-                    item.elderly === "o" ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600",
-                    index > 0 && "border-t border-dashed border-black"
+                    item.elderly === "o"
+                      ? "bg-amber-50 font-semibold text-amber-700"
+                      : "text-slate-600"
                   )}
                 >
                   {item.elderly}
                 </td>
               </tr>
-            ));
-          })}
+            ))
+          )}
         </tbody>
       </table>
     </div>
@@ -5306,7 +5320,7 @@ const renderPortfolioPage = () => {
           renderPortfolioMaterialTable(slide.tabKey, slide.label)}
 
         {slide.type === "soloWorker" &&
-          renderPortfolioSoloWorkerTable(slide.columns || [], slide.label)}
+          renderPortfolioSoloWorkerTable(slide.soloItems || [], slide.label)}
       </div>
 
       <div className="flex h-12 shrink-0 items-center justify-center gap-2 border-t border-white/10 bg-slate-950 px-4">
