@@ -485,7 +485,7 @@ function getTextVisualLineCount(text: string, charsPerLine: number) {
 function getItemVisualRowCount(item: DabsRowItem, mode: "section" | "solo" = "section") {
   const content = String(item.content || "");
 
-  const charsPerLine = mode === "solo" ? 120 : 160;
+  const charsPerLine = mode === "solo" ? 100 : 140;
 
   return Math.max(getTextVisualLineCount(content, charsPerLine), 1);
 }
@@ -3968,6 +3968,13 @@ const posY = adjustedPosition?.y ?? marker.y;
   const renderSoloWorkerDesktopTable = () => {
   const rows = getSoloWorkerRowsByCompany(soloRows, soloCompanyFilter);
 
+  const grouped = rows.reduce<Record<string, typeof rows>>((acc, item) => {
+    const key = item.company || "-";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+
   return (
     <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
       <table className={TABLE_BASE_CLASS}>
@@ -3989,82 +3996,89 @@ const posY = adjustedPosition?.y ?? marker.y;
               </td>
             </tr>
           ) : (
-            rows.map((item) => {
-              const color = getCompanyColorByList(item.company || "-", soloCompanyColorList);
-              const elderlyHighlight =
-                item.elderly === "o"
-                  ? "bg-amber-50 text-amber-700 font-semibold"
-                  : "text-slate-600";
+            Object.entries(grouped).map(([company, list]) =>
+              list.map((item, index) => {
+                const color = getCompanyColorByList(company, soloCompanyColorList);
+                const elderlyHighlight =
+                  item.elderly === "o"
+                    ? "bg-amber-50 text-amber-700 font-semibold"
+                    : "text-slate-600";
 
-              return (
-                <tr key={`${item.building}-${item.id}`}>
-                  <td
-                    className={cn(
-                      "border border-black px-3 py-2 align-top font-semibold",
-                      color.bg,
-                      color.text
+                return (
+                  <tr key={`${item.building}-${item.id}`}>
+                    {index === 0 && (
+                      <td
+                        rowSpan={list.length}
+                        className={cn(
+                          "border border-black px-3 py-2 align-top font-semibold",
+                          color.bg,
+                          color.text
+                        )}
+                      >
+                        {company}
+                      </td>
                     )}
-                  >
-                    {item.company}
-                  </td>
 
-                  <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
-                    {item.building}
-                  </td>
+                    <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
+                      {item.building}
+                    </td>
 
-                  <td className="border border-black px-3 py-2 align-top">
-                    {item.name}
-                  </td>
+                    <td className="border border-black px-3 py-2 align-top">
+                      {item.name}
+                    </td>
 
-                  <td className="border border-black px-3 py-2 align-top">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="whitespace-pre-wrap break-all leading-relaxed">
-                        {item.content}
-                      </span>
+                    <td className="border border-black px-3 py-2 align-top">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="whitespace-pre-wrap break-all leading-relaxed">
+                          {item.content}
+                        </span>
 
-                      {!isCapturingImage && (
-                        <div className="flex shrink-0 gap-1">
-                          {canAdminEditDabsItem && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setEditSoloPopup({
-                                  open: true,
-                                  itemId: item.id,
-                                  oldBuilding: item.building || "",
-                                  building: item.building || "",
-                                  company: item.company || "",
-                                  name: item.name || "",
-                                  content: item.content || "",
-                                  elderly: item.elderly || "x",
-                                })
-                              }
-                              className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-                            >
-                              수정
-                            </button>
-                          )}
+                        {!isCapturingImage && (
+                          <div className="flex shrink-0 gap-1">
+                            {canAdminEditDabsItem && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditSoloPopup({
+                                    open: true,
+                                    itemId: item.id,
+                                    oldBuilding: item.building || "",
+                                    building: item.building || "",
+                                    company: item.company || "",
+                                    name: item.name || "",
+                                    content: item.content || "",
+                                    elderly: item.elderly || "x",
+                                  })
+                                }
+                                className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                              >
+                                수정
+                              </button>
+                            )}
 
-                          {canDeleteOwnItem(item) && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteSoloWorker(item.id, item.building || "")}
-                              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </td>
+                            {canDeleteOwnItem(item) && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeleteSoloWorker(item.id, item.building || "")
+                                }
+                                className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </td>
 
-                  <td className={cn("border border-black px-3 py-2 align-top", elderlyHighlight)}>
-                    {item.elderly}
-                  </td>
-                </tr>
-              );
-            })
+                    <td className={cn("border border-black px-3 py-2 align-top", elderlyHighlight)}>
+                      {item.elderly}
+                    </td>
+                  </tr>
+                );
+              })
+            )
           )}
         </tbody>
       </table>
