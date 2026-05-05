@@ -463,6 +463,45 @@ function chunkArray<T>(items: T[], size: number) {
   return chunks;
 }
 
+function getRowCountByColumns(
+  columns: string[],
+  rows: Record<string, DabsRowItem[]>
+) {
+  return columns.reduce((sum, column) => {
+    const list = rows[column] || [];
+    return sum + Math.max(list.length, 1);
+  }, 0);
+}
+
+function splitColumnsByMaxRows(
+  columns: string[],
+  rows: Record<string, DabsRowItem[]>,
+  maxRows: number
+) {
+  const chunks: string[][] = [];
+  let currentChunk: string[] = [];
+  let currentRows = 0;
+
+  columns.forEach((column) => {
+    const rowCount = Math.max((rows[column] || []).length, 1);
+
+    if (currentChunk.length > 0 && currentRows + rowCount > maxRows) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+      currentRows = 0;
+    }
+
+    currentChunk.push(column);
+    currentRows += rowCount;
+  });
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks;
+}
+
 function getDabsColumnsByTabKey(tabKey: string) {
   if (tabKey === "section1_arch" || tabKey === "section1_mep") return SECTION1_COLUMNS;
   if (tabKey === "section2_arch" || tabKey === "section2_mep") return SECTION2_COLUMNS;
@@ -1178,6 +1217,11 @@ const selectedDatePlusOne = useMemo(() => {
   const activeDabsTab = dabsTabs[dabsTabIndex] || dabsTabs[0];
 const activeDabsKey = activeDabsTab.key;
 
+const soloRows = useMemo<Record<string, DabsRowItem[]>>(
+  () => dabsData[selectedDate]?.soloWorker?.rows || {},
+  [dabsData, selectedDate]
+);
+
 const portfolioSlides = useMemo(() => {
   const slides: Array<{
     type: "overlay" | "section" | "material" | "soloWorker";
@@ -1186,6 +1230,8 @@ const portfolioSlides = useMemo(() => {
     label: string;
     columns?: string[];
   }> = [];
+
+  const maxRowsPerSlide = 14
 
   dabsTabs.forEach((tab) => {
     if (tab.key === "highRisk" || tab.key === "equipmentFlow") {
@@ -1205,7 +1251,17 @@ const portfolioSlides = useMemo(() => {
       tab.key === "section2_mep" ||
       tab.key === "fireWork"
     ) {
-      const columnChunks = chunkArray(getDabsColumnsByTabKey(tab.key), 6);
+      const tabValue = dabsData[selectedDate]?.[tab.key];
+      const rows =
+        typeof tabValue === "object" && tabValue && "rows" in tabValue
+          ? tabValue.rows || {}
+          : {};
+
+      const columnChunks = splitColumnsByMaxRows(
+        getDabsColumnsByTabKey(tab.key),
+        rows,
+        maxRowsPerSlide
+      );
 
       columnChunks.forEach((columns, index) => {
         slides.push({
@@ -1233,7 +1289,11 @@ const portfolioSlides = useMemo(() => {
     }
   });
 
-  const soloChunks = chunkArray(SOLO_WORKER_COLUMNS, 6);
+  const soloChunks = splitColumnsByMaxRows(
+    SOLO_WORKER_COLUMNS,
+    soloRows,
+    maxRowsPerSlide
+  );
 
   soloChunks.forEach((columns, index) => {
     slides.push({
@@ -1248,11 +1308,7 @@ const portfolioSlides = useMemo(() => {
   });
 
   return slides;
-}, [dabsTabs]);
-  const soloRows = useMemo<Record<string, DabsRowItem[]>>(
-  () => dabsData[selectedDate]?.soloWorker?.rows || {},
-  [dabsData, selectedDate]
-);
+}, [dabsTabs, dabsData, selectedDate, soloRows]);
 
 const soloCompanyColorList = useMemo(
   () => getUniqueCompaniesFromRows(soloRows),
@@ -4850,8 +4906,8 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[]) => {
       : {};
 
   return (
-    <div className="flex h-full w-full items-start justify-center overflow-auto p-6">
-      <table className="w-[88vw] table-fixed border-collapse bg-white text-[22px]">
+    <div className="flex h-full w-full items-center justify-center overflow-hidden p-4">
+  <table className="w-[92vw] max-w-[100vw] table-fixed border-collapse bg-white text-[18px] xl:text-[20px]">
         <colgroup>
           <col style={{ width: "13%" }} />
           <col style={{ width: "22%" }} />
@@ -4860,9 +4916,9 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[]) => {
 
         <thead>
           <tr className="bg-slate-100 text-slate-800">
-            <th className="border border-black px-4 py-3 text-left">동</th>
-            <th className="border border-black px-4 py-3 text-left">업체명</th>
-            <th className="border border-black px-4 py-3 text-left">작업내용</th>
+            <th className="border border-black px-3 py-2 text-left">동</th>
+            <th className="border border-black px-3 py-2 text-left">업체명</th>
+            <th className="border border-black px-3 py-2 text-left">작업내용</th>
           </tr>
         </thead>
 
@@ -4873,11 +4929,11 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[]) => {
             if (list.length === 0) {
               return [
                 <tr key={col}>
-                  <td className="border border-black px-4 py-3 font-semibold text-slate-700">
+                  <td className="border border-black px-3 py-2 font-semibold text-slate-700">
                     {col}
                   </td>
-                  <td className="border border-black px-4 py-3 text-slate-300">-</td>
-                  <td className="border border-black px-4 py-3 text-slate-300">-</td>
+                  <td className="border border-black px-3 py-2 text-slate-300">-</td>
+                  <td className="border border-black px-3 py-2 text-slate-300">-</td>
                 </tr>,
               ];
             }
@@ -4887,7 +4943,7 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[]) => {
                 {index === 0 && (
                   <td
                     rowSpan={list.length}
-                    className="border border-black px-4 py-3 align-top font-semibold text-slate-700"
+                    className="border border-black px-3 py-2 align-top font-semibold text-slate-700"
                   >
                     {col}
                   </td>
@@ -4895,7 +4951,7 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[]) => {
 
                 <td
                   className={cn(
-                    "border border-black px-4 py-3 align-top font-semibold",
+                    "border border-black px-3 py-2 align-top font-semibold",
                     index > 0 && "border-t border-dashed border-black"
                   )}
                 >
@@ -4904,7 +4960,7 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[]) => {
 
                 <td
                   className={cn(
-                    "border border-black px-4 py-3 align-top",
+                    "border border-black px-3 py-2 align-top",
                     index > 0 && "border-t border-dashed border-black"
                   )}
                 >
@@ -4998,8 +5054,8 @@ const renderPortfolioMaterialTable = (tabKey: string) => {
 
 const renderPortfolioSoloWorkerTable = (columns: string[]) => {
   return (
-    <div className="flex h-full w-full items-start justify-center overflow-auto p-6">
-      <table className="w-[88vw] table-fixed border-collapse bg-white text-[21px]">
+    <div className="flex h-full w-full items-center justify-center overflow-hidden p-4">
+  <table className="w-[92vw] max-w-[100vw] table-fixed border-collapse bg-white text-[18px] xl:text-[20px]">
         <colgroup>
           <col style={{ width: "12%" }} />
           <col style={{ width: "20%" }} />
@@ -5010,11 +5066,11 @@ const renderPortfolioSoloWorkerTable = (columns: string[]) => {
 
         <thead>
           <tr className="bg-slate-100 text-slate-800">
-            <th className="border border-black px-4 py-3 text-left">동</th>
-            <th className="border border-black px-4 py-3 text-left">업체명</th>
-            <th className="border border-black px-4 py-3 text-left">성명</th>
-            <th className="border border-black px-4 py-3 text-left">작업내용</th>
-            <th className="border border-black px-4 py-3 text-left">고령자</th>
+            <th className="border border-black px-3 py-2 text-left">동</th>
+            <th className="border border-black px-3 py-2 text-left">업체명</th>
+            <th className="border border-black px-3 py-2 text-left">성명</th>
+            <th className="border border-black px-3 py-2 text-left">작업내용</th>
+            <th className="border border-black px-3 py-2 text-left">고령자</th>
           </tr>
         </thead>
 
@@ -5025,10 +5081,10 @@ const renderPortfolioSoloWorkerTable = (columns: string[]) => {
             if (list.length === 0) {
               return [
                 <tr key={col}>
-                  <td className="border border-black px-4 py-3 font-semibold text-slate-700">
+                  <td className="border border-black px-3 py-2 font-semibold text-slate-700">
                     {col}
                   </td>
-                  <td className="border border-black px-4 py-3 text-slate-300" colSpan={4}>
+                  <td className="border border-black px-3 py-2 text-slate-300" colSpan={4}>
                     -
                   </td>
                 </tr>,
@@ -5040,7 +5096,7 @@ const renderPortfolioSoloWorkerTable = (columns: string[]) => {
                 {index === 0 && (
                   <td
                     rowSpan={list.length}
-                    className="border border-black px-4 py-3 align-top font-semibold text-slate-700"
+                    className="border border-black px-3 py-2 align-top font-semibold text-slate-700"
                   >
                     {col}
                   </td>
@@ -5048,7 +5104,7 @@ const renderPortfolioSoloWorkerTable = (columns: string[]) => {
 
                 <td
                   className={cn(
-                    "border border-black px-4 py-3 align-top font-semibold",
+                    "border border-black px-3 py-2 align-top font-semibold",
                     index > 0 && "border-t border-dashed border-black"
                   )}
                 >
@@ -5056,7 +5112,7 @@ const renderPortfolioSoloWorkerTable = (columns: string[]) => {
                 </td>
                 <td
                   className={cn(
-                    "border border-black px-4 py-3 align-top",
+                    "border border-black px-3 py-2 align-top",
                     index > 0 && "border-t border-dashed border-black"
                   )}
                 >
@@ -5064,7 +5120,7 @@ const renderPortfolioSoloWorkerTable = (columns: string[]) => {
                 </td>
                 <td
                   className={cn(
-                    "border border-black px-4 py-3 align-top",
+                    "border border-black px-3 py-2 align-top",
                     index > 0 && "border-t border-dashed border-black"
                   )}
                 >
@@ -5072,7 +5128,7 @@ const renderPortfolioSoloWorkerTable = (columns: string[]) => {
                 </td>
                 <td
                   className={cn(
-                    "border border-black px-4 py-3 align-top",
+                    "border border-black px-3 py-2 align-top",
                     item.elderly === "o" ? "bg-amber-50 font-semibold text-amber-700" : "text-slate-600",
                     index > 0 && "border-t border-dashed border-black"
                   )}
