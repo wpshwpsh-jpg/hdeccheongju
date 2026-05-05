@@ -2,7 +2,7 @@
 
 import { getFirebaseServices } from "@/lib/firebase";
 
-import React, { useEffect, useMemo, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { motion } from "framer-motion";
 import { toJpeg } from "html-to-image";
 import {
@@ -763,6 +763,13 @@ const [sectionCaptureWidths, setSectionCaptureWidths] = useState<{
   company: number;
   content: number;
 } | null>(null);
+
+const [adjustedOverlayPositions, setAdjustedOverlayPositions] = useState<
+  Record<string, { x: number; y: number }>
+>({});
+
+const overlayMarkerRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
   const imageAreaRef = useRef<HTMLDivElement | null>(null);
 const dabsCaptureRef = useRef<HTMLDivElement | null>(null);
 const sectionTableRef = useRef<HTMLTableElement | null>(null);
@@ -1076,6 +1083,124 @@ const saveDabsOverlaysToFirestore = async (
     y: ((clientY - rect.top) / rect.height) * 100,
   };
 };
+
+useLayoutEffect(() => {
+  const isImageTab = activeDabsKey === "highRisk" || activeDabsKey === "equipmentFlow";
+  const imageArea = imageAreaRef.current;
+
+  if (!isImageTab || !imageArea) {
+    setAdjustedOverlayPositions({});
+    return;
+  }
+
+  const overlayBundle = getOverlayBundle();
+  const markers = overlayBundle.markers || [];
+  const areaRect = imageArea.getBoundingClientRect();
+
+  if (!areaRect.width || !areaRect.height || markers.length === 0) {
+    setAdjustedOverlayPositions({});
+    return;
+  }
+
+  const padding = 6;
+  const gap = 8;
+  const placedRects: Array<{ left: number; top: number; right: number; bottom: number }> = [];
+  const nextPositions: Record<string, { x: number; y: number }> = {};
+
+  const isOverlapping = (rect: { left: number; top: number; right: number; bottom: number }) =>
+    placedRects.some(
+      (placed) =>
+        rect.left < placed.right + gap &&
+        rect.right > placed.left - gap &&
+        rect.top < placed.bottom + gap &&
+        rect.bottom > placed.top - gap
+    );
+
+  const clampRect = (centerX: number, centerY: number, width: number, height: number) => {
+    const halfWidth = width / 2;
+    const halfHeight = height / 2;
+
+    const safeX = Math.min(
+      Math.max(centerX, halfWidth + padding),
+      areaRect.width - halfWidth - padding
+    );
+
+    const safeY = Math.min(
+      Math.max(centerY, halfHeight + padding),
+      areaRect.height - halfHeight - padding
+    );
+
+    return { x: safeX, y: safeY };
+  };
+
+  markers.forEach((marker) => {
+    const markerKey = `${activeDabsKey}-${marker.id}`;
+    const markerElement = overlayMarkerRefs.current[markerKey];
+
+    if (!markerElement) return;
+
+    const markerRect = markerElement.getBoundingClientRect();
+    const width = markerRect.width;
+    const height = markerRect.height;
+
+    const originalX = (marker.x / 100) * areaRect.width;
+    const originalY = (marker.y / 100) * areaRect.height;
+
+    const candidates: Array<{ x: number; y: number }> = [];
+
+    const base = clampRect(originalX, originalY, width, height);
+    candidates.push(base);
+
+    const stepX = width + gap;
+    const stepY = height + gap;
+
+    for (let ring = 1; ring <= 8; ring += 1) {
+      candidates.push(
+        { x: originalX + stepX * ring, y: originalY },
+        { x: originalX - stepX * ring, y: originalY },
+        { x: originalX, y: originalY + stepY * ring },
+        { x: originalX, y: originalY - stepY * ring },
+        { x: originalX + stepX * ring, y: originalY + stepY * ring },
+        { x: originalX - stepX * ring, y: originalY + stepY * ring },
+        { x: originalX + stepX * ring, y: originalY - stepY * ring },
+        { x: originalX - stepX * ring, y: originalY - stepY * ring }
+      );
+    }
+
+    const safePoint =
+      candidates
+        .map((candidate) => clampRect(candidate.x, candidate.y, width, height))
+        .find((candidate) => {
+          const rect = {
+            left: candidate.x - width / 2,
+            top: candidate.y - height / 2,
+            right: candidate.x + width / 2,
+            bottom: candidate.y + height / 2,
+          };
+
+          return !isOverlapping(rect);
+        }) || base;
+
+    const finalRect = {
+      left: safePoint.x - width / 2,
+      top: safePoint.y - height / 2,
+      right: safePoint.x + width / 2,
+      bottom: safePoint.y + height / 2,
+    };
+
+    placedRects.push(finalRect);
+
+    nextPositions[markerKey] = {
+      x: (safePoint.x / areaRect.width) * 100,
+      y: (safePoint.y / areaRect.height) * 100,
+    };
+  });
+
+  setAdjustedOverlayPositions((prev) => {
+    if (JSON.stringify(prev) === JSON.stringify(nextPositions)) return prev;
+    return nextPositions;
+  });
+}, [activeDabsKey, selectedDate, dabsOverlays, dabsImages, isCapturingImage]);
 
   const vibrateBriefly = () => {
   if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") navigator.vibrate(25);
@@ -2930,13 +3055,18 @@ if (touchGestureRef.current.moved) {
               {activeDabsKey === "equipmentFlow" && arrowStart && <circle cx={arrowStart.x} cy={arrowStart.y} r="1.3" fill="#f97316" />}
             </svg>
             {markers.map((marker) => {
-              const posX = marker.x;
-const posY = marker.y;
+              const markerKey = `${activeDabsKey}-${marker.id}`;
+              const adjustedPosition = adjustedOverlayPositions[markerKey];
+              const posX = adjustedPosition?.x ?? marker.x;
+const posY = adjustedPosition?.y ?? marker.y;
               const color = getCompanyColor(marker.company || "-");
               const isHighRiskMarker = activeDabsKey === "highRisk";
               return (
                 <div
   key={marker.id}
+  ref={(element) => {
+    overlayMarkerRefs.current[markerKey] = element;
+  }}
   className="absolute"
   style={{
     left: `${posX}%`,
