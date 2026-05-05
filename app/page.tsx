@@ -1102,8 +1102,8 @@ useLayoutEffect(() => {
     return;
   }
 
-  const padding = 4;
-const gap = 1;
+  const padding = 6;
+const gap = 0;
   const placedRects: Array<{ left: number; top: number; right: number; bottom: number }> = [];
   const nextPositions: Record<string, { x: number; y: number }> = {};
 
