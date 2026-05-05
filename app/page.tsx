@@ -1074,16 +1074,22 @@ const saveDabsOverlaysToFirestore = async (
     : []),
 ];
 
-  const todayPlusOne = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d;
-  }, []);
-  const todayPlusTwo = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 2);
-    return d;
-  }, []);
+  const selectedDateObject = useMemo(() => {
+  const [year, month, day] = selectedDate.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}, [selectedDate]);
+
+const selectedDatePlusOne = useMemo(() => {
+  const d = new Date(selectedDateObject);
+  d.setDate(d.getDate() + 1);
+  return d;
+}, [selectedDateObject]);
+
+const selectedDatePlusTwo = useMemo(() => {
+  const d = new Date(selectedDateObject);
+  d.setDate(d.getDate() + 2);
+  return d;
+}, [selectedDateObject]);
  
   const dabsTabs = useMemo(() => [
   { key: "highRisk", label: "고위험작업" },
@@ -1093,9 +1099,9 @@ const saveDabsOverlaysToFirestore = async (
 { key: "section2_arch", label: "2공구 작업(건축토목)" },
 { key: "section2_mep", label: "2공구 작업(기전부)" },
   { key: "fireWork", label: "화기작업" },
-  { key: "materialsAfter2", label: `${formatShortDate(todayPlusTwo)} 자재반입` },
-  { key: "materialsAfter1", label: `${formatShortDate(todayPlusOne)} 자재반입` },
-], [todayPlusOne, todayPlusTwo]);
+  { key: "materialsAfter2", label: `${formatShortDate(selectedDatePlusTwo)} 자재반입` },
+{ key: "materialsAfter1", label: `${formatShortDate(selectedDatePlusOne)} 자재반입` },
+], [selectedDatePlusOne, selectedDatePlusTwo]);
 
   const activeDabsTab = dabsTabs[dabsTabIndex] || dabsTabs[0];
   const activeDabsKey = activeDabsTab.key;
@@ -3186,7 +3192,7 @@ const posY = adjustedPosition?.y ?? marker.y;
                 <div className="space-y-2"><label className="text-xs font-medium text-slate-600">{isDemoMode ? "아이디" : "아이디(이메일)"}</label><Input value={signupId} onChange={(e) => setSignupId(e.target.value)} placeholder={isDemoMode ? "아이디 입력" : "이메일 입력"} className="h-9" /></div>
                 <div className="space-y-2"><label className="text-xs font-medium text-slate-600">비밀번호</label><Input type="password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} placeholder="비밀번호 입력" className="h-9" /></div>
               </div>
-              <div className="space-y-2"><label className="text-xs font-medium text-slate-600">회원 등급 신청</label><select value={signupRole} onChange={(e) => setSignupRole(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"><option value="general">일반</option><option value="admin">관리자</option></select><div className="text-xs text-slate-500">일반 계정은 마스터 또는 관리자가 승인 가능, 관리자 계정은 마스터만 승인 가능합니다.</div></div>
+              <div className="space-y-2"><label className="text-xs font-medium text-slate-600">회원 등급 신청</label><select value={signupRole} onChange={(e) => setSignupRole(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"><option value="general">협력사</option><option value="admin">현대건설</option></select><div className="text-xs text-slate-500">협력사는 마스터 또는 현대건설이 승인 가능, 현대건설 계정은 마스터만 승인 가능합니다.</div></div>
               <div className="flex justify-end"><Button className="w-full lg:w-auto" onClick={handleSignup}>가입 신청</Button></div>
               {signupMessage && <div className="text-sm text-slate-600">{signupMessage}</div>}
             </CardContent>
