@@ -1344,7 +1344,7 @@ const portfolioSlides = useMemo(() => {
 soloItems?: Array<DabsRowItem & { building: string }>;
   }> = [];
 
-  const maxRowsPerSlide = 14
+  const maxRowsPerSlide = 18;
 
   dabsTabs.forEach((tab) => {
     if (tab.key === "highRisk" || tab.key === "equipmentFlow") {
@@ -5019,8 +5019,8 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[], title: s
   const rows = getMergedSectionRows(tabKey);
 
   return (
-    <div className="flex h-full w-full items-center justify-center overflow-hidden p-4">
-  <table className="w-[92vw] max-w-[100vw] table-fixed border-collapse bg-white text-[18px] xl:text-[20px]">
+    <div className="flex h-full w-full items-center justify-center overflow-hidden p-1">
+  <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[17px] xl:text-[18px]">
   <caption className="caption-top pb-1 text-left font-bold text-slate-900">
     {title}
   </caption>
@@ -5176,8 +5176,8 @@ const renderPortfolioSoloWorkerTable = (
   title: string
 ) => {
   return (
-    <div className="flex h-full w-full items-center justify-center overflow-hidden p-4">
-      <table className="w-[92vw] max-w-[100vw] table-fixed border-collapse bg-white text-[18px] xl:text-[20px]">
+    <div className="flex h-full w-full items-center justify-center overflow-hidden p-1">
+      <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[17px] xl:text-[18px]">
         <caption className="caption-top pb-1 text-left font-bold text-slate-900">
           {title}
         </caption>
@@ -5275,10 +5275,10 @@ const renderPortfolioPage = () => {
 
   return (
     <div className="fixed inset-0 z-[80] flex flex-col bg-slate-950 text-white">
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 px-4">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/10 px-3">
         <div>
-          <div className="text-lg font-bold">{slide.label}</div>
-          <div className="text-xs text-slate-300">
+          <div className="text-sm font-bold leading-tight">{slide.label}</div>
+          <div className="text-[10px] leading-tight text-slate-300">
             기준일: {formatMonthDay(selectedDate)} · {portfolioSlideIndex + 1} / {portfolioSlides.length}
           </div>
         </div>
@@ -5323,17 +5323,17 @@ const renderPortfolioPage = () => {
           renderPortfolioSoloWorkerTable(slide.soloItems || [], slide.label)}
       </div>
 
-      <div className="flex h-12 shrink-0 items-center justify-center gap-2 border-t border-white/10 bg-slate-950 px-4">
+      <div className="flex h-6 shrink-0 items-center justify-center gap-1 border-t border-white/10 bg-slate-950 px-2">
         {portfolioSlides.map((item, index) => (
           <button
             key={item.key}
             type="button"
             onClick={() => setPortfolioSlideIndex(index)}
             className={cn(
-              "h-2.5 rounded-full transition-all",
+              "h-1.5 rounded-full transition-all",
               index === portfolioSlideIndex
-                ? "w-8 bg-white"
-                : "w-2.5 bg-white/30 hover:bg-white/60"
+                ? "w-5 bg-white"
+: "w-1.5 bg-white/30 hover:bg-white/60"
             )}
             title={item.label}
           />
