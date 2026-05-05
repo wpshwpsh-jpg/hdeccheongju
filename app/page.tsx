@@ -1398,7 +1398,7 @@ const portfolioSlides = useMemo(() => {
 soloItems?: Array<DabsRowItem & { building: string }>;
   }> = [];
 
-  const maxRowsPerSlide = 24
+  const maxRowsPerSlide = 28
 
   dabsTabs.forEach((tab) => {
     if (tab.key === "highRisk" || tab.key === "equipmentFlow") {
