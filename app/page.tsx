@@ -3200,6 +3200,44 @@ const posY = adjustedPosition?.y ?? marker.y;
   const renderMenuScreen = () => (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
+
+      {canManualChangeSelectedDate && (
+        <Card className="border-slate-200 shadow-none">
+          <CardContent className="p-4">
+            <div className="text-sm font-semibold text-slate-900">
+              기준일 설정
+            </div>
+
+            <div className="mt-1 text-xs text-slate-500">
+              현재 기준일: {formatMonthDay(selectedDate)}
+            </div>
+
+            <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto] md:items-center">
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => handleManualSelectedDateChange(e.target.value)}
+                className="h-9 bg-white"
+              />
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResetSelectedDateToDefault}
+              >
+                자동 기준일로 복귀
+              </Button>
+            </div>
+
+            {manualSelectedDate && manualSelectedDateSavedToday === getTodayKey() && (
+              <div className="mt-2 text-[11px] text-amber-700">
+                오늘만 수동 기준일 적용 중입니다. 다음날 접속 시 자동 기준일로 돌아갑니다.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {!isConfigured && (
   <Card className="border-amber-300 bg-amber-50">
     <CardContent className="p-4">
@@ -4088,32 +4126,7 @@ return (
               <CardHeader><CardTitle className="text-base">{activeDabsTab.label}</CardTitle></CardHeader>
 <CardContent className="space-y-3 p-2 md:p-6">
   <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-  <div>선택 날짜: {formatMonthDay(selectedDate)}</div>
-
-  {canManualChangeSelectedDate && (
-    <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto] md:items-center">
-      <Input
-        type="date"
-        value={selectedDate}
-        onChange={(e) => handleManualSelectedDateChange(e.target.value)}
-        className="h-9 bg-white"
-      />
-
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleResetSelectedDateToDefault}
-      >
-        자동 기준일로 복귀
-      </Button>
-    </div>
-  )}
-
-  {manualSelectedDate && manualSelectedDateSavedToday === getTodayKey() && (
-    <div className="mt-2 text-[11px] text-amber-700">
-      오늘만 수동 기준일 적용 중입니다. 다음날 접속 시 자동 기준일로 돌아갑니다.
-    </div>
-  )}
+  선택 날짜: {formatMonthDay(selectedDate)}
 </div>
   {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날짜와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && (
   <div className="text-xs text-slate-500">
@@ -4634,32 +4647,7 @@ return (
     메뉴로 돌아가기
   </Button>
 </div></CardHeader><CardContent className="space-y-6"><Card className="border-slate-200 shadow-none"><CardHeader><CardTitle className="text-base">단독작업자</CardTitle></CardHeader><CardContent className="space-y-4"><div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-  <div>선택 날짜: {formatMonthDay(selectedDate)}</div>
-
-  {canManualChangeSelectedDate && (
-    <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto] md:items-center">
-      <Input
-        type="date"
-        value={selectedDate}
-        onChange={(e) => handleManualSelectedDateChange(e.target.value)}
-        className="h-9 bg-white"
-      />
-
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleResetSelectedDateToDefault}
-      >
-        자동 기준일로 복귀
-      </Button>
-    </div>
-  )}
-
-  {manualSelectedDate && manualSelectedDateSavedToday === getTodayKey() && (
-    <div className="mt-2 text-[11px] text-amber-700">
-      오늘만 수동 기준일 적용 중입니다. 다음날 접속 시 자동 기준일로 돌아갑니다.
-    </div>
-  )}
+  선택 날짜: {formatMonthDay(selectedDate)}
 </div>
 
 <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
