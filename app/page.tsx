@@ -5154,12 +5154,12 @@ const renderPortfolioInputPanel = () => {
   if (isExportingPortfolioImages) return null;
 
   const currentSlide = portfolioSlides[portfolioSlideIndex];
-  const inputKey = currentSlide?.tabKey || activeDabsKey;
-
-  const isSectionTab = isSectionWorkTabKey(inputKey);
-  const isMaterialTab =
-    inputKey === "materialsAfter0" || inputKey === "materialsAfter1";
   const isSoloTab = currentSlide?.type === "soloWorker";
+  const inputKey = isSoloTab ? "soloWorker" : currentSlide?.tabKey || activeDabsKey;
+
+  const isSectionTab = !isSoloTab && isSectionWorkTabKey(inputKey);
+  const isMaterialTab =
+    !isSoloTab && (inputKey === "materialsAfter0" || inputKey === "materialsAfter1");
 
   return (
     <div className="shrink-0 border-b border-black bg-slate-50 p-2 text-slate-900">
@@ -5720,14 +5720,16 @@ const renderPortfolioPage = () => {
 
 <div className="min-h-0 flex-1 bg-white text-slate-900">
         {slide.type === "overlay" && (
-          <div className="h-full w-full p-4">
-            {renderOverlayImage(
-  slide.key === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow,
-  true,
-  slide.key
+  <div className="flex h-full w-full items-center justify-center overflow-hidden bg-white p-4">
+    <div className="h-full w-full origin-center scale-90">
+      {renderOverlayImage(
+        slide.key === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow,
+        true,
+        slide.key
+      )}
+    </div>
+  </div>
 )}
-          </div>
-        )}
 
         {slide.type === "section" &&
           slide.tabKey &&
