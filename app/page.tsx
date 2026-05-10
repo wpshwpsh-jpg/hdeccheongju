@@ -1034,6 +1034,7 @@ const [editMaterialPopup, setEditMaterialPopup] = useState({
 
 const [soloCompanyFilter, setSoloCompanyFilter] = useState("");
 const [isCapturingImage, setIsCapturingImage] = useState(false);
+const [companyListPopupOpen, setCompanyListPopupOpen] = useState(false);
 
 const [adjustedOverlayPositions, setAdjustedOverlayPositions] = useState<
   Record<string, { x: number; y: number }>
@@ -2802,6 +2803,31 @@ const handleAddSoloWorker = async () => {
 };
 
 const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
+
+const getCompanyListFromWorkTabs = () => {
+  const workTabs = [
+    { key: "archWork", label: "건축토목 작업" },
+    { key: "mepWork", label: "기전부 작업" },
+  ];
+
+  return workTabs.map((tab) => {
+    const rows = getMergedSectionRows(tab.key);
+
+    const companies = Array.from(
+      new Set(
+        Object.values(rows)
+          .flat()
+          .map((item) => String(item.company || "").trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b, "ko"));
+
+    return {
+      ...tab,
+      companies,
+    };
+  });
+};
 
 const handleUpdateOverlayInfo = async () => {
   if (!canAdminEditDabsItem) return;
@@ -4591,13 +4617,69 @@ const activeColumns = getDabsColumnsByTabKey(activeDabsKey);
 
 return (
       <div className="space-y-4 sm:space-y-6">
-        {renderTopBar()}
+{renderTopBar()}
 {renderEditPopups()}
-        
 
-        
+{companyListPopupOpen && (
+  <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-md rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-base font-semibold text-slate-900">
+            작업내용 업체명 목록
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            기준일: {formatMonthDay(selectedDate)}
+          </div>
+        </div>
 
-                
+        <button
+          type="button"
+          onClick={() => setCompanyListPopupOpen(false)}
+          className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="mt-4 space-y-4">
+        {getCompanyListFromWorkTabs().map((tab) => (
+          <div key={tab.key} className="rounded-2xl border border-slate-200 p-3">
+            <div className="text-sm font-semibold text-slate-900">
+              {tab.label}
+            </div>
+
+            {tab.companies.length === 0 ? (
+              <div className="mt-2 text-sm text-slate-400">
+                입력된 업체명 없음
+              </div>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {tab.companies.map((company) => (
+                  <span
+                    key={company}
+                    className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700"
+                  >
+                    {company}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 flex justify-end">
+        <Button
+          variant="outline"
+          onClick={() => setCompanyListPopupOpen(false)}
+        >
+          닫기
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
 
         {imagePopup.open && (
   <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
@@ -4685,6 +4767,13 @@ return (
   </CardTitle>
 
   <div className="flex flex-wrap gap-2">
+    <Button
+      variant="outline"
+      onClick={() => setCompanyListPopupOpen(true)}
+    >
+      업체명 목록
+    </Button>
+
     <Button
       variant="outline"
       onClick={() =>
