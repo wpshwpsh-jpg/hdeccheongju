@@ -1530,7 +1530,7 @@ const handleHeatwaveUpload = async (
       fileType,
       storagePath,
       companyName,
-      uploadedByUid: currentUser.uid || null,
+      uploadedByUid: currentUser.uid || "",
 uploadedByName: currentUser.name || "",
 createdAt: new Date().toISOString(),
     };
@@ -1865,7 +1865,7 @@ const handleHeatwaveSharedFileUpload = async (
       fileName: file.name,
       fileUrl,
       storagePath,
-      uploadedByUid: currentUser?.uid || null,
+      uploadedByUid: currentUser?.uid || "",
 uploadedByName: currentUser?.name || "",
 createdAt: new Date().toISOString(),
     };
