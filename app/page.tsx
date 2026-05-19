@@ -72,8 +72,7 @@ const MATERIAL_TIMES = Array.from({ length: 12 }, (_, i) => String(i + 6).padSta
 const MAX_HEATWAVE_IMAGE_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_HEATWAVE_EXCEL_FILE_SIZE = 10 * 1024 * 1024;
 
-const EQUIPMENT_OPTIONS = [
-  { value: "concrete_pump_truck", label: "콘크리트 펌프카" },
+const EQUIPMENT_OPTIONS = [  { value: "concrete_pump_truck", label: "콘크리트 펌프카" },
   { value: "concrete_mixer_truck", label: "콘크리트 믹서트럭" },
   { value: "excavator", label: "굴착기" },
   { value: "roller", label: "롤러" },
@@ -1486,7 +1485,7 @@ const handleHeatwaveUpload = async (
     return;
   }
 
-  const maxSize =
+    const maxSize =
     fileType === "image" ? MAX_HEATWAVE_IMAGE_FILE_SIZE : MAX_HEATWAVE_EXCEL_FILE_SIZE;
 
   if (file.size > maxSize) {
@@ -1516,8 +1515,9 @@ const handleHeatwaveUpload = async (
   }
 
   try {
+        const safeCompanyName = companyName.replace(/[\\/:*?"<>|]/g, "-");
     const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
-    const storagePath = `heatwaveUploads/${selectedDate}/${companyName}/${Date.now()}-${safeFileName}`;
+    const storagePath = `heatwaveUploads/${selectedDate}/${safeCompanyName}/${Date.now()}-${safeFileName}`;
     const fileRef = storageRef(storage, storagePath);
 
     await uploadBytes(fileRef, file);
@@ -1566,6 +1566,252 @@ const handleHeatwaveUpload = async (
 
   event.target.value = "";
 };
+const isHeatwaveAdmin = currentUser?.role === "master" || currentUser?.role === "admin";
+
+const canAccessHeatwaveCompanyFiles = (companyName: string) => {
+  const myCompanyName = String(currentUser?.companyName || "").trim();
+  return isHeatwaveAdmin || myCompanyName === companyName;
+};
+
+const canManageHeatwaveUploadFile = (file?: HeatwaveUploadItem) => {
+  if (!currentUser || !file) return false;
+
+  const myCompanyName = String(currentUser.companyName || "").trim();
+  const fileCompanyName = String(file.companyName || "").trim();
+
+  return isHeatwaveAdmin || myCompanyName === fileCompanyName;
+};
+
+const openHeatwaveFilePreview = (fileUrl?: string) => {
+  if (!fileUrl) return;
+  window.open(fileUrl, "_blank", "noopener,noreferrer");
+};
+
+const downloadHeatwaveFile = (fileUrl?: string, fileName = "download") => {
+  if (!fileUrl) return;
+
+  const link = document.createElement("a");
+  link.href = fileUrl;
+  link.download = fileName;
+  link.target = "_blank";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+const handleDeleteHeatwaveUpload = async (companyName: string, uploadId: string) => {
+  setHeatwaveMessage("");
+
+  if (!db || !storage) {
+    setHeatwaveMessage("Firebase 연결 오류");
+    return;
+  }
+
+  const currentUploads = getHeatwaveCompanyUploads(companyName);
+  const targetFile = currentUploads.find((item) => item.id === uploadId);
+
+  if (!targetFile) {
+    setHeatwaveMessage("삭제할 파일을 찾을 수 없습니다.");
+    return;
+  }
+
+  if (!canManageHeatwaveUploadFile(targetFile)) {
+    setHeatwaveMessage("업로드한 업체 또는 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  try {
+    if (targetFile.storagePath) {
+      try {
+        await deleteObject(storageRef(storage, targetFile.storagePath));
+      } catch (error) {
+        console.log("HEATWAVE STORAGE DELETE SKIPPED:", error);
+      }
+    }
+
+    const nextUploads = {
+      ...(heatwaveUploads[selectedDate]?.uploads || {}),
+      [companyName]: currentUploads.filter((item) => item.id !== uploadId),
+    };
+
+    setHeatwaveUploads((prev) => ({
+      ...prev,
+      [selectedDate]: {
+        date: selectedDate,
+        uploads: nextUploads,
+      },
+    }));
+
+    await setDoc(
+      doc(db, "heatwaveUploads", selectedDate),
+      {
+        date: selectedDate,
+        uploads: nextUploads,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    setHeatwaveMessage("파일이 삭제되었습니다.");
+  } catch (error) {
+    console.log("HEATWAVE DELETE ERROR:", error);
+    setHeatwaveMessage("파일 삭제 중 오류가 발생했습니다.");
+  }
+};
+
+const renderHeatwaveUploadFileList = (companyName: string) => {
+  if (!canAccessHeatwaveCompanyFiles(companyName)) return null;
+
+  const uploads = getHeatwaveCompanyUploads(companyName);
+
+  if (uploads.length === 0) {
+    return <div className="text-xs text-slate-400">업로드된 파일 없음</div>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {uploads.map((file) => {
+        const canManage = canManageHeatwaveUploadFile(file);
+
+        return (
+          <div key={file.id} className="rounded-xl border border-slate-200 bg-white p-2 text-xs">
+            <div className="font-semibold text-slate-800">
+              {file.fileType === "image" ? "이미지" : "엑셀"} · {file.fileName}
+            </div>
+
+            {file.fileType === "image" && (
+              <img
+                src={file.fileUrl}
+                alt={file.fileName}
+                className="mt-2 max-h-40 rounded-xl border border-slate-200 object-contain"
+              />
+            )}
+
+            {canManage && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => openHeatwaveFilePreview(file.fileUrl)}>
+                  미리보기
+                </Button>
+
+                <Button variant="outline" size="sm" onClick={() => downloadHeatwaveFile(file.fileUrl, file.fileName)}>
+                  다운로드
+                </Button>
+
+                <Button variant="outline" size="sm" onClick={() => handleDeleteHeatwaveUpload(companyName, file.id)}>
+                  삭제
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const handleDeleteHeatwaveSharedFile = async (
+  fileKind: "thermoHygrometerImage" | "breakTimeExcel"
+) => {
+  setHeatwaveMessage("");
+
+  if (!isHeatwaveAdmin) {
+    setHeatwaveMessage("공통 파일은 마스터, 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  if (!db || !storage) {
+    setHeatwaveMessage("Firebase 연결 오류");
+    return;
+  }
+
+  const targetFile = heatwaveSharedFiles[selectedDate]?.[fileKind];
+
+  if (!targetFile) {
+    setHeatwaveMessage("삭제할 파일이 없습니다.");
+    return;
+  }
+
+  try {
+    if (targetFile.storagePath) {
+      try {
+        await deleteObject(storageRef(storage, targetFile.storagePath));
+      } catch (error) {
+        console.log("HEATWAVE SHARED STORAGE DELETE SKIPPED:", error);
+      }
+    }
+
+    const nextSharedFiles = {
+      ...(heatwaveSharedFiles[selectedDate] || { date: selectedDate }),
+      [fileKind]: null,
+    };
+
+    setHeatwaveSharedFiles((prev) => ({
+      ...prev,
+      [selectedDate]: nextSharedFiles,
+    }));
+
+    await setDoc(
+      doc(db, "heatwaveSharedFiles", selectedDate),
+      {
+        date: selectedDate,
+        ...nextSharedFiles,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    setHeatwaveMessage("공통 파일이 삭제되었습니다.");
+  } catch (error) {
+    console.log("HEATWAVE SHARED DELETE ERROR:", error);
+    setHeatwaveMessage("공통 파일 삭제 중 오류가 발생했습니다.");
+  }
+};
+
+const renderHeatwaveSharedFileBox = (
+  title: string,
+  fileKind: "thermoHygrometerImage" | "breakTimeExcel"
+) => {
+  const file = heatwaveSharedFiles[selectedDate]?.[fileKind];
+
+  return (
+    <div className="rounded-2xl border border-slate-200 p-4">
+      <div className="text-sm font-semibold text-slate-900">{title}</div>
+
+      {file ? (
+        <div className="mt-2 space-y-2">
+          <div className="break-all text-sm text-slate-700">{file.fileName}</div>
+
+          {fileKind === "thermoHygrometerImage" && (
+            <img
+              src={file.fileUrl}
+              alt={title}
+              className="max-h-48 rounded-xl border border-slate-200 object-contain"
+            />
+          )}
+
+          {isHeatwaveAdmin && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => openHeatwaveFilePreview(file.fileUrl)}>
+                미리보기
+              </Button>
+
+              <Button variant="outline" size="sm" onClick={() => downloadHeatwaveFile(file.fileUrl, file.fileName)}>
+                다운로드
+              </Button>
+
+              <Button variant="outline" size="sm" onClick={() => handleDeleteHeatwaveSharedFile(fileKind)}>
+                삭제
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mt-2 text-sm text-slate-400">업로드 없음</div>
+      )}
+    </div>
+  );
+};
+
 const handleHeatwaveSharedFileUpload = async (
   event: React.ChangeEvent<HTMLInputElement>,
   fileKind: "thermoHygrometerImage" | "breakTimeExcel"
@@ -1583,6 +1829,21 @@ const handleHeatwaveSharedFileUpload = async (
 
     if (!db || !storage) {
     setHeatwaveMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+    const maxSize =
+    fileKind === "thermoHygrometerImage"
+      ? MAX_HEATWAVE_IMAGE_FILE_SIZE
+      : MAX_HEATWAVE_EXCEL_FILE_SIZE;
+
+  if (file.size > maxSize) {
+    setHeatwaveMessage(
+      fileKind === "thermoHygrometerImage"
+        ? "온습도계 이미지는 5MB 이하만 업로드할 수 있습니다."
+        : "휴게시간 엑셀파일은 10MB 이하만 업로드할 수 있습니다."
+    );
     event.target.value = "";
     return;
   }
@@ -6219,49 +6480,14 @@ const renderHeatwavePage = () => {
             선택 날짜: {formatMonthDay(selectedDate)} · 업체별 이미지 4개, 엑셀파일 1개 업로드
           </div>
 
-          <Card className="border-slate-200 shadow-none">
+                    <Card className="border-slate-200 shadow-none">
             <CardHeader>
               <CardTitle className="text-base">공통 업로드 파일</CardTitle>
             </CardHeader>
 
             <CardContent className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <div className="text-sm font-semibold text-slate-900">
-                  온습도계 이미지
-                </div>
-
-                {heatwaveSharedFiles[selectedDate]?.thermoHygrometerImage ? (
-                  <a
-                    href={heatwaveSharedFiles[selectedDate]?.thermoHygrometerImage?.fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 block text-sm text-blue-600 underline"
-                  >
-                    {heatwaveSharedFiles[selectedDate]?.thermoHygrometerImage?.fileName}
-                  </a>
-                ) : (
-                  <div className="mt-2 text-sm text-slate-400">업로드 없음</div>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <div className="text-sm font-semibold text-slate-900">
-                  휴게시간 엑셀파일
-                </div>
-
-                {heatwaveSharedFiles[selectedDate]?.breakTimeExcel ? (
-                  <a
-                    href={heatwaveSharedFiles[selectedDate]?.breakTimeExcel?.fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 block text-sm text-blue-600 underline"
-                  >
-                    {heatwaveSharedFiles[selectedDate]?.breakTimeExcel?.fileName}
-                  </a>
-                ) : (
-                  <div className="mt-2 text-sm text-slate-400">업로드 없음</div>
-                )}
-              </div>
+              {renderHeatwaveSharedFileBox("온습도계 이미지", "thermoHygrometerImage")}
+              {renderHeatwaveSharedFileBox("휴게시간 엑셀파일", "breakTimeExcel")}
             </CardContent>
           </Card>
 
@@ -6362,7 +6588,14 @@ const renderHeatwavePage = () => {
                         : "bg-red-50 text-red-700"
                     )}
                   >
-                    {myStatus?.isComplete ? "오늘 혹서기 업로드 완료" : "오늘 혹서기 업로드 미완료"}
+                                                            {myStatus?.isComplete ? "오늘 혹서기 업로드 완료" : "오늘 혹서기 업로드 미완료"}
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 p-4">
+                    <div className="mb-3 text-sm font-semibold text-slate-900">
+                      내 업체 업로드 파일
+                    </div>
+                    {renderHeatwaveUploadFileList(myCompanyName)}
                   </div>
                 </>
               )}
@@ -6401,7 +6634,10 @@ const renderHeatwavePage = () => {
                           <td className="border border-black px-3 py-2">{Math.min(status.imageCount, 4)}/4</td>
                           <td className="border border-black px-3 py-2">{Math.min(status.excelCount, 1)}/1</td>
                           <td className="border border-black px-3 py-2 font-semibold">
-                            {status.isComplete ? "완료" : "미완료"}
+                                                        <div>                            <div>{status.isComplete ? "완료" : "미완료"}</div>
+<div className="mt-2">
+  {renderHeatwaveUploadFileList(companyName)}
+</div>
                           </td>
                         </tr>
                       );
