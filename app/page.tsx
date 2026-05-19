@@ -1530,9 +1530,9 @@ const handleHeatwaveUpload = async (
       fileType,
       storagePath,
       companyName,
-      uploadedByUid: currentUser.uid,
-      uploadedByName: currentUser.name,
-      createdAt: new Date().toISOString(),
+      uploadedByUid: currentUser.uid || null,
+uploadedByName: currentUser.name || "",
+createdAt: new Date().toISOString(),
     };
 
     const nextUploads = {
@@ -1561,7 +1561,12 @@ const handleHeatwaveUpload = async (
     setHeatwaveMessage("업로드되었습니다.");
   } catch (error) {
     console.log("HEATWAVE UPLOAD ERROR:", error);
-    setHeatwaveMessage("업로드 중 오류가 발생했습니다.");
+
+setHeatwaveMessage(
+  error instanceof Error
+    ? `업로드 오류: ${error.message}`
+    : "업로드 중 오류가 발생했습니다."
+);
   }
 
   event.target.value = "";
@@ -1860,9 +1865,9 @@ const handleHeatwaveSharedFileUpload = async (
       fileName: file.name,
       fileUrl,
       storagePath,
-      uploadedByUid: currentUser?.uid,
-      uploadedByName: currentUser?.name,
-      createdAt: new Date().toISOString(),
+      uploadedByUid: currentUser?.uid || null,
+uploadedByName: currentUser?.name || "",
+createdAt: new Date().toISOString(),
     };
 
     const nextSharedFiles = {
@@ -1892,7 +1897,12 @@ const handleHeatwaveSharedFileUpload = async (
     );
   } catch (error) {
     console.log("HEATWAVE SHARED FILE UPLOAD ERROR:", error);
-    setHeatwaveMessage("파일 업로드 중 오류가 발생했습니다.");
+
+setHeatwaveMessage(
+  error instanceof Error
+    ? `파일 업로드 오류: ${error.message}`
+    : "파일 업로드 중 오류가 발생했습니다."
+);
   }
 
   event.target.value = "";
