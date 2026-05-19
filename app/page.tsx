@@ -356,6 +356,21 @@ type HeatwaveDateValue = {
   uploads?: Record<string, HeatwaveUploadItem[]>;
 };
 
+type HeatwaveSharedFileItem = {
+  fileName: string;
+  fileUrl: string;
+  storagePath?: string;
+  uploadedByUid?: string;
+  uploadedByName?: string;
+  createdAt?: string | null;
+};
+
+type HeatwaveSharedDateValue = {
+  date?: string;
+  thermoHygrometerImage?: HeatwaveSharedFileItem | null;
+  breakTimeExcel?: HeatwaveSharedFileItem | null;
+};
+
 type DabsRowItem = {
   id: string;
   company?: string;
@@ -906,6 +921,7 @@ const storage = isConfigured ? getStorage() : null;
 const [heatwaveSelectedCompanies, setHeatwaveSelectedCompanies] = useState<string[]>([]);
 const [heatwaveUploads, setHeatwaveUploads] = useState<Record<string, HeatwaveDateValue>>({});
 const [heatwaveMessage, setHeatwaveMessage] = useState("");
+const [heatwaveSharedFiles, setHeatwaveSharedFiles] = useState<Record<string, HeatwaveSharedDateValue>>({});
   const [selectedDate, setSelectedDate] = useState(() => getDefaultSelectedDateKey());
 const [manualSelectedDate, setManualSelectedDate] = useState("");
 const [manualSelectedDateSavedToday, setManualSelectedDateSavedToday] = useState("");
@@ -1379,9 +1395,25 @@ useEffect(() => {
     }));
   });
 
+  const unsubscribeSharedFiles = onSnapshot(doc(db, "heatwaveSharedFiles", selectedDate), (snap) => {
+    const data = snap.exists()
+      ? (snap.data() as HeatwaveSharedDateValue)
+      : { date: selectedDate, thermoHygrometerImage: null, breakTimeExcel: null };
+
+    setHeatwaveSharedFiles((prev) => ({
+      ...prev,
+      [selectedDate]: {
+        date: selectedDate,
+        thermoHygrometerImage: data.thermoHygrometerImage || null,
+        breakTimeExcel: data.breakTimeExcel || null,
+      },
+    }));
+  });
+
   return () => {
     unsubscribeSettings();
     unsubscribeUploads();
+    unsubscribeSharedFiles();
   };
 }, [db, isDemoMode, currentUser, selectedDate]);
 
@@ -1514,6 +1546,76 @@ const handleHeatwaveUpload = async (
   } catch (error) {
     console.log("HEATWAVE UPLOAD ERROR:", error);
     setHeatwaveMessage("업로드 중 오류가 발생했습니다.");
+  }
+
+  event.target.value = "";
+};
+const handleHeatwaveSharedFileUpload = async (
+  event: React.ChangeEvent<HTMLInputElement>,
+  fileKind: "thermoHygrometerImage" | "breakTimeExcel"
+) => {
+  setHeatwaveMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!canManageHeatwaveCompanies) {
+    setHeatwaveMessage("온습도계와 휴게시간 파일은 마스터, 관리자만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage) {
+    setHeatwaveMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `heatwaveSharedFiles/${selectedDate}/${fileKind}-${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    const newFile: HeatwaveSharedFileItem = {
+      fileName: file.name,
+      fileUrl,
+      storagePath,
+      uploadedByUid: currentUser?.uid,
+      uploadedByName: currentUser?.name,
+      createdAt: new Date().toISOString(),
+    };
+
+    const nextSharedFiles = {
+      ...(heatwaveSharedFiles[selectedDate] || { date: selectedDate }),
+      [fileKind]: newFile,
+    };
+
+    setHeatwaveSharedFiles((prev) => ({
+      ...prev,
+      [selectedDate]: nextSharedFiles,
+    }));
+
+    await setDoc(
+      doc(db, "heatwaveSharedFiles", selectedDate),
+      {
+        date: selectedDate,
+        ...nextSharedFiles,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    setHeatwaveMessage(
+      fileKind === "thermoHygrometerImage"
+        ? "온습도계 이미지가 업로드되었습니다."
+        : "휴게시간 엑셀파일이 업로드되었습니다."
+    );
+  } catch (error) {
+    console.log("HEATWAVE SHARED FILE UPLOAD ERROR:", error);
+    setHeatwaveMessage("파일 업로드 중 오류가 발생했습니다.");
   }
 
   event.target.value = "";
@@ -6065,15 +6167,87 @@ const renderHeatwavePage = () => {
             혹서기
           </CardTitle>
 
-          <Button variant="outline" onClick={() => setCurrentPage("menu")}>
-            메뉴로 돌아가기
-          </Button>
+                    <div className="flex flex-wrap gap-2">
+            {canManageHeatwaveCompanies && (
+              <>
+                <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                  온습도계 업로드
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => handleHeatwaveSharedFileUpload(event, "thermoHygrometerImage")}
+                    className="hidden"
+                  />
+                </label>
+
+                <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                  휴게시간 업로드
+                  <input
+                    type="file"
+                    accept=".xls,.xlsx"
+                    onChange={(event) => handleHeatwaveSharedFileUpload(event, "breakTimeExcel")}
+                    className="hidden"
+                  />
+                </label>
+              </>
+            )}
+
+            <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+              메뉴로 돌아가기
+            </Button>
+          </div>
         </CardHeader>
 
         <CardContent className="space-y-5">
-          <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+                    <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
             선택 날짜: {formatMonthDay(selectedDate)} · 업체별 이미지 4개, 엑셀파일 1개 업로드
           </div>
+
+          <Card className="border-slate-200 shadow-none">
+            <CardHeader>
+              <CardTitle className="text-base">공통 업로드 파일</CardTitle>
+            </CardHeader>
+
+            <CardContent className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <div className="text-sm font-semibold text-slate-900">
+                  온습도계 이미지
+                </div>
+
+                {heatwaveSharedFiles[selectedDate]?.thermoHygrometerImage ? (
+                  <a
+                    href={heatwaveSharedFiles[selectedDate]?.thermoHygrometerImage?.fileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 block text-sm text-blue-600 underline"
+                  >
+                    {heatwaveSharedFiles[selectedDate]?.thermoHygrometerImage?.fileName}
+                  </a>
+                ) : (
+                  <div className="mt-2 text-sm text-slate-400">업로드 없음</div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 p-4">
+                <div className="text-sm font-semibold text-slate-900">
+                  휴게시간 엑셀파일
+                </div>
+
+                {heatwaveSharedFiles[selectedDate]?.breakTimeExcel ? (
+                  <a
+                    href={heatwaveSharedFiles[selectedDate]?.breakTimeExcel?.fileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 block text-sm text-blue-600 underline"
+                  >
+                    {heatwaveSharedFiles[selectedDate]?.breakTimeExcel?.fileName}
+                  </a>
+                ) : (
+                  <div className="mt-2 text-sm text-slate-400">업로드 없음</div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {canManageHeatwaveCompanies && (
             <Card className="border-slate-200 shadow-none">
