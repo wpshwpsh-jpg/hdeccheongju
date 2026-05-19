@@ -339,6 +339,23 @@ type EntryItem = {
   createdAt?: string | null;
 };
 
+type HeatwaveUploadItem = {
+  id: string;
+  fileName: string;
+  fileUrl: string;
+  fileType: "image" | "excel";
+  storagePath?: string;
+  companyName?: string;
+  uploadedByUid?: string;
+  uploadedByName?: string;
+  createdAt?: string | null;
+};
+
+type HeatwaveDateValue = {
+  date?: string;
+  uploads?: Record<string, HeatwaveUploadItem[]>;
+};
+
 type DabsRowItem = {
   id: string;
   company?: string;
@@ -886,6 +903,9 @@ const storage = isConfigured ? getStorage() : null;
   const [currentUser, setCurrentUser] = useState<UserItem | null>(null);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [entries, setEntries] = useState<EntryItem[]>([]);
+const [heatwaveSelectedCompanies, setHeatwaveSelectedCompanies] = useState<string[]>([]);
+const [heatwaveUploads, setHeatwaveUploads] = useState<Record<string, HeatwaveDateValue>>({});
+const [heatwaveMessage, setHeatwaveMessage] = useState("");
   const [selectedDate, setSelectedDate] = useState(() => getDefaultSelectedDateKey());
 const [manualSelectedDate, setManualSelectedDate] = useState("");
 const [manualSelectedDateSavedToday, setManualSelectedDateSavedToday] = useState("");
@@ -1240,6 +1260,7 @@ const unsubscribeImages = onSnapshot(doc(db, "dabsImages", "shared"), (snap) => 
   const canUploadDabsImage = currentUser?.role === "master" || currentUser?.role === "admin";
   const canAdminEditDabsItem = currentUser?.role === "master" || currentUser?.role === "admin";
 const canManualChangeSelectedDate = currentUser?.role === "master" || currentUser?.role === "admin";
+const canManageHeatwaveCompanies = currentUser?.role === "master" || currentUser?.role === "admin";
   const canDeleteOwnItem = (item?: { createdByUid?: string }) => {
   if (!currentUser) return false;
   if (currentUser.role === "master" || currentUser.role === "admin") return true;
@@ -1324,10 +1345,185 @@ const saveDabsOverlaysToFirestore = async (
   );
 };
 
+const approvedCompanyNames = useMemo(
+  () =>
+    Array.from(
+      new Set(
+        users
+          .filter((user) => user.status === "approved")
+          .map((user) => String(user.companyName || "").trim())
+          .filter((companyName) => companyName && companyName !== "마스터")
+      )
+    ).sort((a, b) => a.localeCompare(b, "ko")),
+  [users]
+);
+
+useEffect(() => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  const unsubscribeSettings = onSnapshot(doc(db, "heatwaveSettings", "companies"), (snap) => {
+    const data = snap.exists() ? snap.data() : {};
+    const companies = Array.isArray(data.selectedCompanies) ? data.selectedCompanies : [];
+    setHeatwaveSelectedCompanies(companies.map(String));
+  });
+
+  const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", selectedDate), (snap) => {
+    const data = snap.exists() ? (snap.data() as HeatwaveDateValue) : { date: selectedDate, uploads: {} };
+
+    setHeatwaveUploads((prev) => ({
+      ...prev,
+      [selectedDate]: {
+        date: selectedDate,
+        uploads: data.uploads || {},
+      },
+    }));
+  });
+
+  return () => {
+    unsubscribeSettings();
+    unsubscribeUploads();
+  };
+}, [db, isDemoMode, currentUser, selectedDate]);
+
+const handleToggleHeatwaveCompany = async (companyName: string) => {
+  if (!canManageHeatwaveCompanies || !db) return;
+
+  const nextCompanies = heatwaveSelectedCompanies.includes(companyName)
+    ? heatwaveSelectedCompanies.filter((item) => item !== companyName)
+    : [...heatwaveSelectedCompanies, companyName].sort((a, b) => a.localeCompare(b, "ko"));
+
+  setHeatwaveSelectedCompanies(nextCompanies);
+
+  await setDoc(
+    doc(db, "heatwaveSettings", "companies"),
+    {
+      selectedCompanies: nextCompanies,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser?.uid,
+      updatedByName: currentUser?.name,
+    },
+    { merge: true }
+  );
+};
+
+const getHeatwaveCompanyUploads = (companyName: string) =>
+  heatwaveUploads[selectedDate]?.uploads?.[companyName] || [];
+
+const getHeatwaveCompanyStatus = (companyName: string) => {
+  const uploads = getHeatwaveCompanyUploads(companyName);
+  const imageCount = uploads.filter((item) => item.fileType === "image").length;
+  const excelCount = uploads.filter((item) => item.fileType === "excel").length;
+
+  return {
+    uploads,
+    imageCount,
+    excelCount,
+    isComplete: imageCount >= 4 && excelCount >= 1,
+  };
+};
+
+const handleHeatwaveUpload = async (
+  event: React.ChangeEvent<HTMLInputElement>,
+  fileType: "image" | "excel"
+) => {
+  setHeatwaveMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const companyName = String(currentUser?.companyName || "").trim();
+
+  if (!currentUser || !companyName) {
+    setHeatwaveMessage("로그인 후 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!heatwaveSelectedCompanies.includes(companyName)) {
+    setHeatwaveMessage("혹서기 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage) {
+    setHeatwaveMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  const currentUploads = getHeatwaveCompanyUploads(companyName);
+  const imageCount = currentUploads.filter((item) => item.fileType === "image").length;
+  const excelCount = currentUploads.filter((item) => item.fileType === "excel").length;
+
+  if (fileType === "image" && imageCount >= 4) {
+    setHeatwaveMessage("이미지는 하루 4개까지만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (fileType === "excel" && excelCount >= 1) {
+    setHeatwaveMessage("엑셀파일은 하루 1개까지만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `heatwaveUploads/${selectedDate}/${companyName}/${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    const newUpload: HeatwaveUploadItem = {
+      id: createLocalId("heatwave"),
+      fileName: file.name,
+      fileUrl,
+      fileType,
+      storagePath,
+      companyName,
+      uploadedByUid: currentUser.uid,
+      uploadedByName: currentUser.name,
+      createdAt: new Date().toISOString(),
+    };
+
+    const nextUploads = {
+      ...(heatwaveUploads[selectedDate]?.uploads || {}),
+      [companyName]: [...currentUploads, newUpload],
+    };
+
+    setHeatwaveUploads((prev) => ({
+      ...prev,
+      [selectedDate]: {
+        date: selectedDate,
+        uploads: nextUploads,
+      },
+    }));
+
+    await setDoc(
+      doc(db, "heatwaveUploads", selectedDate),
+      {
+        date: selectedDate,
+        uploads: nextUploads,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    setHeatwaveMessage("업로드되었습니다.");
+  } catch (error) {
+    console.log("HEATWAVE UPLOAD ERROR:", error);
+    setHeatwaveMessage("업로드 중 오류가 발생했습니다.");
+  }
+
+  event.target.value = "";
+};
+
   const menuItems = [
   { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
   { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
   { key: "soloWorker", title: "단독작업자", description: "단독작업자 관리 페이지로 이동", icon: Users },
+  { key: "heatwave", title: "혹서기", description: "혹서기 이미지·엑셀 업로드 현황 관리", icon: CalendarDays },
   ...(canManageApprovals
     ? [{ key: "approval", title: "회원 승인 관리", description: "가입 신청 승인/반려 관리", icon: UserPlus }]
     : []),
@@ -5854,6 +6050,182 @@ const renderPortfolioPage = () => {
   </>
   );
 };
+const renderHeatwavePage = () => {
+  const myCompanyName = String(currentUser?.companyName || "").trim();
+  const myStatus = myCompanyName ? getHeatwaveCompanyStatus(myCompanyName) : null;
+
+  return (
+    <div className="space-y-4 sm:space-y-6">
+      {renderTopBar()}
+
+      <Card>
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <CalendarDays className="h-5 w-5" />
+            혹서기
+          </CardTitle>
+
+          <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+            메뉴로 돌아가기
+          </Button>
+        </CardHeader>
+
+        <CardContent className="space-y-5">
+          <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+            선택 날짜: {formatMonthDay(selectedDate)} · 업체별 이미지 4개, 엑셀파일 1개 업로드
+          </div>
+
+          {canManageHeatwaveCompanies && (
+            <Card className="border-slate-200 shadow-none">
+              <CardHeader>
+                <CardTitle className="text-base">혹서기 대상 업체 선택</CardTitle>
+              </CardHeader>
+
+              <CardContent className="space-y-3">
+                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                  {approvedCompanyNames.map((companyName) => {
+                    const checked = heatwaveSelectedCompanies.includes(companyName);
+                    const status = getHeatwaveCompanyStatus(companyName);
+                    const shouldHighlight = checked && !status.isComplete;
+
+                    return (
+                      <label
+                        key={companyName}
+                        className={cn(
+                          "flex cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3 text-sm transition",
+                          checked ? "border-slate-900 bg-white" : "border-slate-200 bg-slate-50",
+                          shouldHighlight && "border-red-400 bg-red-50 text-red-800"
+                        )}
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => handleToggleHeatwaveCompany(companyName)}
+                            className="h-4 w-4"
+                          />
+                          <span className="truncate font-semibold">{companyName}</span>
+                        </span>
+
+                        {checked && (
+                          <span className="shrink-0 text-xs font-medium">
+                            이미지 {Math.min(status.imageCount, 4)}/4 · 엑셀 {Math.min(status.excelCount, 1)}/1
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className="border-slate-200 shadow-none">
+            <CardHeader>
+              <CardTitle className="text-base">내 업체 업로드</CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              {!myCompanyName ? (
+                <div className="text-sm text-slate-500">업체 정보가 없습니다.</div>
+              ) : !heatwaveSelectedCompanies.includes(myCompanyName) ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  현재 업체는 혹서기 업로드 대상 업체로 체크되어 있지 않습니다.
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 p-4">
+                      <div className="text-sm font-semibold text-slate-900">이미지 업로드</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        현재 {myStatus?.imageCount || 0}/4개
+                      </div>
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => handleHeatwaveUpload(event, "image")}
+                        className="mt-3 h-auto py-2"
+                        disabled={(myStatus?.imageCount || 0) >= 4}
+                      />
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 p-4">
+                      <div className="text-sm font-semibold text-slate-900">엑셀파일 업로드</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        현재 {myStatus?.excelCount || 0}/1개
+                      </div>
+                      <Input
+                        type="file"
+                        accept=".xls,.xlsx"
+                        onChange={(event) => handleHeatwaveUpload(event, "excel")}
+                        className="mt-3 h-auto py-2"
+                        disabled={(myStatus?.excelCount || 0) >= 1}
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    className={cn(
+                      "rounded-2xl p-4 text-sm font-semibold",
+                      myStatus?.isComplete
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-red-50 text-red-700"
+                    )}
+                  >
+                    {myStatus?.isComplete ? "오늘 혹서기 업로드 완료" : "오늘 혹서기 업로드 미완료"}
+                  </div>
+                </>
+              )}
+
+              {heatwaveMessage && <div className="text-sm text-slate-600">{heatwaveMessage}</div>}
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200 shadow-none">
+            <CardHeader>
+              <CardTitle className="text-base">업체별 업로드 현황</CardTitle>
+            </CardHeader>
+
+            <CardContent>
+              <div className="overflow-x-auto rounded-2xl border border-black">
+                <table className="w-full table-fixed border-collapse text-sm">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-700">
+                      <th className="w-[28%] border border-black px-3 py-2 text-left">업체명</th>
+                      <th className="w-[16%] border border-black px-3 py-2 text-left">이미지</th>
+                      <th className="w-[16%] border border-black px-3 py-2 text-left">엑셀</th>
+                      <th className="border border-black px-3 py-2 text-left">상태</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {heatwaveSelectedCompanies.map((companyName) => {
+                      const status = getHeatwaveCompanyStatus(companyName);
+
+                      return (
+                        <tr
+                          key={companyName}
+                          className={cn(!status.isComplete && "bg-red-50 text-red-800")}
+                        >
+                          <td className="border border-black px-3 py-2 font-semibold">{companyName}</td>
+                          <td className="border border-black px-3 py-2">{Math.min(status.imageCount, 4)}/4</td>
+                          <td className="border border-black px-3 py-2">{Math.min(status.excelCount, 1)}/1</td>
+                          <td className="border border-black px-3 py-2 font-semibold">
+                            {status.isComplete ? "완료" : "미완료"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
 
   const renderSoloWorkerPage = () => (
     <div className="space-y-4 sm:space-y-6">
@@ -6365,7 +6737,9 @@ return (
           : currentPage === "portfolio"
             ? renderPortfolioPage()
             : currentPage === "soloWorker"
-              ? renderSoloWorkerPage()
+  ? renderSoloWorkerPage()
+  : currentPage === "heatwave"
+    ? renderHeatwavePage()
               : currentPage === "approval"
                 ? renderApprovalPage()
                 : renderEducationPage()}
