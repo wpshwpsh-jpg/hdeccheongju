@@ -69,6 +69,9 @@ const HIGH_RISK_BUILDINGS = [
 ];
 const SOLO_WORKER_COLUMNS = [ALL_BUILDING_LABEL, ...Array.from({ length: 17 }, (_, i) => `${101 + i}동`), "상가"];
 const MATERIAL_TIMES = Array.from({ length: 12 }, (_, i) => String(i + 6).padStart(2, "0"));
+const MAX_HEATWAVE_IMAGE_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_HEATWAVE_EXCEL_FILE_SIZE = 10 * 1024 * 1024;
+
 const EQUIPMENT_OPTIONS = [
   { value: "concrete_pump_truck", label: "콘크리트 펌프카" },
   { value: "concrete_mixer_truck", label: "콘크리트 믹서트럭" },
@@ -1477,8 +1480,21 @@ const handleHeatwaveUpload = async (
     return;
   }
 
-  if (!db || !storage) {
+    if (!db || !storage) {
     setHeatwaveMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  const maxSize =
+    fileType === "image" ? MAX_HEATWAVE_IMAGE_FILE_SIZE : MAX_HEATWAVE_EXCEL_FILE_SIZE;
+
+  if (file.size > maxSize) {
+    setHeatwaveMessage(
+      fileType === "image"
+        ? "이미지 파일은 5MB 이하만 업로드할 수 있습니다."
+        : "엑셀파일은 10MB 이하만 업로드할 수 있습니다."
+    );
     event.target.value = "";
     return;
   }
@@ -1565,7 +1581,7 @@ const handleHeatwaveSharedFileUpload = async (
     return;
   }
 
-  if (!db || !storage) {
+    if (!db || !storage) {
     setHeatwaveMessage("Firebase 연결 오류");
     event.target.value = "";
     return;
