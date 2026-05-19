@@ -1548,15 +1548,20 @@ createdAt: new Date().toISOString(),
       },
     }));
 
-    await setDoc(
-      doc(db, "heatwaveUploads", selectedDate),
-      {
-        date: selectedDate,
-        uploads: nextUploads,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    try {
+  await setDoc(
+    doc(db, "heatwaveUploads", selectedDate),
+    {
+      date: selectedDate,
+      uploads: nextUploads,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+} catch (error) {
+  console.error("Firestore heatwaveUploads save error:", error);
+  throw error;
+}
 
     setHeatwaveMessage("업로드되었습니다.");
   } catch (error) {
@@ -1898,10 +1903,12 @@ createdAt: new Date().toISOString(),
   } catch (error) {
     console.log("HEATWAVE SHARED FILE UPLOAD ERROR:", error);
 
+console.error(error);
+
 setHeatwaveMessage(
-  error instanceof Error
-    ? `파일 업로드 오류: ${error.message}`
-    : "파일 업로드 중 오류가 발생했습니다."
+  `파일 업로드 오류: ${
+    error instanceof Error ? error.message : JSON.stringify(error)
+  }`
 );
   }
 
