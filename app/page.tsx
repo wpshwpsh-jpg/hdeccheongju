@@ -6634,11 +6634,11 @@ const renderHeatwavePage = () => {
                           <td className="border border-black px-3 py-2">{Math.min(status.imageCount, 4)}/4</td>
                           <td className="border border-black px-3 py-2">{Math.min(status.excelCount, 1)}/1</td>
                           <td className="border border-black px-3 py-2 font-semibold">
-                                                        <div>                            <div>{status.isComplete ? "완료" : "미완료"}</div>
-<div className="mt-2">
-  {renderHeatwaveUploadFileList(companyName)}
-</div>
-                          </td>
+  <div>{status.isComplete ? "완료" : "미완료"}</div>
+  <div className="mt-2">
+    {renderHeatwaveUploadFileList(companyName)}
+  </div>
+</td>
                         </tr>
                       );
                     })}
