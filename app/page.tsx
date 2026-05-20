@@ -6681,33 +6681,7 @@ const renderHeatwavePage = () => {
           </CardTitle>
 
           <div className="flex flex-wrap gap-2">
-            {heatwaveTab === "upload" && canManageHeatwaveCompanies && (
-              <>
-                <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                  온습도계 업로드
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) =>
-                      handleHeatwaveSharedFileUpload(event, "thermoHygrometerImage")
-                    }
-                    className="hidden"
-                  />
-                </label>
-
-                <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                  휴게시간 업로드
-                  <input
-                    type="file"
-                    accept=".xls,.xlsx"
-                    onChange={(event) =>
-                      handleHeatwaveSharedFileUpload(event, "breakTimeExcel")
-                    }
-                    className="hidden"
-                  />
-                </label>
-              </>
-            )}
+           
 
             <Button variant="outline" onClick={() => setCurrentPage("menu")}>
               메뉴로 돌아가기
@@ -6750,63 +6724,9 @@ const renderHeatwavePage = () => {
                 선택 날짜: {formatMonthDay(selectedDate)} · 업체별 이미지 4개, 엑셀파일 1개 업로드
               </div>
 
-              <Card className="border-slate-200 shadow-none">
-                <CardHeader>
-                  <CardTitle className="text-base">공통 업로드 파일</CardTitle>
-                </CardHeader>
-
-                <CardContent className="grid gap-3 md:grid-cols-2">
-                  {renderHeatwaveSharedFileBox("온습도계 이미지", "thermoHygrometerImage")}
-                  {renderHeatwaveSharedFileBox("휴게시간 엑셀파일", "breakTimeExcel")}
-                </CardContent>
-              </Card>
-
               {canManageHeatwaveCompanies && (
-                <Card className="border-slate-200 shadow-none">
-                  <CardHeader>
-                    <CardTitle className="text-base">혹서기 대상 업체 선택</CardTitle>
-                  </CardHeader>
 
-                  <CardContent className="space-y-3">
-                    <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                      {approvedCompanyNames.map((companyName) => {
-                        const checked = heatwaveSelectedCompanies.includes(companyName);
-                        const status = getHeatwaveCompanyStatus(companyName);
-                        const shouldHighlight = checked && !status.isComplete;
-
-                        return (
-                          <label
-                            key={companyName}
-                            className={cn(
-                              "flex cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3 text-sm transition",
-                              checked ? "border-slate-900 bg-white" : "border-slate-200 bg-slate-50",
-                              shouldHighlight && "border-red-400 bg-red-50 text-red-800"
-                            )}
-                          >
-                            <span className="flex min-w-0 items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => handleToggleHeatwaveCompany(companyName)}
-                                className="h-4 w-4"
-                              />
-                              <span className="truncate font-semibold">{companyName}</span>
-                            </span>
-
-                            {checked && (
-                              <span className="shrink-0 text-xs font-medium">
-                                이미지 {Math.min(status.imageCount, 4)}/4 · 엑셀 {Math.min(status.excelCount, 1)}/1
-                              </span>
-                            )}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <Card className="border-slate-200 shadow-none">
+<Card className="border-slate-200 shadow-none">
                 <CardHeader>
                   <CardTitle className="text-base">내 업체 업로드</CardTitle>
                 </CardHeader>
@@ -6873,6 +6793,50 @@ const renderHeatwavePage = () => {
                   {heatwaveMessage && <div className="text-sm text-slate-600">{heatwaveMessage}</div>}
                 </CardContent>
               </Card>
+
+                <Card className="border-slate-200 shadow-none">
+                  <CardHeader>
+                    <CardTitle className="text-base">혹서기 대상 업체 선택</CardTitle>
+                  </CardHeader>
+
+                  <CardContent className="space-y-3">
+                    <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                      {approvedCompanyNames.map((companyName) => {
+                        const checked = heatwaveSelectedCompanies.includes(companyName);
+                        const status = getHeatwaveCompanyStatus(companyName);
+                        const shouldHighlight = checked && !status.isComplete;
+
+                        return (
+                          <label
+                            key={companyName}
+                            className={cn(
+                              "flex cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3 text-sm transition",
+                              checked ? "border-slate-900 bg-white" : "border-slate-200 bg-slate-50",
+                              shouldHighlight && "border-red-400 bg-red-50 text-red-800"
+                            )}
+                          >
+                            <span className="flex min-w-0 items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => handleToggleHeatwaveCompany(companyName)}
+                                className="h-4 w-4"
+                              />
+                              <span className="truncate font-semibold">{companyName}</span>
+                            </span>
+
+                            {checked && (
+                              <span className="shrink-0 text-xs font-medium">
+                                이미지 {Math.min(status.imageCount, 4)}/4 · 엑셀 {Math.min(status.excelCount, 1)}/1
+                              </span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               <Card className="border-slate-200 shadow-none">
                 <CardHeader>
