@@ -6800,12 +6800,14 @@ const myComplete =
           </CardTitle>
 
           <div className="flex flex-wrap gap-2">
-           
+  <Button variant="outline" onClick={() => setHeatwaveStatusPopupOpen(true)}>
+    업로드 현황
+  </Button>
 
-            <Button variant="outline" onClick={() => setCurrentPage("menu")}>
-              메뉴로 돌아가기
-            </Button>
-          </div>
+  <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+    메뉴로 돌아가기
+  </Button>
+</div>
         </CardHeader>
 
         <CardContent className="space-y-5">
@@ -7436,11 +7438,7 @@ const shouldHighlight =
       이미지 다운로드
     </Button>
 
-    <Button variant="outline" onClick={() => setHeatwaveStatusPopupOpen(true)}>
-  업로드 현황
-</Button>
-
-<Button variant="outline" onClick={() => setCurrentPage("menu")}>
+    <Button variant="outline" onClick={() => setCurrentPage("menu")}>
   메뉴로 돌아가기
 </Button>
   </div>
