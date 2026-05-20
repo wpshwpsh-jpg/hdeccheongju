@@ -6836,7 +6836,6 @@ const renderHeatwavePage = () => {
                   </CardContent>
 </Card>
 )}
-              )}
 
               <Card className="border-slate-200 shadow-none">
                 <CardHeader>
