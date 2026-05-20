@@ -6724,9 +6724,7 @@ const renderHeatwavePage = () => {
                 선택 날짜: {formatMonthDay(selectedDate)} · 업체별 이미지 4개, 엑셀파일 1개 업로드
               </div>
 
-              {canManageHeatwaveCompanies && (
-
-<Card className="border-slate-200 shadow-none">
+              <Card className="border-slate-200 shadow-none">
                 <CardHeader>
                   <CardTitle className="text-base">내 업체 업로드</CardTitle>
                 </CardHeader>
