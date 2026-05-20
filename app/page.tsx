@@ -3471,7 +3471,14 @@ const handleAddHeatSensitive = async () => {
     return;
   }
 
-  const currentRows = dabsData[selectedDate]?.heatSensitive?.rows || {};
+  const heatSensitiveValue = dabsData[selectedDate]?.heatSensitive;
+
+const currentRows =
+  typeof heatSensitiveValue === "object" &&
+  heatSensitiveValue &&
+  "rows" in heatSensitiveValue
+    ? heatSensitiveValue.rows || {}
+    : {};
 
   const nextRows = {
     ...currentRows,
@@ -3506,7 +3513,14 @@ const handleUpdateHeatSensitive = async () => {
   if (!canAdminEditDabsItem) return;
   if (!editHeatSensitivePopup.itemId || !editHeatSensitivePopup.building || !editHeatSensitivePopup.company.trim() || !editHeatSensitivePopup.name.trim() || !editHeatSensitivePopup.content.trim()) return;
 
-  const currentRows = dabsData[selectedDate]?.heatSensitive?.rows || {};
+  const heatSensitiveValue = dabsData[selectedDate]?.heatSensitive;
+
+const currentRows =
+  typeof heatSensitiveValue === "object" &&
+  heatSensitiveValue &&
+  "rows" in heatSensitiveValue
+    ? heatSensitiveValue.rows || {}
+    : {};
   const nextRows = { ...currentRows };
 
   const targetItem = (nextRows[editHeatSensitivePopup.oldBuilding] || []).find(
@@ -3554,7 +3568,14 @@ const handleUpdateHeatSensitive = async () => {
 };
 
 const handleDeleteHeatSensitive = async (itemId: string, building: string) => {
-  const currentRows = dabsData[selectedDate]?.heatSensitive?.rows || {};
+  const heatSensitiveValue = dabsData[selectedDate]?.heatSensitive;
+
+const currentRows =
+  typeof heatSensitiveValue === "object" &&
+  heatSensitiveValue &&
+  "rows" in heatSensitiveValue
+    ? heatSensitiveValue.rows || {}
+    : {};
 
   const nextRows = {
     ...currentRows,
