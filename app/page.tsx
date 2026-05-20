@@ -924,6 +924,7 @@ const [heatwaveImageSelectedCompanies, setHeatwaveImageSelectedCompanies] = useS
 const [heatwaveExcelSelectedCompanies, setHeatwaveExcelSelectedCompanies] = useState<string[]>([]);
 const [heatwaveUploads, setHeatwaveUploads] = useState<Record<string, HeatwaveDateValue>>({});
 const [heatwaveMessage, setHeatwaveMessage] = useState("");
+const [heatwaveStatusPopupOpen, setHeatwaveStatusPopupOpen] = useState(false);
 const [heatwaveSharedFiles, setHeatwaveSharedFiles] = useState<Record<string, HeatwaveSharedDateValue>>({});
   const [selectedDate, setSelectedDate] = useState(() => getDefaultSelectedDateKey());
 const [manualSelectedDate, setManualSelectedDate] = useState("");
@@ -6711,9 +6712,87 @@ const myComplete =
   return (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
-      {renderEditPopups()}
+{renderEditPopups()}
 
-      <Card>
+{heatwaveStatusPopupOpen && (
+  <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-base font-semibold text-slate-900">
+            혹서기 업로드 현황
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            기준일: {formatMonthDay(selectedDate)}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setHeatwaveStatusPopupOpen(false)}
+          className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-black">
+        <table className="w-full table-fixed border-collapse text-sm">
+          <thead>
+            <tr className="bg-slate-100 text-slate-700">
+              <th className="w-[28%] border border-black px-3 py-2 text-left">업체명</th>
+              <th className="w-[18%] border border-black px-3 py-2 text-left">이미지</th>
+              <th className="w-[18%] border border-black px-3 py-2 text-left">엑셀</th>
+              <th className="border border-black px-3 py-2 text-left">상태</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {Array.from(new Set([...heatwaveImageSelectedCompanies, ...heatwaveExcelSelectedCompanies]))
+              .sort((a, b) => a.localeCompare(b, "ko"))
+              .map((companyName) => {
+                const status = getHeatwaveCompanyStatus(companyName);
+                const imageTarget = heatwaveImageSelectedCompanies.includes(companyName);
+                const excelTarget = heatwaveExcelSelectedCompanies.includes(companyName);
+
+                const complete =
+                  (!imageTarget || status.imageCount >= 4) &&
+                  (!excelTarget || status.excelCount >= 1);
+
+                return (
+                  <tr key={companyName} className={cn(!complete && "bg-red-50 text-red-800")}>
+                    <td className="border border-black px-3 py-2 font-semibold">
+                      {companyName}
+                    </td>
+
+                    <td className="border border-black px-3 py-2">
+                      {imageTarget ? `${Math.min(status.imageCount, 4)}/4` : "대상 아님"}
+                    </td>
+
+                    <td className="border border-black px-3 py-2">
+                      {excelTarget ? `${Math.min(status.excelCount, 1)}/1` : "대상 아님"}
+                    </td>
+
+                    <td className="border border-black px-3 py-2 font-semibold">
+                      {complete ? "완료" : "미완료"}
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-5 flex justify-end">
+        <Button variant="outline" onClick={() => setHeatwaveStatusPopupOpen(false)}>
+          닫기
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+
+<Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <CardTitle className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5" />
@@ -7357,9 +7436,13 @@ const shouldHighlight =
       이미지 다운로드
     </Button>
 
-    <Button variant="outline" onClick={() => setCurrentPage("menu")}>
-      메뉴로 돌아가기
-    </Button>
+    <Button variant="outline" onClick={() => setHeatwaveStatusPopupOpen(true)}>
+  업로드 현황
+</Button>
+
+<Button variant="outline" onClick={() => setCurrentPage("menu")}>
+  메뉴로 돌아가기
+</Button>
   </div>
 </div>
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr] lg:gap-6"><div className="space-y-6"><div ref={educationCaptureRef} className="bg-white">
