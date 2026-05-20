@@ -920,7 +920,8 @@ const storage = isConfigured ? getStorage() : null;
   const [currentUser, setCurrentUser] = useState<UserItem | null>(null);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [entries, setEntries] = useState<EntryItem[]>([]);
-const [heatwaveSelectedCompanies, setHeatwaveSelectedCompanies] = useState<string[]>([]);
+const [heatwaveImageSelectedCompanies, setHeatwaveImageSelectedCompanies] = useState<string[]>([]);
+const [heatwaveExcelSelectedCompanies, setHeatwaveExcelSelectedCompanies] = useState<string[]>([]);
 const [heatwaveUploads, setHeatwaveUploads] = useState<Record<string, HeatwaveDateValue>>({});
 const [heatwaveMessage, setHeatwaveMessage] = useState("");
 const [heatwaveSharedFiles, setHeatwaveSharedFiles] = useState<Record<string, HeatwaveSharedDateValue>>({});
@@ -1440,8 +1441,18 @@ useEffect(() => {
 
   const unsubscribeSettings = onSnapshot(doc(db, "heatwaveSettings", "companies"), (snap) => {
     const data = snap.exists() ? snap.data() : {};
-    const companies = Array.isArray(data.selectedCompanies) ? data.selectedCompanies : [];
-    setHeatwaveSelectedCompanies(companies.map(String));
+    const oldCompanies = Array.isArray(data.selectedCompanies) ? data.selectedCompanies.map(String) : [];
+
+const imageCompanies = Array.isArray(data.selectedImageCompanies)
+  ? data.selectedImageCompanies.map(String)
+  : oldCompanies;
+
+const excelCompanies = Array.isArray(data.selectedExcelCompanies)
+  ? data.selectedExcelCompanies.map(String)
+  : oldCompanies;
+
+setHeatwaveImageSelectedCompanies(imageCompanies);
+setHeatwaveExcelSelectedCompanies(excelCompanies);
   });
 
   const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", selectedDate), (snap) => {
@@ -1478,19 +1489,35 @@ useEffect(() => {
   };
 }, [db, isDemoMode, currentUser, selectedDate]);
 
-const handleToggleHeatwaveCompany = async (companyName: string) => {
+const handleToggleHeatwaveCompany = async (
+  companyName: string,
+  fileType: "image" | "excel"
+) => {
   if (!canManageHeatwaveCompanies || !db) return;
 
-  const nextCompanies = heatwaveSelectedCompanies.includes(companyName)
-    ? heatwaveSelectedCompanies.filter((item) => item !== companyName)
-    : [...heatwaveSelectedCompanies, companyName].sort((a, b) => a.localeCompare(b, "ko"));
+  const currentList =
+    fileType === "image"
+      ? heatwaveImageSelectedCompanies
+      : heatwaveExcelSelectedCompanies;
 
-  setHeatwaveSelectedCompanies(nextCompanies);
+  const nextList = currentList.includes(companyName)
+    ? currentList.filter((item) => item !== companyName)
+    : [...currentList, companyName].sort((a, b) => a.localeCompare(b, "ko"));
+
+  const nextImageCompanies =
+    fileType === "image" ? nextList : heatwaveImageSelectedCompanies;
+
+  const nextExcelCompanies =
+    fileType === "excel" ? nextList : heatwaveExcelSelectedCompanies;
+
+  setHeatwaveImageSelectedCompanies(nextImageCompanies);
+  setHeatwaveExcelSelectedCompanies(nextExcelCompanies);
 
   await setDoc(
     doc(db, "heatwaveSettings", "companies"),
     {
-      selectedCompanies: nextCompanies,
+      selectedImageCompanies: nextImageCompanies,
+      selectedExcelCompanies: nextExcelCompanies,
       updatedAt: serverTimestamp(),
       updatedByUid: currentUser?.uid,
       updatedByName: currentUser?.name,
@@ -1498,7 +1525,6 @@ const handleToggleHeatwaveCompany = async (companyName: string) => {
     { merge: true }
   );
 };
-
 const getHeatwaveCompanyUploads = (companyName: string) =>
   heatwaveUploads[selectedDate]?.uploads?.[companyName] || [];
 
@@ -1532,11 +1558,20 @@ const handleHeatwaveUpload = async (
     return;
   }
 
-  if (!heatwaveSelectedCompanies.includes(companyName)) {
-    setHeatwaveMessage("혹서기 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다.");
-    event.target.value = "";
-    return;
-  }
+  const isTargetCompany =
+  fileType === "image"
+    ? heatwaveImageSelectedCompanies.includes(companyName)
+    : heatwaveExcelSelectedCompanies.includes(companyName);
+
+if (!isTargetCompany) {
+  setHeatwaveMessage(
+    fileType === "image"
+      ? "이미지 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다."
+      : "엑셀 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다."
+  );
+  event.target.value = "";
+  return;
+}
 
     if (!db || !storage) {
     setHeatwaveMessage("Firebase 연결 오류");
@@ -6652,6 +6687,11 @@ const renderPortfolioPage = () => {
 const renderHeatwavePage = () => {
   const myCompanyName = String(currentUser?.companyName || "").trim();
   const myStatus = myCompanyName ? getHeatwaveCompanyStatus(myCompanyName) : null;
+const myImageTarget = myCompanyName ? heatwaveImageSelectedCompanies.includes(myCompanyName) : false;
+const myExcelTarget = myCompanyName ? heatwaveExcelSelectedCompanies.includes(myCompanyName) : false;
+const myComplete =
+  (!myImageTarget || (myStatus?.imageCount || 0) >= 4) &&
+  (!myExcelTarget || (myStatus?.excelCount || 0) >= 1);
 
   const heatSensitiveList = getSoloWorkerRowsByCompany(
     heatSensitiveRows,
@@ -6732,9 +6772,9 @@ const renderHeatwavePage = () => {
                 <CardContent className="space-y-4">
                   {!myCompanyName ? (
                     <div className="text-sm text-slate-500">업체 정보가 없습니다.</div>
-                  ) : !heatwaveSelectedCompanies.includes(myCompanyName) ? (
+                  ) : !myImageTarget && !myExcelTarget ? (
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                      현재 업체는 혹서기 업로드 대상 업체로 체크되어 있지 않습니다.
+                      현재 업체는 이미지/엑셀 업로드 대상 업체로 체크되어 있지 않습니다.
                     </div>
                   ) : (
                     <>
@@ -6749,7 +6789,7 @@ const renderHeatwavePage = () => {
                             accept="image/*"
                             onChange={(event) => handleHeatwaveUpload(event, "image")}
                             className="mt-3 h-auto py-2"
-                            disabled={(myStatus?.imageCount || 0) >= 4}
+                            disabled={!myImageTarget || (myStatus?.imageCount || 0) >= 4}
                           />
                         </div>
 
@@ -6763,7 +6803,7 @@ const renderHeatwavePage = () => {
                             accept=".xls,.xlsx"
                             onChange={(event) => handleHeatwaveUpload(event, "excel")}
                             className="mt-3 h-auto py-2"
-                            disabled={(myStatus?.excelCount || 0) >= 1}
+                            disabled={!myExcelTarget || (myStatus?.excelCount || 0) >= 1}
                           />
                         </div>
                       </div>
@@ -6771,12 +6811,12 @@ const renderHeatwavePage = () => {
                       <div
                         className={cn(
                           "rounded-2xl p-4 text-sm font-semibold",
-                          myStatus?.isComplete
+                          myComplete
                             ? "bg-emerald-50 text-emerald-700"
                             : "bg-red-50 text-red-700"
                         )}
                       >
-                        {myStatus?.isComplete ? "오늘 혹서기 업로드 완료" : "오늘 혹서기 업로드 미완료"}
+                        {myComplete ? "오늘 혹서기 업로드 완료" : "오늘 혹서기 업로드 미완료"}
                       </div>
 
                       <div className="rounded-2xl border border-slate-200 p-4">
@@ -6801,9 +6841,13 @@ const renderHeatwavePage = () => {
                   <CardContent className="space-y-3">
                     <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
                       {approvedCompanyNames.map((companyName) => {
-                        const checked = heatwaveSelectedCompanies.includes(companyName);
-                        const status = getHeatwaveCompanyStatus(companyName);
-                        const shouldHighlight = checked && !status.isComplete;
+                        const imageChecked = heatwaveImageSelectedCompanies.includes(companyName);
+const excelChecked = heatwaveExcelSelectedCompanies.includes(companyName);
+const checked = imageChecked || excelChecked;
+const status = getHeatwaveCompanyStatus(companyName);
+const shouldHighlight =
+  (imageChecked && status.imageCount < 4) ||
+  (excelChecked && status.excelCount < 1);
 
                         return (
                           <label
@@ -6815,13 +6859,27 @@ const renderHeatwavePage = () => {
                             )}
                           >
                             <span className="flex min-w-0 items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => handleToggleHeatwaveCompany(companyName)}
-                                className="h-4 w-4"
-                              />
                               <span className="truncate font-semibold">{companyName}</span>
+
+<label className="ml-auto flex items-center gap-1 text-xs">
+  <input
+    type="checkbox"
+    checked={imageChecked}
+    onChange={() => handleToggleHeatwaveCompany(companyName, "image")}
+    className="h-4 w-4"
+  />
+  이미지
+</label>
+
+<label className="flex items-center gap-1 text-xs">
+  <input
+    type="checkbox"
+    checked={excelChecked}
+    onChange={() => handleToggleHeatwaveCompany(companyName, "excel")}
+    className="h-4 w-4"
+  />
+  엑셀
+</label>
                             </span>
 
                             {checked && (
@@ -6855,19 +6913,30 @@ const renderHeatwavePage = () => {
                       </thead>
 
                       <tbody>
-                        {heatwaveSelectedCompanies.map((companyName) => {
+                        {Array.from(new Set([...heatwaveImageSelectedCompanies, ...heatwaveExcelSelectedCompanies]))
+  .sort((a, b) => a.localeCompare(b, "ko"))
+  .map((companyName) => {
                           const status = getHeatwaveCompanyStatus(companyName);
 
                           return (
                             <tr
                               key={companyName}
-                              className={cn(!status.isComplete && "bg-red-50 text-red-800")}
+                              className={cn(
+  ((heatwaveImageSelectedCompanies.includes(companyName) && status.imageCount < 4) ||
+    (heatwaveExcelSelectedCompanies.includes(companyName) && status.excelCount < 1)) &&
+    "bg-red-50 text-red-800"
+)}
                             >
                               <td className="border border-black px-3 py-2 font-semibold">{companyName}</td>
                               <td className="border border-black px-3 py-2">{Math.min(status.imageCount, 4)}/4</td>
                               <td className="border border-black px-3 py-2">{Math.min(status.excelCount, 1)}/1</td>
                               <td className="border border-black px-3 py-2 font-semibold">
-                                <div>{status.isComplete ? "완료" : "미완료"}</div>
+                                <div>
+  {((!heatwaveImageSelectedCompanies.includes(companyName) || status.imageCount >= 4) &&
+    (!heatwaveExcelSelectedCompanies.includes(companyName) || status.excelCount >= 1))
+    ? "완료"
+    : "미완료"}
+</div>
                                 <div className="mt-2">
                                   {renderHeatwaveUploadFileList(companyName)}
                                 </div>
