@@ -6794,9 +6794,10 @@ const renderHeatwavePage = () => {
                 </CardContent>
               </Card>
 
-                <Card className="border-slate-200 shadow-none">
-                  <CardHeader>
-                    <CardTitle className="text-base">혹서기 대상 업체 선택</CardTitle>
+                {canManageHeatwaveCompanies && (
+  <Card className="border-slate-200 shadow-none">
+    <CardHeader>
+      <CardTitle className="text-base">혹서기 대상 업체 선택</CardTitle>
                   </CardHeader>
 
                   <CardContent className="space-y-3">
