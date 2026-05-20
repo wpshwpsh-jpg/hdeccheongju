@@ -1044,7 +1044,20 @@ const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   createdByName?: string;
 } | null>(null);
   const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
+const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
+const [heatwaveTab, setHeatwaveTab] = useState<"upload" | "heatSensitive">("upload");
   const [editSoloPopup, setEditSoloPopup] = useState({
+  open: false,
+  itemId: "",
+  oldBuilding: "",
+  building: "",
+  company: "",
+  name: "",
+  content: "",
+  elderly: "x",
+});
+
+const [editHeatSensitivePopup, setEditHeatSensitivePopup] = useState({
   open: false,
   itemId: "",
   oldBuilding: "",
@@ -1071,6 +1084,7 @@ const [editMaterialPopup, setEditMaterialPopup] = useState({
 });
 
 const [soloCompanyFilter, setSoloCompanyFilter] = useState("");
+const [heatSensitiveCompanyFilter, setHeatSensitiveCompanyFilter] = useState("");
 const [isCapturingImage, setIsCapturingImage] = useState(false);
 const [companyListPopupOpen, setCompanyListPopupOpen] = useState(false);
 
@@ -1083,6 +1097,7 @@ const overlayMarkerRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const imageAreaRef = useRef<HTMLDivElement | null>(null);
 const dabsCaptureRef = useRef<HTMLDivElement | null>(null);
 const soloWorkerCaptureRef = useRef<HTMLDivElement | null>(null);
+const heatSensitiveCaptureRef = useRef<HTMLDivElement | null>(null);
 const portfolioCaptureRef = useRef<HTMLDivElement | null>(null);const educationCaptureRef = useRef<HTMLDivElement | null>(null);
   const lastTouchTimeRef = useRef(0);
   const touchGestureRef = useRef({ moved: false, startX: 0, startY: 0 });
@@ -1120,6 +1135,22 @@ const portfolioCaptureRef = useRef<HTMLDivElement | null>(null);const educationC
     }));
   });
 
+const unsubscribeHeatSensitive = onSnapshot(doc(db, "heatSensitiveWorkers", selectedDate), (snap) => {
+  if (!snap.exists()) return;
+
+  const data = snap.data() as { rows?: Record<string, DabsRowItem[]> };
+
+  setDabsData((prev) => ({
+    ...prev,
+    [selectedDate]: {
+      ...(prev[selectedDate] || {}),
+      heatSensitive: {
+        rows: data.rows || {},
+      },
+    },
+  }));
+});
+
 const unsubscribeOverlays = onSnapshot(doc(db, "dabsOverlays", selectedDate), (snap) => {
   if (!snap.exists()) return;
 
@@ -1154,9 +1185,10 @@ const unsubscribeImages = onSnapshot(doc(db, "dabsImages", "shared"), (snap) => 
 
   return () => {
   unsubscribeDabs();
-  unsubscribeSolo();
-  unsubscribeOverlays();
-  unsubscribeImages();
+unsubscribeSolo();
+unsubscribeHeatSensitive();
+unsubscribeOverlays();
+unsubscribeImages();
 };
 }, [db, isDemoMode, currentUser, selectedDate]);
 
@@ -1339,6 +1371,28 @@ const saveSoloWorkersToFirestore = async (
     { merge: true }
   );
 };
+
+const saveHeatSensitiveWorkersToFirestore = async (
+  dateKey: string,
+  rows: Record<string, DabsRowItem[]>
+) => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  await setDoc(
+    doc(db, "heatSensitiveWorkers", dateKey),
+    {
+      date: dateKey,
+      rows,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+};
+
+const heatSensitiveRows = useMemo<Record<string, DabsRowItem[]>>(
+  () => dabsData[selectedDate]?.heatSensitive?.rows || {},
+  [dabsData, selectedDate]
+);
 
 const saveDabsOverlaysToFirestore = async (
   dateKey: string,
@@ -1919,10 +1973,7 @@ setHeatwaveMessage(
   { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
   { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
   { key: "soloWorker", title: "단독작업자", description: "단독작업자 관리 페이지로 이동", icon: Users },
-
-{ key: "heatSensitive", title: "온열질환 민감군", description: "온열질환 민감군 관리 페이지로 이동", icon: Users },
-
-{ key: "heatwave", title: "혹서기", description: "혹서기 이미지·엑셀 업로드 현황 관리", icon: CalendarDays },
+  { key: "heatwave", title: "혹서기", description: "혹서기 이미지·엑셀 업로드 현황 관리", icon: CalendarDays },
   ...(canManageApprovals
     ? [{ key: "approval", title: "회원 승인 관리", description: "가입 신청 승인/반려 관리", icon: UserPlus }]
     : []),
@@ -2063,6 +2114,11 @@ soloChunks.forEach((soloItems, index) => {
 const soloCompanyColorList = useMemo(
   () => getUniqueCompaniesFromRows(soloRows),
   [soloRows]
+);
+
+const heatSensitiveCompanyColorList = useMemo(
+  () => getUniqueCompaniesFromRows(heatSensitiveRows),
+  [heatSensitiveRows]
 );
 
 useEffect(() => {
@@ -3395,6 +3451,124 @@ const handleAddSoloWorker = async () => {
   setDabsData(nextData);
   
   await saveSoloWorkersToFirestore(selectedDate, nextRows);
+};
+
+const handleAddHeatSensitive = async () => {
+  if (!canEditDabs || !heatSensitiveInput.building || !heatSensitiveInput.name.trim() || !heatSensitiveInput.content.trim()) return;
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? heatSensitiveInput.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
+
+  const currentRows = dabsData[selectedDate]?.heatSensitive?.rows || {};
+
+  const nextRows = {
+    ...currentRows,
+    [heatSensitiveInput.building]: [
+      ...(currentRows[heatSensitiveInput.building] || []),
+      {
+        id: createLocalId("heat-sensitive"),
+        company: companyName,
+        name: heatSensitiveInput.name.trim(),
+        content: heatSensitiveInput.content.trim(),
+        elderly: heatSensitiveInput.elderly,
+        createdByUid: currentUser?.uid,
+        createdByName: currentUser?.name,
+      },
+    ],
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      heatSensitive: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+  await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
+  setHeatSensitiveInput({ building: "", company: "", name: "", content: "", elderly: "x" });
+};
+
+const handleUpdateHeatSensitive = async () => {
+  if (!canAdminEditDabsItem) return;
+  if (!editHeatSensitivePopup.itemId || !editHeatSensitivePopup.building || !editHeatSensitivePopup.company.trim() || !editHeatSensitivePopup.name.trim() || !editHeatSensitivePopup.content.trim()) return;
+
+  const currentRows = dabsData[selectedDate]?.heatSensitive?.rows || {};
+  const nextRows = { ...currentRows };
+
+  const targetItem = (nextRows[editHeatSensitivePopup.oldBuilding] || []).find(
+    (item) => item.id === editHeatSensitivePopup.itemId
+  );
+
+  if (!targetItem) return;
+
+  nextRows[editHeatSensitivePopup.oldBuilding] = (nextRows[editHeatSensitivePopup.oldBuilding] || []).filter(
+    (item) => item.id !== editHeatSensitivePopup.itemId
+  );
+
+  nextRows[editHeatSensitivePopup.building] = [
+    ...(nextRows[editHeatSensitivePopup.building] || []),
+    {
+      ...targetItem,
+      company: editHeatSensitivePopup.company.trim(),
+      name: editHeatSensitivePopup.name.trim(),
+      content: editHeatSensitivePopup.content.trim(),
+      elderly: editHeatSensitivePopup.elderly,
+    },
+  ];
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      heatSensitive: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+  await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
+
+  setEditHeatSensitivePopup({
+    open: false,
+    itemId: "",
+    oldBuilding: "",
+    building: "",
+    company: "",
+    name: "",
+    content: "",
+    elderly: "x",
+  });
+};
+
+const handleDeleteHeatSensitive = async (itemId: string, building: string) => {
+  const currentRows = dabsData[selectedDate]?.heatSensitive?.rows || {};
+
+  const nextRows = {
+    ...currentRows,
+    [building]: (currentRows[building] || []).filter((item) => {
+      if (item.id !== itemId) return true;
+      return !canDeleteOwnItem(item);
+    }),
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      heatSensitive: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+  await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
 };
 
 const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
@@ -6453,9 +6627,25 @@ const renderHeatwavePage = () => {
   const myCompanyName = String(currentUser?.companyName || "").trim();
   const myStatus = myCompanyName ? getHeatwaveCompanyStatus(myCompanyName) : null;
 
+  const heatSensitiveList = getSoloWorkerRowsByCompany(
+    heatSensitiveRows,
+    heatSensitiveCompanyFilter
+  );
+
+  const heatSensitiveGrouped = heatSensitiveList.reduce(
+    (acc, item) => {
+      const key = item.company || "-";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    },
+    {} as Record<string, Array<DabsRowItem & { building: string }>>
+  );
+
   return (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
+      {renderEditPopups()}
 
       <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -6464,15 +6654,17 @@ const renderHeatwavePage = () => {
             혹서기
           </CardTitle>
 
-                    <div className="flex flex-wrap gap-2">
-            {canManageHeatwaveCompanies && (
+          <div className="flex flex-wrap gap-2">
+            {heatwaveTab === "upload" && canManageHeatwaveCompanies && (
               <>
                 <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-2xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                   온습도계 업로드
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={(event) => handleHeatwaveSharedFileUpload(event, "thermoHygrometerImage")}
+                    onChange={(event) =>
+                      handleHeatwaveSharedFileUpload(event, "thermoHygrometerImage")
+                    }
                     className="hidden"
                   />
                 </label>
@@ -6482,7 +6674,9 @@ const renderHeatwavePage = () => {
                   <input
                     type="file"
                     accept=".xls,.xlsx"
-                    onChange={(event) => handleHeatwaveSharedFileUpload(event, "breakTimeExcel")}
+                    onChange={(event) =>
+                      handleHeatwaveSharedFileUpload(event, "breakTimeExcel")
+                    }
                     className="hidden"
                   />
                 </label>
@@ -6496,318 +6690,518 @@ const renderHeatwavePage = () => {
         </CardHeader>
 
         <CardContent className="space-y-5">
-                    <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-            선택 날짜: {formatMonthDay(selectedDate)} · 업체별 이미지 4개, 엑셀파일 1개 업로드
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setHeatwaveTab("upload")}
+              className={cn(
+                "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                heatwaveTab === "upload"
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
+            >
+              혹서기 업로드
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setHeatwaveTab("heatSensitive")}
+              className={cn(
+                "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                heatwaveTab === "heatSensitive"
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
+            >
+              온열질환 민감군
+            </button>
           </div>
 
-                    <Card className="border-slate-200 shadow-none">
-            <CardHeader>
-              <CardTitle className="text-base">공통 업로드 파일</CardTitle>
-            </CardHeader>
+          {heatwaveTab === "upload" && (
+            <>
+              <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+                선택 날짜: {formatMonthDay(selectedDate)} · 업체별 이미지 4개, 엑셀파일 1개 업로드
+              </div>
 
-            <CardContent className="grid gap-3 md:grid-cols-2">
-              {renderHeatwaveSharedFileBox("온습도계 이미지", "thermoHygrometerImage")}
-              {renderHeatwaveSharedFileBox("휴게시간 엑셀파일", "breakTimeExcel")}
-            </CardContent>
-          </Card>
+              <Card className="border-slate-200 shadow-none">
+                <CardHeader>
+                  <CardTitle className="text-base">공통 업로드 파일</CardTitle>
+                </CardHeader>
 
-          {canManageHeatwaveCompanies && (
-            <Card className="border-slate-200 shadow-none">
-              <CardHeader>
-                <CardTitle className="text-base">혹서기 대상 업체 선택</CardTitle>
-              </CardHeader>
+                <CardContent className="grid gap-3 md:grid-cols-2">
+                  {renderHeatwaveSharedFileBox("온습도계 이미지", "thermoHygrometerImage")}
+                  {renderHeatwaveSharedFileBox("휴게시간 엑셀파일", "breakTimeExcel")}
+                </CardContent>
+              </Card>
 
-              <CardContent className="space-y-3">
-                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                  {approvedCompanyNames.map((companyName) => {
-                    const checked = heatwaveSelectedCompanies.includes(companyName);
-                    const status = getHeatwaveCompanyStatus(companyName);
-                    const shouldHighlight = checked && !status.isComplete;
+              {canManageHeatwaveCompanies && (
+                <Card className="border-slate-200 shadow-none">
+                  <CardHeader>
+                    <CardTitle className="text-base">혹서기 대상 업체 선택</CardTitle>
+                  </CardHeader>
 
-                    return (
-                      <label
-                        key={companyName}
+                  <CardContent className="space-y-3">
+                    <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                      {approvedCompanyNames.map((companyName) => {
+                        const checked = heatwaveSelectedCompanies.includes(companyName);
+                        const status = getHeatwaveCompanyStatus(companyName);
+                        const shouldHighlight = checked && !status.isComplete;
+
+                        return (
+                          <label
+                            key={companyName}
+                            className={cn(
+                              "flex cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3 text-sm transition",
+                              checked ? "border-slate-900 bg-white" : "border-slate-200 bg-slate-50",
+                              shouldHighlight && "border-red-400 bg-red-50 text-red-800"
+                            )}
+                          >
+                            <span className="flex min-w-0 items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => handleToggleHeatwaveCompany(companyName)}
+                                className="h-4 w-4"
+                              />
+                              <span className="truncate font-semibold">{companyName}</span>
+                            </span>
+
+                            {checked && (
+                              <span className="shrink-0 text-xs font-medium">
+                                이미지 {Math.min(status.imageCount, 4)}/4 · 엑셀 {Math.min(status.excelCount, 1)}/1
+                              </span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card className="border-slate-200 shadow-none">
+                <CardHeader>
+                  <CardTitle className="text-base">내 업체 업로드</CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-4">
+                  {!myCompanyName ? (
+                    <div className="text-sm text-slate-500">업체 정보가 없습니다.</div>
+                  ) : !heatwaveSelectedCompanies.includes(myCompanyName) ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                      현재 업체는 혹서기 업로드 대상 업체로 체크되어 있지 않습니다.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="rounded-2xl border border-slate-200 p-4">
+                          <div className="text-sm font-semibold text-slate-900">이미지 업로드</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            현재 {myStatus?.imageCount || 0}/4개
+                          </div>
+                          <Input
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => handleHeatwaveUpload(event, "image")}
+                            className="mt-3 h-auto py-2"
+                            disabled={(myStatus?.imageCount || 0) >= 4}
+                          />
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-200 p-4">
+                          <div className="text-sm font-semibold text-slate-900">엑셀파일 업로드</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            현재 {myStatus?.excelCount || 0}/1개
+                          </div>
+                          <Input
+                            type="file"
+                            accept=".xls,.xlsx"
+                            onChange={(event) => handleHeatwaveUpload(event, "excel")}
+                            className="mt-3 h-auto py-2"
+                            disabled={(myStatus?.excelCount || 0) >= 1}
+                          />
+                        </div>
+                      </div>
+
+                      <div
                         className={cn(
-                          "flex cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3 text-sm transition",
-                          checked ? "border-slate-900 bg-white" : "border-slate-200 bg-slate-50",
-                          shouldHighlight && "border-red-400 bg-red-50 text-red-800"
+                          "rounded-2xl p-4 text-sm font-semibold",
+                          myStatus?.isComplete
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-red-50 text-red-700"
                         )}
                       >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => handleToggleHeatwaveCompany(companyName)}
-                            className="h-4 w-4"
-                          />
-                          <span className="truncate font-semibold">{companyName}</span>
-                        </span>
+                        {myStatus?.isComplete ? "오늘 혹서기 업로드 완료" : "오늘 혹서기 업로드 미완료"}
+                      </div>
 
-                        {checked && (
-                          <span className="shrink-0 text-xs font-medium">
-                            이미지 {Math.min(status.imageCount, 4)}/4 · 엑셀 {Math.min(status.excelCount, 1)}/1
-                          </span>
+                      <div className="rounded-2xl border border-slate-200 p-4">
+                        <div className="mb-3 text-sm font-semibold text-slate-900">
+                          내 업체 업로드 파일
+                        </div>
+                        {renderHeatwaveUploadFileList(myCompanyName)}
+                      </div>
+                    </>
+                  )}
+
+                  {heatwaveMessage && <div className="text-sm text-slate-600">{heatwaveMessage}</div>}
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200 shadow-none">
+                <CardHeader>
+                  <CardTitle className="text-base">업체별 업로드 현황</CardTitle>
+                </CardHeader>
+
+                <CardContent>
+                  <div className="overflow-x-auto rounded-2xl border border-black">
+                    <table className="w-full table-fixed border-collapse text-sm">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700">
+                          <th className="w-[28%] border border-black px-3 py-2 text-left">업체명</th>
+                          <th className="w-[16%] border border-black px-3 py-2 text-left">이미지</th>
+                          <th className="w-[16%] border border-black px-3 py-2 text-left">엑셀</th>
+                          <th className="border border-black px-3 py-2 text-left">상태</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {heatwaveSelectedCompanies.map((companyName) => {
+                          const status = getHeatwaveCompanyStatus(companyName);
+
+                          return (
+                            <tr
+                              key={companyName}
+                              className={cn(!status.isComplete && "bg-red-50 text-red-800")}
+                            >
+                              <td className="border border-black px-3 py-2 font-semibold">{companyName}</td>
+                              <td className="border border-black px-3 py-2">{Math.min(status.imageCount, 4)}/4</td>
+                              <td className="border border-black px-3 py-2">{Math.min(status.excelCount, 1)}/1</td>
+                              <td className="border border-black px-3 py-2 font-semibold">
+                                <div>{status.isComplete ? "완료" : "미완료"}</div>
+                                <div className="mt-2">
+                                  {renderHeatwaveUploadFileList(companyName)}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {heatwaveTab === "heatSensitive" && (
+            <Card className="border-slate-200 shadow-none">
+              <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <CardTitle className="text-base">온열질환 민감군</CardTitle>
+
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    handleDownloadCaptureImage(
+                      heatSensitiveCaptureRef,
+                      `온열질환민감군-${selectedDate}`
+                    )
+                  }
+                >
+                  이미지 다운로드
+                </Button>
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+                  선택 날짜: {formatMonthDay(selectedDate)}
+                </div>
+
+                <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
+                  <select
+                    value={heatSensitiveInput.building}
+                    onChange={(e) =>
+                      setHeatSensitiveInput({ ...heatSensitiveInput, building: e.target.value })
+                    }
+                    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+                  >
+                    <option value="">동 선택</option>
+                    {SOLO_WORKER_COLUMNS.map((column) => (
+                      <option key={column} value={column}>
+                        {column}
+                      </option>
+                    ))}
+                  </select>
+
+                  {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+                    <Input
+                      value={heatSensitiveInput.company}
+                      onChange={(e) =>
+                        setHeatSensitiveInput({ ...heatSensitiveInput, company: e.target.value })
+                      }
+                      placeholder="업체명 입력"
+                    />
+                  )}
+
+                  <Input
+                    value={heatSensitiveInput.name}
+                    onChange={(e) =>
+                      setHeatSensitiveInput({ ...heatSensitiveInput, name: e.target.value })
+                    }
+                    placeholder="성명 입력"
+                  />
+
+                  <Input
+                    value={heatSensitiveInput.content}
+                    onChange={(e) =>
+                      setHeatSensitiveInput({ ...heatSensitiveInput, content: e.target.value })
+                    }
+                    placeholder="관리 내용 입력"
+                  />
+
+                  <select
+                    value={heatSensitiveInput.elderly}
+                    onChange={(e) =>
+                      setHeatSensitiveInput({ ...heatSensitiveInput, elderly: e.target.value })
+                    }
+                    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+                  >
+                    <option value="o">민감군 o</option>
+                    <option value="x">민감군 x</option>
+                  </select>
+
+                  <Button onClick={handleAddHeatSensitive} disabled={!canEditDabs} className="w-full xl:w-auto">
+                    추가
+                  </Button>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      className="pl-9"
+                      value={heatSensitiveCompanyFilter}
+                      onChange={(e) => setHeatSensitiveCompanyFilter(e.target.value)}
+                      placeholder="업체명 검색"
+                    />
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    민감군 o는 강조 표시되며, 업체별 색상이 자동 적용됩니다.
+                  </div>
+                </div>
+
+                {dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
+
+                <div ref={heatSensitiveCaptureRef} className="bg-white">
+                  <div className="space-y-3 lg:hidden">
+                    {heatSensitiveList.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
+                        조건에 맞는 온열질환 민감군이 없습니다.
+                      </div>
+                    ) : (
+                      heatSensitiveList.map((item) => {
+                        const color = getCompanyColorByList(item.company || "-", heatSensitiveCompanyColorList);
+
+                        return (
+                          <div key={item.id} className="rounded-2xl border border-black bg-white p-4 shadow-sm">
+                            <div className="mb-3 flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-slate-900">{item.building}</div>
+                                <div
+                                  className={cn(
+                                    "mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs font-medium",
+                                    color.bg,
+                                    color.border,
+                                    color.text
+                                  )}
+                                >
+                                  {item.company}
+                                </div>
+                              </div>
+
+                              {!isCapturingImage && (
+                                <div className="flex shrink-0 gap-1">
+                                  {canAdminEditDabsItem && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setEditHeatSensitivePopup({
+                                          open: true,
+                                          itemId: item.id,
+                                          oldBuilding: item.building,
+                                          building: item.building,
+                                          company: item.company || "",
+                                          name: item.name || "",
+                                          content: item.content || "",
+                                          elderly: item.elderly || "x",
+                                        })
+                                      }
+                                      className="rounded-full border border-slate-300 px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
+                                    >
+                                      수정
+                                    </button>
+                                  )}
+
+                                  {canDeleteOwnItem(item) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteHeatSensitive(item.id, item.building)}
+                                      className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="space-y-2 text-sm">
+                              <div>
+                                <span className="mr-2 font-medium text-slate-500">성명</span>
+                                <span className="text-slate-900">{item.name}</span>
+                              </div>
+
+                              <div>
+                                <span className="mr-2 font-medium text-slate-500">관리</span>
+                                <span className="text-slate-900">{item.content}</span>
+                              </div>
+
+                              <div>
+                                <span className="mr-2 font-medium text-slate-500">민감군</span>
+                                <span
+                                  className={cn(
+                                    "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
+                                    item.elderly === "o"
+                                      ? "bg-amber-100 text-amber-700"
+                                      : "bg-slate-100 text-slate-600"
+                                  )}
+                                >
+                                  {item.elderly}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
+                    <table className={TABLE_BASE_CLASS}>
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700">
+                          <th className="border border-black px-3 py-2 text-left w-[16%]">업체명</th>
+                          <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
+                          <th className="border border-black px-3 py-2 text-left w-[16%]">성명</th>
+                          <th className="border border-black px-3 py-2 text-left">관리 내용</th>
+                          <th className="border border-black px-3 py-2 text-left w-[10%]">민감군</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {heatSensitiveList.length === 0 ? (
+                          <tr>
+                            <td className="border border-black px-3 py-2 text-center text-slate-300" colSpan={5}>
+                              입력 없음
+                            </td>
+                          </tr>
+                        ) : (
+                          Object.entries(heatSensitiveGrouped).map(([company, list]) =>
+                            list.map((item, index) => {
+                              const color = getCompanyColorByList(company, heatSensitiveCompanyColorList);
+                              const sensitiveHighlight =
+                                item.elderly === "o"
+                                  ? "bg-amber-50 text-amber-700 font-semibold"
+                                  : "text-slate-600";
+
+                              return (
+                                <tr key={`${item.building}-${item.id}`}>
+                                  {index === 0 && (
+                                    <td
+                                      rowSpan={list.length}
+                                      className={cn(
+                                        "border border-black px-3 py-2 align-top font-semibold",
+                                        color.bg,
+                                        color.text
+                                      )}
+                                    >
+                                      {company}
+                                    </td>
+                                  )}
+
+                                  <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
+                                    {item.building}
+                                  </td>
+
+                                  <td className="border border-black px-3 py-2 align-top">
+                                    {item.name}
+                                  </td>
+
+                                  <td className="border border-black px-3 py-2 align-top">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="whitespace-pre-wrap break-all leading-relaxed">
+                                        {item.content}
+                                      </span>
+
+                                      {!isCapturingImage && (
+                                        <div className="flex shrink-0 gap-1">
+                                          {canAdminEditDabsItem && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setEditHeatSensitivePopup({
+                                                  open: true,
+                                                  itemId: item.id,
+                                                  oldBuilding: item.building || "",
+                                                  building: item.building || "",
+                                                  company: item.company || "",
+                                                  name: item.name || "",
+                                                  content: item.content || "",
+                                                  elderly: item.elderly || "x",
+                                                })
+                                              }
+                                              className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                                            >
+                                              수정
+                                            </button>
+                                          )}
+
+                                          {canDeleteOwnItem(item) && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleDeleteHeatSensitive(item.id, item.building || "")
+                                              }
+                                              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                                            >
+                                              <X className="h-3 w-3" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  <td className={cn("border border-black px-3 py-2 align-top", sensitiveHighlight)}>
+                                    {item.elderly}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )
                         )}
-                      </label>
-                    );
-                  })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </CardContent>
             </Card>
           )}
-
-          <Card className="border-slate-200 shadow-none">
-            <CardHeader>
-              <CardTitle className="text-base">내 업체 업로드</CardTitle>
-            </CardHeader>
-
-            <CardContent className="space-y-4">
-              {!myCompanyName ? (
-                <div className="text-sm text-slate-500">업체 정보가 없습니다.</div>
-              ) : !heatwaveSelectedCompanies.includes(myCompanyName) ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                  현재 업체는 혹서기 업로드 대상 업체로 체크되어 있지 않습니다.
-                </div>
-              ) : (
-                <>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-2xl border border-slate-200 p-4">
-                      <div className="text-sm font-semibold text-slate-900">이미지 업로드</div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        현재 {myStatus?.imageCount || 0}/4개
-                      </div>
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) => handleHeatwaveUpload(event, "image")}
-                        className="mt-3 h-auto py-2"
-                        disabled={(myStatus?.imageCount || 0) >= 4}
-                      />
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 p-4">
-                      <div className="text-sm font-semibold text-slate-900">엑셀파일 업로드</div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        현재 {myStatus?.excelCount || 0}/1개
-                      </div>
-                      <Input
-                        type="file"
-                        accept=".xls,.xlsx"
-                        onChange={(event) => handleHeatwaveUpload(event, "excel")}
-                        className="mt-3 h-auto py-2"
-                        disabled={(myStatus?.excelCount || 0) >= 1}
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    className={cn(
-                      "rounded-2xl p-4 text-sm font-semibold",
-                      myStatus?.isComplete
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-red-50 text-red-700"
-                    )}
-                  >
-                                                            {myStatus?.isComplete ? "오늘 혹서기 업로드 완료" : "오늘 혹서기 업로드 미완료"}
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200 p-4">
-                    <div className="mb-3 text-sm font-semibold text-slate-900">
-                      내 업체 업로드 파일
-                    </div>
-                    {renderHeatwaveUploadFileList(myCompanyName)}
-                  </div>
-                </>
-              )}
-
-              {heatwaveMessage && <div className="text-sm text-slate-600">{heatwaveMessage}</div>}
-            </CardContent>
-          </Card>
-
-          <Card className="border-slate-200 shadow-none">
-            <CardHeader>
-              <CardTitle className="text-base">업체별 업로드 현황</CardTitle>
-            </CardHeader>
-
-            <CardContent>
-              <div className="overflow-x-auto rounded-2xl border border-black">
-                <table className="w-full table-fixed border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-slate-100 text-slate-700">
-                      <th className="w-[28%] border border-black px-3 py-2 text-left">업체명</th>
-                      <th className="w-[16%] border border-black px-3 py-2 text-left">이미지</th>
-                      <th className="w-[16%] border border-black px-3 py-2 text-left">엑셀</th>
-                      <th className="border border-black px-3 py-2 text-left">상태</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {heatwaveSelectedCompanies.map((companyName) => {
-                      const status = getHeatwaveCompanyStatus(companyName);
-
-                      return (
-                        <tr
-                          key={companyName}
-                          className={cn(!status.isComplete && "bg-red-50 text-red-800")}
-                        >
-                          <td className="border border-black px-3 py-2 font-semibold">{companyName}</td>
-                          <td className="border border-black px-3 py-2">{Math.min(status.imageCount, 4)}/4</td>
-                          <td className="border border-black px-3 py-2">{Math.min(status.excelCount, 1)}/1</td>
-                          <td className="border border-black px-3 py-2 font-semibold">
-  <div>{status.isComplete ? "완료" : "미완료"}</div>
-  <div className="mt-2">
-    {renderHeatwaveUploadFileList(companyName)}
-  </div>
-</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
         </CardContent>
       </Card>
     </div>
   );
 };
-
-  const renderSoloWorkerPage = () => (
-    <div className="space-y-4 sm:space-y-6">
-      {renderTopBar()}
-{renderEditPopups()}
-      
-
-      <Card><CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><CardTitle className="flex items-center gap-2"><Users className="h-5 w-5" />단독작업자</CardTitle><div className="flex flex-wrap gap-2">
-  <Button
-    variant="outline"
-    onClick={() =>
-      handleDownloadCaptureImage(
-        soloWorkerCaptureRef,
-        `단독작업자-${selectedDate}`
-      )
-    }
-  >
-    이미지 다운로드
-  </Button>
-
-  <Button variant="outline" onClick={() => setCurrentPage("menu")}>
-    메뉴로 돌아가기
-  </Button>
-</div></CardHeader><CardContent className="space-y-6"><Card className="border-slate-200 shadow-none"><CardHeader><CardTitle className="text-base">단독작업자</CardTitle></CardHeader><CardContent className="space-y-4"><div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-  선택 날짜: {formatMonthDay(selectedDate)}
-</div>
-
-<div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
-  <div className="space-y-2">
-    <label className="text-xs font-medium text-slate-600">이전 날짜 선택</label>
-    <Input
-      type="date"
-      value={loadSourceDate}
-      onChange={(e) => setLoadSourceDate(e.target.value)}
-      className="h-9"
-    />
-  </div>
-  <Button
-    variant="outline"
-    onClick={() => handleLoadPreviousCompanyData("soloWorker")}
-  >
-    내 업체 단독작업자 불러오기
-  </Button>
-</div>
-
-<div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
-  <select
-    value={soloWorkerInput.building}
-    onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, building: e.target.value })}
-    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
-  >
-    <option value="">동 선택</option>
-    {SOLO_WORKER_COLUMNS.map((column) => (
-      <option key={column} value={column}>
-        {column}
-      </option>
-    ))}
-  </select>
-
-  {(currentUser?.role === "master" || currentUser?.role === "admin") && (
-    <Input
-      value={soloWorkerInput.company}
-      onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, company: e.target.value })}
-      placeholder="업체명 입력"
-    />
-  )}
-
-  <Input
-    value={soloWorkerInput.name}
-    onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, name: e.target.value })}
-    placeholder="성명 입력"
-  />
-
-  <Input
-    value={soloWorkerInput.content}
-    onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, content: e.target.value })}
-    placeholder="작업 내용 입력"
-  />
-
-  <select
-    value={soloWorkerInput.elderly}
-    onChange={(e) => setSoloWorkerInput({ ...soloWorkerInput, elderly: e.target.value })}
-    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
-  >
-    <option value="o">고령자 o</option>
-    <option value="x">고령자 x</option>
-  </select>
-
-  <Button onClick={handleAddSoloWorker} disabled={!canEditDabs} className="w-full xl:w-auto">
-    추가
-  </Button>
-</div><div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input className="pl-9" value={soloCompanyFilter} onChange={(e) => setSoloCompanyFilter(e.target.value)} placeholder="업체명 검색" /></div><div className="text-xs text-slate-500">고령자 o는 강조 표시되며, 업체별 색상이 자동 적용됩니다.</div></div>{dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
-<div ref={soloWorkerCaptureRef} className="bg-white">
-  {renderSoloWorkerMobileCards()}
-  {renderSoloWorkerDesktopTable()}
-</div></CardContent></Card><Card className="border-slate-200 shadow-none"><CardHeader><CardTitle className="text-base">하단 달력</CardTitle></CardHeader><CardContent><div className="grid grid-cols-7 gap-1 text-xs">{weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}{monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}</div></CardContent></Card></CardContent></Card>
-    </div>
-  );
-
-const renderHeatSensitivePage = () => (
-  <div className="space-y-4 sm:space-y-6">
-    {renderTopBar()}
-    {renderEditPopups()}
-
-    <Card>
-      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5" />
-          온열질환 민감군
-        </CardTitle>
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() =>
-              handleDownloadCaptureImage(
-                soloWorkerCaptureRef,
-                `온열질환민감군-${selectedDate}`
-              )
-            }
-          >
-            이미지 다운로드
-          </Button>
-
-          <Button variant="outline" onClick={() => setCurrentPage("menu")}>
-            메뉴로 돌아가기
-          </Button>
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-6">
-        {renderSoloWorkerPage()}
-      </CardContent>
-    </Card>
-  </div>
-);
 
   const renderEducationPage = () => (
     <div className="space-y-4 sm:space-y-6">
@@ -7222,13 +7616,11 @@ return (
             ? renderPortfolioPage()
             : currentPage === "soloWorker"
   ? renderSoloWorkerPage()
-  : currentPage === "heatSensitive"
-    ? renderHeatSensitivePage()
-    : currentPage === "heatwave"
-      ? renderHeatwavePage()
-      : currentPage === "approval"
-        ? renderApprovalPage()
-        : renderEducationPage()}
+  : currentPage === "heatwave"
+    ? renderHeatwavePage()
+              : currentPage === "approval"
+                ? renderApprovalPage()
+                : renderEducationPage()}
   </div>
 );
 }
