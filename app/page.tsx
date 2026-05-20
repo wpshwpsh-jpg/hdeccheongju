@@ -1389,10 +1389,15 @@ const saveHeatSensitiveWorkersToFirestore = async (
   );
 };
 
-const heatSensitiveRows = useMemo<Record<string, DabsRowItem[]>>(
-  () => dabsData[selectedDate]?.heatSensitive?.rows || {},
-  [dabsData, selectedDate]
-);
+const heatSensitiveRows = useMemo<Record<string, DabsRowItem[]>>(() => {
+  const value = dabsData[selectedDate]?.heatSensitive;
+
+  if (typeof value === "object" && value && "rows" in value) {
+    return value.rows || {};
+  }
+
+  return {};
+}, [dabsData, selectedDate]);
 
 const saveDabsOverlaysToFirestore = async (
   dateKey: string,
