@@ -1919,7 +1919,10 @@ setHeatwaveMessage(
   { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
   { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
   { key: "soloWorker", title: "단독작업자", description: "단독작업자 관리 페이지로 이동", icon: Users },
-  { key: "heatwave", title: "혹서기", description: "혹서기 이미지·엑셀 업로드 현황 관리", icon: CalendarDays },
+
+{ key: "heatSensitive", title: "온열질환 민감군", description: "온열질환 민감군 관리 페이지로 이동", icon: Users },
+
+{ key: "heatwave", title: "혹서기", description: "혹서기 이미지·엑셀 업로드 현황 관리", icon: CalendarDays },
   ...(canManageApprovals
     ? [{ key: "approval", title: "회원 승인 관리", description: "가입 신청 승인/반려 관리", icon: UserPlus }]
     : []),
@@ -6768,6 +6771,44 @@ const renderHeatwavePage = () => {
     </div>
   );
 
+const renderHeatSensitivePage = () => (
+  <div className="space-y-4 sm:space-y-6">
+    {renderTopBar()}
+    {renderEditPopups()}
+
+    <Card>
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-5 w-5" />
+          온열질환 민감군
+        </CardTitle>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              handleDownloadCaptureImage(
+                soloWorkerCaptureRef,
+                `온열질환민감군-${selectedDate}`
+              )
+            }
+          >
+            이미지 다운로드
+          </Button>
+
+          <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+            메뉴로 돌아가기
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-6">
+        {renderSoloWorkerPage()}
+      </CardContent>
+    </Card>
+  </div>
+);
+
   const renderEducationPage = () => (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
@@ -7181,11 +7222,13 @@ return (
             ? renderPortfolioPage()
             : currentPage === "soloWorker"
   ? renderSoloWorkerPage()
-  : currentPage === "heatwave"
-    ? renderHeatwavePage()
-              : currentPage === "approval"
-                ? renderApprovalPage()
-                : renderEducationPage()}
+  : currentPage === "heatSensitive"
+    ? renderHeatSensitivePage()
+    : currentPage === "heatwave"
+      ? renderHeatwavePage()
+      : currentPage === "approval"
+        ? renderApprovalPage()
+        : renderEducationPage()}
   </div>
 );
 }
