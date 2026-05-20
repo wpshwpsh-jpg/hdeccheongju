@@ -7641,7 +7641,7 @@ return (
           : currentPage === "portfolio"
             ? renderPortfolioPage()
             : currentPage === "soloWorker"
-  ? renderSoloWorkerPage()
+  ? renderDabsPage()
   : currentPage === "heatwave"
     ? renderHeatwavePage()
               : currentPage === "approval"
