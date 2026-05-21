@@ -7636,6 +7636,161 @@ const shouldHighlight =
     </div>
   );
 
+const renderSoloWorkerPage = () => (
+  <div className="space-y-4 sm:space-y-6">
+    {renderTopBar()}
+    {renderEditPopups()}
+
+    <Card>
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-5 w-5" />
+          단독작업자
+        </CardTitle>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              handleDownloadCaptureImage(
+                soloWorkerCaptureRef,
+                `단독작업자-${selectedDate}`
+              )
+            }
+          >
+            이미지 다운로드
+          </Button>
+
+          <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+            메뉴로 돌아가기
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-6">
+        <Card className="border-slate-200 shadow-none">
+          <CardHeader>
+            <CardTitle className="text-base">단독작업자</CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+              선택 날짜: {formatMonthDay(selectedDate)}
+            </div>
+
+            <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-slate-600">
+                  이전 날짜 선택
+                </label>
+                <Input
+                  type="date"
+                  value={loadSourceDate}
+                  onChange={(e) => setLoadSourceDate(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+
+              <Button
+                variant="outline"
+                onClick={() => handleLoadPreviousCompanyData("soloWorker")}
+              >
+                내 업체 단독작업자 불러오기
+              </Button>
+            </div>
+
+            <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
+              <select
+                value={soloWorkerInput.building}
+                onChange={(e) =>
+                  setSoloWorkerInput({
+                    ...soloWorkerInput,
+                    building: e.target.value,
+                  })
+                }
+                className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+              >
+                <option value="">동 선택</option>
+                {SOLO_WORKER_COLUMNS.map((column) => (
+                  <option key={column} value={column}>
+                    {column}
+                  </option>
+                ))}
+              </select>
+
+              {(currentUser?.role === "master" ||
+                currentUser?.role === "admin") && (
+                <Input
+                  value={soloWorkerInput.company}
+                  onChange={(e) =>
+                    setSoloWorkerInput({
+                      ...soloWorkerInput,
+                      company: e.target.value,
+                    })
+                  }
+                  placeholder="업체명 입력"
+                />
+              )}
+
+              <Input
+                value={soloWorkerInput.name}
+                onChange={(e) =>
+                  setSoloWorkerInput({
+                    ...soloWorkerInput,
+                    name: e.target.value,
+                  })
+                }
+                placeholder="성명 입력"
+              />
+
+              <Input
+                value={soloWorkerInput.content}
+                onChange={(e) =>
+                  setSoloWorkerInput({
+                    ...soloWorkerInput,
+                    content: e.target.value,
+                  })
+                }
+                placeholder="작업내용 입력"
+              />
+
+              <select
+                value={soloWorkerInput.elderly}
+                onChange={(e) =>
+                  setSoloWorkerInput({
+                    ...soloWorkerInput,
+                    elderly: e.target.value,
+                  })
+                }
+                className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+              >
+                <option value="x">고령자 x</option>
+                <option value="o">고령자 o</option>
+              </select>
+
+              <Button onClick={handleAddSoloWorker} disabled={!canEditDabs}>
+                추가
+              </Button>
+            </div>
+
+            <Input
+              value={soloCompanyFilter}
+              onChange={(e) => setSoloCompanyFilter(e.target.value)}
+              placeholder="업체명 검색"
+              className="max-w-sm"
+            />
+
+            <div ref={soloWorkerCaptureRef} className="bg-white">
+              {renderSoloWorkerMobileCards()}
+              {renderSoloWorkerDesktopTable()}
+            </div>
+          </CardContent>
+        </Card>
+      </CardContent>
+    </Card>
+  </div>
+);
+  
   if (!mounted) return null;
 
 return (
