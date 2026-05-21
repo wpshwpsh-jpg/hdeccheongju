@@ -6872,36 +6872,44 @@ const myComplete =
                     </div>
                   ) : (
                     <>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <div className="rounded-2xl border border-slate-200 p-4">
-                          <div className="text-sm font-semibold text-slate-900">이미지 업로드</div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            현재 {myStatus?.imageCount || 0}/4개
-                          </div>
-                          <Input
-                            type="file"
-                            accept="image/*"
-                            onChange={(event) => handleHeatwaveUpload(event, "image")}
-                            className="mt-3 h-auto py-2"
-                            disabled={!myImageTarget || (myStatus?.imageCount || 0) >= 4}
-                          />
-                        </div>
+  <div
+    className={cn(
+      "grid gap-3",
+      myImageTarget && myExcelTarget ? "md:grid-cols-2" : "md:grid-cols-1"
+    )}
+  >
+  {myImageTarget && (
+    <div className="rounded-2xl border border-slate-200 p-4">
+      <div className="text-sm font-semibold text-slate-900">이미지 업로드</div>
+      <div className="mt-1 text-xs text-slate-500">
+        현재 {myStatus?.imageCount || 0}/4개
+      </div>
+      <Input
+        type="file"
+        accept="image/*"
+        onChange={(event) => handleHeatwaveUpload(event, "image")}
+        className="mt-3 h-auto py-2"
+        disabled={(myStatus?.imageCount || 0) >= 4}
+      />
+    </div>
+  )}
 
-                        <div className="rounded-2xl border border-slate-200 p-4">
-                          <div className="text-sm font-semibold text-slate-900">엑셀파일 업로드</div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            현재 {myStatus?.excelCount || 0}/1개
-                          </div>
-                          <Input
-                            type="file"
-                            accept=".xls,.xlsx"
-                            onChange={(event) => handleHeatwaveUpload(event, "excel")}
-                            className="mt-3 h-auto py-2"
-                            disabled={!myExcelTarget || (myStatus?.excelCount || 0) >= 1}
-                          />
-                        </div>
-                      </div>
-
+  {myExcelTarget && (
+    <div className="rounded-2xl border border-slate-200 p-4">
+      <div className="text-sm font-semibold text-slate-900">엑셀파일 업로드</div>
+      <div className="mt-1 text-xs text-slate-500">
+        현재 {myStatus?.excelCount || 0}/1개
+      </div>
+      <Input
+        type="file"
+        accept=".xls,.xlsx"
+        onChange={(event) => handleHeatwaveUpload(event, "excel")}
+        className="mt-3 h-auto py-2"
+        disabled={(myStatus?.excelCount || 0) >= 1}
+      />
+    </div>
+  )}
+</div>
                       <div
                         className={cn(
                           "rounded-2xl p-4 text-sm font-semibold",
