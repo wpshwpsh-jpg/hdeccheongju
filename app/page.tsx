@@ -7749,20 +7749,23 @@ return (
       </div>
     )}
 
-    {!currentUser
-      ? renderAuthScreen()
-      :  ? renderMenuScreen()
-  : currentPage === "dabs"
-    ? renderDabsPage()
-    : currentPage === "portfolio"
-      ? renderPortfolioPage()
-      : currentPage === "soloWorker"
-        ? renderSoloWorkerPage()
-        : currentPage === "heatwave"
-          ? renderHeatwavePage()
-          : currentPage === "approval"
-            ? renderApprovalPage()
-            : renderEducationPage()}
+    {!currentUser ? (
+  renderAuthScreen()
+) : currentPage === "menu" ? (
+  renderMenuScreen()
+) : currentPage === "dabs" ? (
+  renderDabsPage()
+) : currentPage === "portfolio" ? (
+  renderPortfolioPage()
+) : currentPage === "soloWorker" ? (
+  renderSoloWorkerPage()
+) : currentPage === "heatwave" ? (
+  renderHeatwavePage()
+) : currentPage === "approval" ? (
+  renderApprovalPage()
+) : (
+  renderEducationPage()
+)}
   </div>
 );
 }
