@@ -1498,7 +1498,7 @@ const handleToggleHeatwaveCompany = async (
   companyName: string,
   fileType: "image" | "excel"
 ) => {
-  if (!canManageHeatwaveCompanies || !db) return;
+  if (!canManageHeatwaveCompanies || !db || !currentUser) return;
 
   const currentList =
     fileType === "image"
@@ -1524,8 +1524,8 @@ const handleToggleHeatwaveCompany = async (
       selectedImageCompanies: nextImageCompanies,
       selectedExcelCompanies: nextExcelCompanies,
       updatedAt: serverTimestamp(),
-      updatedByUid: currentUser?.uid,
-      updatedByName: currentUser?.name,
+      updatedByUid: currentUser.uid || "",
+updatedByName: currentUser.name || "",
     },
     { merge: true }
   );
@@ -1634,10 +1634,19 @@ uploadedByName: currentUser.name || "",
 createdAt: new Date().toISOString(),
     };
 
-    const nextUploads = {
-      ...(heatwaveUploads[selectedDate]?.uploads || {}),
-      [companyName]: [...currentUploads, newUpload],
-    };
+    const latestUploadSnap = await getDoc(doc(db, "heatwaveUploads", selectedDate));
+
+const latestUploadData = latestUploadSnap.exists()
+  ? (latestUploadSnap.data() as HeatwaveDateValue)
+  : { uploads: {} };
+
+const latestUploads = latestUploadData.uploads || {};
+const latestCompanyUploads = latestUploads[companyName] || [];
+
+const nextUploads = {
+  ...latestUploads,
+  [companyName]: [...latestCompanyUploads, newUpload],
+};
 
     setHeatwaveUploads((prev) => ({
       ...prev,
