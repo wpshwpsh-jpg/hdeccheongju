@@ -1441,48 +1441,52 @@ useEffect(() => {
   if (isDemoMode || !db || !currentUser) return;
 
   const unsubscribeSettings = onSnapshot(doc(db, "heatwaveSettings", "companies"), (snap) => {
-    const data = snap.exists() ? snap.data() : {};
-    const oldCompanies = Array.isArray(data.selectedCompanies) ? data.selectedCompanies.map(String) : [];
+  if (!snap.exists()) return;
 
-const imageCompanies = Array.isArray(data.selectedImageCompanies)
-  ? data.selectedImageCompanies.map(String)
-  : oldCompanies;
+  const data = snap.data();
+  const oldCompanies = Array.isArray(data.selectedCompanies)
+    ? data.selectedCompanies.map(String)
+    : [];
 
-const excelCompanies = Array.isArray(data.selectedExcelCompanies)
-  ? data.selectedExcelCompanies.map(String)
-  : oldCompanies;
+  const imageCompanies = Array.isArray(data.selectedImageCompanies)
+    ? data.selectedImageCompanies.map(String)
+    : oldCompanies;
 
-setHeatwaveImageSelectedCompanies(imageCompanies);
-setHeatwaveExcelSelectedCompanies(excelCompanies);
-  });
+  const excelCompanies = Array.isArray(data.selectedExcelCompanies)
+    ? data.selectedExcelCompanies.map(String)
+    : oldCompanies;
 
-  const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", selectedDate), (snap) => {
-    const data = snap.exists() ? (snap.data() as HeatwaveDateValue) : { date: selectedDate, uploads: {} };
+  setHeatwaveImageSelectedCompanies(imageCompanies);
+  setHeatwaveExcelSelectedCompanies(excelCompanies);
+});
 
-    setHeatwaveUploads((prev) => ({
-      ...prev,
-      [selectedDate]: {
-        date: selectedDate,
-        uploads: data.uploads || {},
-      },
-    }));
-  });
+const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", selectedDate), (snap) => {
+  if (!snap.exists()) return;
 
+  const data = snap.data() as HeatwaveDateValue;
+
+  setHeatwaveUploads((prev) => ({
+    ...prev,
+    [selectedDate]: {
+      date: selectedDate,
+      uploads: data.uploads || {},
+    },
+  }));
+});
   const unsubscribeSharedFiles = onSnapshot(doc(db, "heatwaveSharedFiles", selectedDate), (snap) => {
-    const data = snap.exists()
-      ? (snap.data() as HeatwaveSharedDateValue)
-      : { date: selectedDate, thermoHygrometerImage: null, breakTimeExcel: null };
+  if (!snap.exists()) return;
 
-    setHeatwaveSharedFiles((prev) => ({
-      ...prev,
-      [selectedDate]: {
-        date: selectedDate,
-        thermoHygrometerImage: data.thermoHygrometerImage || null,
-        breakTimeExcel: data.breakTimeExcel || null,
-      },
-    }));
-  });
+  const data = snap.data() as HeatwaveSharedDateValue;
 
+  setHeatwaveSharedFiles((prev) => ({
+    ...prev,
+    [selectedDate]: {
+      date: selectedDate,
+      thermoHygrometerImage: data.thermoHygrometerImage || null,
+      breakTimeExcel: data.breakTimeExcel || null,
+    },
+  }));
+});
   return () => {
     unsubscribeSettings();
     unsubscribeUploads();
