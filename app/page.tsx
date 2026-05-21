@@ -7751,22 +7751,18 @@ return (
 
     {!currentUser
       ? renderAuthScreen()
-      : currentPage === "menu"
-        ? renderMenuScreen()
-        : currentPage === "dabs"
-          ? renderDabsPage()
-          : currentPage === "portfolio"
-            ? renderPortfolioPage()
-            : currentPage === "soloWorker"
-  ? renderDabsPage()
-  : currentPage === "heatwave"
-    ? renderHeatwavePage()
-  ? renderDabsPage()
-  : currentPage === "heatwave"
-    ? renderHeatwavePage()
-              : currentPage === "approval"
-                ? renderApprovalPage()
-                : renderEducationPage()}
+      :  ? renderMenuScreen()
+  : currentPage === "dabs"
+    ? renderDabsPage()
+    : currentPage === "portfolio"
+      ? renderPortfolioPage()
+      : currentPage === "soloWorker"
+        ? renderSoloWorkerPage()
+        : currentPage === "heatwave"
+          ? renderHeatwavePage()
+          : currentPage === "approval"
+            ? renderApprovalPage()
+            : renderEducationPage()}
   </div>
 );
 }
