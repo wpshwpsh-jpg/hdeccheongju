@@ -7120,19 +7120,21 @@ const shouldHighlight =
     placeholder="작업 내용 입력"
   />
 
-  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-    <div className="font-semibold text-amber-900">민감군 작성 기준</div>
-    <div className="mt-1">
-      <span className="font-semibold">건설업신규자</span>
-      {" : "}
-      2주내 건설현장 근무이력 X
-    </div>
-    <div>
-      <span className="font-semibold">유질환자</span>
-      {" : "}
-      고혈압 등 개인지병 유질환자, 특정(정신질환)약물 복용자, 과거 온열질환 병력자
-    </div>
+  <div className="ml-auto w-1/2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+  <div className="font-semibold text-amber-900">민감군 작성 기준</div>
+
+  <div className="mt-1">
+    <span className="font-semibold">건설업신규자</span>
+    {" : "}
+    2주내 건설현장 근무이력 X
   </div>
+
+  <div>
+    <span className="font-semibold">유질환자</span>
+    {" : "}
+    고혈압 등 개인지병 유질환자, 특정(정신질환)약물 복용자, 과거 온열질환 병력자
+  </div>
+</div>
 </div>
 
 <select
