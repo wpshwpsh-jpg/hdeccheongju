@@ -1046,7 +1046,7 @@ const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   createdByName?: string;
 } | null>(null);
   const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
-const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
+const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "", elderly: "유질환자" });
 const [heatwaveTab, setHeatwaveTab] = useState<"upload" | "heatSensitive">("upload");
   const [editSoloPopup, setEditSoloPopup] = useState({
   open: false,
@@ -1067,7 +1067,7 @@ const [editHeatSensitivePopup, setEditHeatSensitivePopup] = useState({
   company: "",
   name: "",
   content: "",
-  elderly: "x",
+  elderly: "유질환자",
 });
 
 const [editMaterialPopup, setEditMaterialPopup] = useState({
@@ -3555,7 +3555,7 @@ const currentRows =
 
   setDabsData(nextData);
   await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
-  setHeatSensitiveInput({ building: "", company: "", name: "", content: "", elderly: "x" });
+  setHeatSensitiveInput({ building: "", company: "", name: "", content: "", elderly: "유질환자" });
 };
 
 const handleUpdateHeatSensitive = async () => {
@@ -3605,15 +3605,15 @@ const currentRows =
   await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
 
   setEditHeatSensitivePopup({
-    open: false,
-    itemId: "",
-    oldBuilding: "",
-    building: "",
-    company: "",
-    name: "",
-    content: "",
-    elderly: "x",
-  });
+  open: false,
+  itemId: "",
+  oldBuilding: "",
+  building: "",
+  company: "",
+  name: "",
+  content: "",
+  elderly: "유질환자",
+});
 };
 
 const handleDeleteHeatSensitive = async (itemId: string, building: string) => {
@@ -7116,7 +7116,7 @@ const shouldHighlight =
                     onChange={(e) =>
                       setHeatSensitiveInput({ ...heatSensitiveInput, content: e.target.value })
                     }
-                    placeholder="관리 내용 입력"
+                    placeholder="작업 내용 입력"
                   />
 
                   <select
@@ -7126,8 +7126,9 @@ const shouldHighlight =
                     }
                     className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
                   >
-                    <option value="o">민감군 o</option>
-                    <option value="x">민감군 x</option>
+                    <option value="유질환자">유질환자</option>
+<option value="고령자">고령자</option>
+<option value="건설업신규자">건설업신규자</option>
                   </select>
 
                   <Button onClick={handleAddHeatSensitive} disabled={!canEditDabs} className="w-full xl:w-auto">
@@ -7222,7 +7223,7 @@ const shouldHighlight =
                               </div>
 
                               <div>
-                                <span className="mr-2 font-medium text-slate-500">관리</span>
+                                <span className="mr-2 font-medium text-slate-500">작업</span>
                                 <span className="text-slate-900">{item.content}</span>
                               </div>
 
@@ -7231,9 +7232,9 @@ const shouldHighlight =
                                 <span
                                   className={cn(
                                     "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
-                                    item.elderly === "o"
-                                      ? "bg-amber-100 text-amber-700"
-                                      : "bg-slate-100 text-slate-600"
+                                    item.elderly
+  ? "bg-amber-100 text-amber-700"
+  : "bg-slate-100 text-slate-600"
                                   )}
                                 >
                                   {item.elderly}
@@ -7253,7 +7254,7 @@ const shouldHighlight =
                           <th className="border border-black px-3 py-2 text-left w-[16%]">업체명</th>
                           <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
                           <th className="border border-black px-3 py-2 text-left w-[16%]">성명</th>
-                          <th className="border border-black px-3 py-2 text-left">관리 내용</th>
+                          <th className="border border-black px-3 py-2 text-left">작업 내용</th>
                           <th className="border border-black px-3 py-2 text-left w-[10%]">민감군</th>
                         </tr>
                       </thead>
@@ -7270,9 +7271,9 @@ const shouldHighlight =
                             list.map((item, index) => {
                               const color = getCompanyColorByList(company, heatSensitiveCompanyColorList);
                               const sensitiveHighlight =
-                                item.elderly === "o"
-                                  ? "bg-amber-50 text-amber-700 font-semibold"
-                                  : "text-slate-600";
+  item.elderly
+    ? "bg-amber-50 text-amber-700 font-semibold"
+    : "text-slate-600";
 
                               return (
                                 <tr key={`${item.building}-${item.id}`}>
