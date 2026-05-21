@@ -7761,6 +7761,9 @@ return (
   ? renderDabsPage()
   : currentPage === "heatwave"
     ? renderHeatwavePage()
+  ? renderDabsPage()
+  : currentPage === "heatwave"
+    ? renderHeatwavePage()
               : currentPage === "approval"
                 ? renderApprovalPage()
                 : renderEducationPage()}
