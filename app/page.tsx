@@ -7082,35 +7082,56 @@ const shouldHighlight =
                           const status = getHeatwaveCompanyStatus(companyName);
 
                           return (
-                            <tr
-  key={companyName}
-  className={cn(
-    ((heatwaveImageSelectedCompanies.includes(companyName) &&
-      (status.thermoPhotoCount < 4 || status.thermoLedgerCount < 1)) ||
-      (heatwaveExcelSelectedCompanies.includes(companyName) &&
-        status.breakTimeLedgerCount < 1)) &&
-      "bg-red-50 text-red-800"
-  )}
->
+                            <tr key={companyName}>
   <td className="border border-black px-3 py-2 font-semibold">{companyName}</td>
 
-  <td className="border border-black px-3 py-2">
-    {heatwaveImageSelectedCompanies.includes(companyName)
-      ? `${Math.min(status.thermoPhotoCount, 4)}/4`
-      : "대상 아님"}
-  </td>
+  <td
+  className={cn(
+    "border border-black px-3 py-2 font-semibold",
+    heatwaveImageSelectedCompanies.includes(companyName) &&
+      status.thermoPhotoCount >= 4
+      ? "bg-green-100 text-green-700"
+      : heatwaveImageSelectedCompanies.includes(companyName)
+      ? "bg-red-50 text-red-700"
+      : ""
+  )}
+>
+  {heatwaveImageSelectedCompanies.includes(companyName)
+    ? `${Math.min(status.thermoPhotoCount, 4)}/4`
+    : "대상 아님"}
+</td>
 
-  <td className="border border-black px-3 py-2">
-    {heatwaveImageSelectedCompanies.includes(companyName)
-      ? `${Math.min(status.thermoLedgerCount, 1)}/1`
-      : "대상 아님"}
-  </td>
+  <td
+  className={cn(
+    "border border-black px-3 py-2 font-semibold",
+    heatwaveImageSelectedCompanies.includes(companyName) &&
+      status.thermoLedgerCount >= 1
+      ? "bg-green-100 text-green-700"
+      : heatwaveImageSelectedCompanies.includes(companyName)
+      ? "bg-red-50 text-red-700"
+      : ""
+  )}
+>
+  {heatwaveImageSelectedCompanies.includes(companyName)
+    ? `${Math.min(status.thermoLedgerCount, 1)}/1`
+    : "대상 아님"}
+</td>
 
-  <td className="border border-black px-3 py-2">
-    {heatwaveExcelSelectedCompanies.includes(companyName)
-      ? `${Math.min(status.breakTimeLedgerCount, 1)}/1`
-      : "대상 아님"}
-  </td>
+  <td
+  className={cn(
+    "border border-black px-3 py-2 font-semibold",
+    heatwaveExcelSelectedCompanies.includes(companyName) &&
+      status.breakTimeLedgerCount >= 1
+      ? "bg-green-100 text-green-700"
+      : heatwaveExcelSelectedCompanies.includes(companyName)
+      ? "bg-red-50 text-red-700"
+      : ""
+  )}
+>
+  {heatwaveExcelSelectedCompanies.includes(companyName)
+    ? `${Math.min(status.breakTimeLedgerCount, 1)}/1`
+    : "대상 아님"}
+</td>
 
   <td className="border border-black px-3 py-2 font-semibold">
     <div>
