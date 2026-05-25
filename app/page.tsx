@@ -6737,7 +6737,6 @@ const renderHeatwavePage = () => {
 const myImageTarget = myCompanyName ? heatwaveImageSelectedCompanies.includes(myCompanyName) : false;
 const myExcelTarget = myCompanyName ? heatwaveExcelSelectedCompanies.includes(myCompanyName) : false;
 const myComplete =
-  const myComplete =
   (!myImageTarget ||
     ((myStatus?.thermoPhotoCount || 0) >= 1 &&
       (myStatus?.thermoLedgerCount || 0) >= 1)) &&
