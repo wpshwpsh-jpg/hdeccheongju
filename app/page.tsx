@@ -6810,20 +6810,47 @@ const myComplete =
   (!excelTarget || status.breakTimeLedgerCount >= 1);
 
                 return (
-                  <tr key={companyName} className={cn(!complete && "bg-red-50 text-red-800")}>
+                  <tr key={companyName}>
                     <td className="border border-black px-3 py-2 font-semibold">
                       {companyName}
                     </td>
 
-                    <td className="border border-black px-3 py-2">
+                    <td
+  className={cn(
+    "border border-black px-3 py-2 font-semibold",
+    imageTarget && status.thermoPhotoCount >= 4
+      ? "bg-green-100 text-green-700"
+      : imageTarget
+      ? "bg-red-50 text-red-700"
+      : ""
+  )}
+>
   {imageTarget ? `${Math.min(status.thermoPhotoCount, 4)}/4` : "대상 아님"}
 </td>
 
-<td className="border border-black px-3 py-2">
+<td
+  className={cn(
+    "border border-black px-3 py-2 font-semibold",
+    imageTarget && status.thermoLedgerCount >= 1
+      ? "bg-green-100 text-green-700"
+      : imageTarget
+      ? "bg-red-50 text-red-700"
+      : ""
+  )}
+>
   {imageTarget ? `${Math.min(status.thermoLedgerCount, 1)}/1` : "대상 아님"}
 </td>
 
-<td className="border border-black px-3 py-2">
+<td
+  className={cn(
+    "border border-black px-3 py-2 font-semibold",
+    excelTarget && status.breakTimeLedgerCount >= 1
+      ? "bg-green-100 text-green-700"
+      : excelTarget
+      ? "bg-red-50 text-red-700"
+      : ""
+  )}
+>
   {excelTarget ? `${Math.min(status.breakTimeLedgerCount, 1)}/1` : "대상 아님"}
 </td>
 
@@ -7006,9 +7033,9 @@ const myComplete =
 const excelChecked = heatwaveExcelSelectedCompanies.includes(companyName);
 const checked = imageChecked || excelChecked;
 const status = getHeatwaveCompanyStatus(companyName);
-const shouldHighlight =
-  (imageChecked && (status.thermoPhotoCount < 4 || status.thermoLedgerCount < 1)) ||
-  (excelChecked && status.breakTimeLedgerCount < 1);
+const thermoPhotoDone = status.thermoPhotoCount >= 4;
+const thermoLedgerDone = status.thermoLedgerCount >= 1;
+const breakTimeDone = status.breakTimeLedgerCount >= 1;
 
                         return (
                           <label
@@ -7016,7 +7043,7 @@ const shouldHighlight =
                             className={cn(
                               "flex cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3 text-sm transition",
                               checked ? "border-slate-900 bg-white" : "border-slate-200 bg-slate-50",
-                              shouldHighlight && "border-red-400 bg-red-50 text-red-800"
+                              checked && "border-slate-900 bg-white"
                             )}
                           >
                             <span className="flex min-w-0 items-center gap-2">
@@ -7044,10 +7071,41 @@ const shouldHighlight =
                             </span>
 
                             {checked && (
-                              <span className="shrink-0 text-xs font-medium">
-                                온습도계 사진 {Math.min(status.thermoPhotoCount, 4)}/4 · 온습도계 관리대장 {Math.min(status.thermoLedgerCount, 1)}/1 · 휴게시간 관리대장 {Math.min(status.breakTimeLedgerCount, 1)}/1
-                              </span>
-                            )}
+  <div className="flex shrink-0 flex-wrap gap-2 text-xs font-semibold">
+    <span
+      className={cn(
+        "rounded px-2 py-1",
+        thermoPhotoDone
+          ? "bg-green-100 text-green-700"
+          : "bg-red-50 text-red-700"
+      )}
+    >
+      온습도계 사진 {Math.min(status.thermoPhotoCount, 4)}/4
+    </span>
+
+    <span
+      className={cn(
+        "rounded px-2 py-1",
+        thermoLedgerDone
+          ? "bg-green-100 text-green-700"
+          : "bg-red-50 text-red-700"
+      )}
+    >
+      온습도계 관리대장 {Math.min(status.thermoLedgerCount, 1)}/1
+    </span>
+
+    <span
+      className={cn(
+        "rounded px-2 py-1",
+        breakTimeDone
+          ? "bg-green-100 text-green-700"
+          : "bg-red-50 text-red-700"
+      )}
+    >
+      휴게시간 관리대장 {Math.min(status.breakTimeLedgerCount, 1)}/1
+    </span>
+  </div>
+)}
                           </label>
                         );
                       })}
