@@ -345,7 +345,7 @@ type HeatwaveUploadItem = {
   id: string;
   fileName: string;
   fileUrl: string;
-  fileType: "image" | "excel";
+  fileType: "image" | "excel" | "thermoPhoto" | "thermoLedger" | "breakTimeLedger";
   storagePath?: string;
   companyName?: string;
   uploadedByUid?: string;
@@ -1535,20 +1535,36 @@ const getHeatwaveCompanyUploads = (companyName: string) =>
 
 const getHeatwaveCompanyStatus = (companyName: string) => {
   const uploads = getHeatwaveCompanyUploads(companyName);
-  const imageCount = uploads.filter((item) => item.fileType === "image").length;
-  const excelCount = uploads.filter((item) => item.fileType === "excel").length;
+
+  const thermoPhotoCount = uploads.filter(
+    (item) => item.fileType === "thermoPhoto" || item.fileType === "image"
+  ).length;
+
+  const thermoLedgerCount = uploads.filter(
+    (item) => item.fileType === "thermoLedger"
+  ).length;
+
+  const breakTimeLedgerCount = uploads.filter(
+    (item) => item.fileType === "breakTimeLedger" || item.fileType === "excel"
+  ).length;
 
   return {
     uploads,
-    imageCount,
-    excelCount,
-    isComplete: imageCount >= 4 && excelCount >= 1,
+    imageCount: thermoPhotoCount,
+    excelCount: breakTimeLedgerCount,
+    thermoPhotoCount,
+    thermoLedgerCount,
+    breakTimeLedgerCount,
+    isComplete:
+      thermoPhotoCount >= 1 &&
+      thermoLedgerCount >= 1 &&
+      breakTimeLedgerCount >= 1,
   };
 };
 
 const handleHeatwaveUpload = async (
   event: React.ChangeEvent<HTMLInputElement>,
-  fileType: "image" | "excel"
+  fileType: "thermoPhoto" | "thermoLedger" | "breakTimeLedger"
 ) => {
   setHeatwaveMessage("");
 
@@ -1564,6 +1580,7 @@ const handleHeatwaveUpload = async (
   }
 
   const isTargetCompany =
+<<<<<<< HEAD
   fileType === "image"
     ? heatwaveImageSelectedCompanies.includes(companyName)
     : heatwaveExcelSelectedCompanies.includes(companyName);
@@ -1577,44 +1594,77 @@ if (!isTargetCompany) {
   event.target.value = "";
   return;
 }
+=======
+    fileType === "thermoPhoto" || fileType === "thermoLedger"
+      ? heatwaveImageSelectedCompanies.includes(companyName)
+      : heatwaveExcelSelectedCompanies.includes(companyName);
 
-    if (!db || !storage) {
+  if (!isTargetCompany) {
+    setHeatwaveMessage(
+      fileType === "thermoPhoto" || fileType === "thermoLedger"
+        ? "온습도계 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다."
+        : "휴게시간 관리대장 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다."
+    );
+    event.target.value = "";
+    return;
+  }
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
+
+  if (!db || !storage) {
     setHeatwaveMessage("Firebase 연결 오류");
     event.target.value = "";
     return;
   }
 
-    const maxSize =
-    fileType === "image" ? MAX_HEATWAVE_IMAGE_FILE_SIZE : MAX_HEATWAVE_EXCEL_FILE_SIZE;
+  const maxSize =
+    fileType === "thermoPhoto"
+      ? MAX_HEATWAVE_IMAGE_FILE_SIZE
+      : MAX_HEATWAVE_EXCEL_FILE_SIZE;
 
   if (file.size > maxSize) {
     setHeatwaveMessage(
-      fileType === "image"
-        ? "이미지 파일은 5MB 이하만 업로드할 수 있습니다."
-        : "엑셀파일은 10MB 이하만 업로드할 수 있습니다."
+      fileType === "thermoPhoto"
+        ? "온습도계 사진은 5MB 이하만 업로드할 수 있습니다."
+        : "관리대장은 10MB 이하만 업로드할 수 있습니다."
     );
     event.target.value = "";
     return;
   }
 
   const currentUploads = getHeatwaveCompanyUploads(companyName);
-  const imageCount = currentUploads.filter((item) => item.fileType === "image").length;
-  const excelCount = currentUploads.filter((item) => item.fileType === "excel").length;
 
-  if (fileType === "image" && imageCount >= 4) {
-    setHeatwaveMessage("이미지는 하루 4개까지만 업로드할 수 있습니다.");
+  const thermoPhotoCount = currentUploads.filter(
+    (item) => item.fileType === "thermoPhoto" || item.fileType === "image"
+  ).length;
+
+  const thermoLedgerCount = currentUploads.filter(
+    (item) => item.fileType === "thermoLedger"
+  ).length;
+
+  const breakTimeLedgerCount = currentUploads.filter(
+    (item) => item.fileType === "breakTimeLedger" || item.fileType === "excel"
+  ).length;
+
+  if (fileType === "thermoPhoto" && thermoPhotoCount >= 1) {
+    setHeatwaveMessage("온습도계 사진은 하루 1개까지만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
 
-  if (fileType === "excel" && excelCount >= 1) {
-    setHeatwaveMessage("엑셀파일은 하루 1개까지만 업로드할 수 있습니다.");
+  if (fileType === "thermoLedger" && thermoLedgerCount >= 1) {
+    setHeatwaveMessage("온습도계 관리대장은 하루 1개까지만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (fileType === "breakTimeLedger" && breakTimeLedgerCount >= 1) {
+    setHeatwaveMessage("휴게시간 관리대장은 하루 1개까지만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
 
   try {
-        const safeCompanyName = companyName.replace(/[\\/:*?"<>|]/g, "-");
+    const safeCompanyName = companyName.replace(/[\\/:*?"<>|]/g, "-");
     const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
     const storagePath = `heatwaveUploads/${selectedDate}/${safeCompanyName}/${Date.now()}-${safeFileName}`;
     const fileRef = storageRef(storage, storagePath);
@@ -1630,12 +1680,13 @@ if (!isTargetCompany) {
       storagePath,
       companyName,
       uploadedByUid: currentUser.uid || "",
-uploadedByName: currentUser.name || "",
-createdAt: new Date().toISOString(),
+      uploadedByName: currentUser.name || "",
+      createdAt: new Date().toISOString(),
     };
 
     const latestUploadSnap = await getDoc(doc(db, "heatwaveUploads", selectedDate));
 
+<<<<<<< HEAD
 const latestUploadData = latestUploadSnap.exists()
   ? (latestUploadSnap.data() as HeatwaveDateValue)
   : { uploads: {} };
@@ -1647,6 +1698,19 @@ const nextUploads = {
   ...latestUploads,
   [companyName]: [...latestCompanyUploads, newUpload],
 };
+=======
+    const latestUploadData = latestUploadSnap.exists()
+      ? (latestUploadSnap.data() as HeatwaveDateValue)
+      : { uploads: {} };
+
+    const latestUploads = latestUploadData.uploads || {};
+    const latestCompanyUploads = latestUploads[companyName] || [];
+
+    const nextUploads = {
+      ...latestUploads,
+      [companyName]: [...latestCompanyUploads, newUpload],
+    };
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
 
     setHeatwaveUploads((prev) => ({
       ...prev,
@@ -1656,30 +1720,25 @@ const nextUploads = {
       },
     }));
 
-    try {
-  await setDoc(
-    doc(db, "heatwaveUploads", selectedDate),
-    {
-      date: selectedDate,
-      uploads: nextUploads,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-} catch (error) {
-  console.error("Firestore heatwaveUploads save error:", error);
-  throw error;
-}
+    await setDoc(
+      doc(db, "heatwaveUploads", selectedDate),
+      {
+        date: selectedDate,
+        uploads: nextUploads,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
 
     setHeatwaveMessage("업로드되었습니다.");
   } catch (error) {
     console.log("HEATWAVE UPLOAD ERROR:", error);
 
-setHeatwaveMessage(
-  error instanceof Error
-    ? `업로드 오류: ${error.message}`
-    : "업로드 중 오류가 발생했습니다."
-);
+    setHeatwaveMessage(
+      error instanceof Error
+        ? `업로드 오류: ${error.message}`
+        : "업로드 중 오류가 발생했습니다."
+    );
   }
 
   event.target.value = "";
@@ -1794,10 +1853,14 @@ const renderHeatwaveUploadFileList = (companyName: string) => {
         return (
           <div key={file.id} className="rounded-xl border border-slate-200 bg-white p-2 text-xs">
             <div className="font-semibold text-slate-800">
-              {file.fileType === "image" ? "이미지" : "엑셀"} · {file.fileName}
+              {file.fileType === "thermoPhoto" || file.fileType === "image"
+  ? "온습도계 사진"
+  : file.fileType === "thermoLedger"
+    ? "온습도계 관리대장"
+    : "휴게시간 관리대장"} · {file.fileName}
             </div>
 
-            {file.fileType === "image" && (
+            {(file.fileType === "thermoPhoto" || file.fileType === "image") && (
               <img
                 src={file.fileUrl}
                 alt={file.fileName}
@@ -2027,7 +2090,7 @@ setHeatwaveMessage(
   { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
   { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
   { key: "soloWorker", title: "단독작업자", description: "단독작업자 관리 페이지로 이동", icon: Users },
-  { key: "heatwave", title: "혹서기", description: "혹서기 이미지·엑셀 업로드 현황 관리", icon: CalendarDays },
+  { key: "heatwave", title: "혹서기", description: "혹서기 온습도계·휴게시간 관리대장 업로드 현황 관리", icon: CalendarDays },
   ...(canManageApprovals
     ? [{ key: "approval", title: "회원 승인 관리", description: "가입 신청 승인/반려 관리", icon: UserPlus }]
     : []),
@@ -6704,8 +6767,16 @@ const renderHeatwavePage = () => {
 const myImageTarget = myCompanyName ? heatwaveImageSelectedCompanies.includes(myCompanyName) : false;
 const myExcelTarget = myCompanyName ? heatwaveExcelSelectedCompanies.includes(myCompanyName) : false;
 const myComplete =
+<<<<<<< HEAD
   (!myImageTarget || (myStatus?.imageCount || 0) >= 4) &&
   (!myExcelTarget || (myStatus?.excelCount || 0) >= 1);
+=======
+  const myComplete =
+  (!myImageTarget ||
+    ((myStatus?.thermoPhotoCount || 0) >= 1 &&
+      (myStatus?.thermoLedgerCount || 0) >= 1)) &&
+  (!myExcelTarget || (myStatus?.breakTimeLedgerCount || 0) >= 1);
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
 
   const heatSensitiveList = getSoloWorkerRowsByCompany(
     heatSensitiveRows,
@@ -6753,24 +6824,43 @@ const myComplete =
         <table className="w-full table-fixed border-collapse text-sm">
           <thead>
             <tr className="bg-slate-100 text-slate-700">
+<<<<<<< HEAD
               <th className="w-[28%] border border-black px-3 py-2 text-left">업체명</th>
               <th className="w-[18%] border border-black px-3 py-2 text-left">이미지</th>
               <th className="w-[18%] border border-black px-3 py-2 text-left">엑셀</th>
               <th className="border border-black px-3 py-2 text-left">상태</th>
+=======
+              <th className="w-[22%] border border-black px-3 py-2 text-left">업체명</th>
+<th className="w-[18%] border border-black px-3 py-2 text-left">온습도계 사진</th>
+<th className="w-[20%] border border-black px-3 py-2 text-left">온습도계 관리대장</th>
+<th className="w-[20%] border border-black px-3 py-2 text-left">휴게시간 관리대장</th>
+<th className="border border-black px-3 py-2 text-left">상태</th>
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
             </tr>
           </thead>
 
           <tbody>
             {Array.from(new Set([...heatwaveImageSelectedCompanies, ...heatwaveExcelSelectedCompanies]))
+<<<<<<< HEAD
               .sort((a, b) => a.localeCompare(b, "ko"))
               .map((companyName) => {
+=======
+  .filter((companyName) => isHeatwaveAdmin || companyName === myCompanyName)
+  .sort((a, b) => a.localeCompare(b, "ko"))
+  .map((companyName) => {
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
                 const status = getHeatwaveCompanyStatus(companyName);
                 const imageTarget = heatwaveImageSelectedCompanies.includes(companyName);
                 const excelTarget = heatwaveExcelSelectedCompanies.includes(companyName);
 
                 const complete =
+<<<<<<< HEAD
                   (!imageTarget || status.imageCount >= 4) &&
                   (!excelTarget || status.excelCount >= 1);
+=======
+  (!imageTarget || (status.thermoPhotoCount >= 1 && status.thermoLedgerCount >= 1)) &&
+  (!excelTarget || status.breakTimeLedgerCount >= 1);
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
 
                 return (
                   <tr key={companyName} className={cn(!complete && "bg-red-50 text-red-800")}>
@@ -6779,12 +6869,25 @@ const myComplete =
                     </td>
 
                     <td className="border border-black px-3 py-2">
+<<<<<<< HEAD
                       {imageTarget ? `${Math.min(status.imageCount, 4)}/4` : "대상 아님"}
                     </td>
 
                     <td className="border border-black px-3 py-2">
                       {excelTarget ? `${Math.min(status.excelCount, 1)}/1` : "대상 아님"}
                     </td>
+=======
+  {imageTarget ? `${Math.min(status.thermoPhotoCount, 1)}/1` : "대상 아님"}
+</td>
+
+<td className="border border-black px-3 py-2">
+  {imageTarget ? `${Math.min(status.thermoLedgerCount, 1)}/1` : "대상 아님"}
+</td>
+
+<td className="border border-black px-3 py-2">
+  {excelTarget ? `${Math.min(status.breakTimeLedgerCount, 1)}/1` : "대상 아님"}
+</td>
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
 
                     <td className="border border-black px-3 py-2 font-semibold">
                       {complete ? "완료" : "미완료"}
@@ -6813,9 +6916,17 @@ const myComplete =
           </CardTitle>
 
           <div className="flex flex-wrap gap-2">
+<<<<<<< HEAD
   <Button variant="outline" onClick={() => setHeatwaveStatusPopupOpen(true)}>
     업로드 현황
   </Button>
+=======
+  {isHeatwaveAdmin && (
+  <Button variant="outline" onClick={() => setHeatwaveStatusPopupOpen(true)}>
+    업로드 현황
+  </Button>
+)}
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
 
   <Button variant="outline" onClick={() => setCurrentPage("menu")}>
     메뉴로 돌아가기
@@ -6855,7 +6966,7 @@ const myComplete =
           {heatwaveTab === "upload" && (
             <>
               <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-                선택 날짜: {formatMonthDay(selectedDate)} · 업체별 이미지 4개, 엑셀파일 1개 업로드
+                선택 날짜: {formatMonthDay(selectedDate)} · 온습도계 사진 1개, 온습도계 관리대장 1개, 휴게시간 관리대장 1개 업로드
               </div>
 
               <Card className="border-slate-200 shadow-none">
@@ -6868,11 +6979,16 @@ const myComplete =
                     <div className="text-sm text-slate-500">업체 정보가 없습니다.</div>
                   ) : !myImageTarget && !myExcelTarget ? (
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+<<<<<<< HEAD
                       현재 업체는 이미지/엑셀 업로드 대상 업체로 체크되어 있지 않습니다.
+=======
+                      현재 업체는 온습도계/휴게시간 관리대장 업로드 대상 업체로 체크되어 있지 않습니다.
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
                     </div>
                   ) : (
                     <>
   <div
+<<<<<<< HEAD
     className={cn(
       "grid gap-3",
       myImageTarget && myExcelTarget ? "md:grid-cols-2" : "md:grid-cols-1"
@@ -6891,11 +7007,48 @@ const myComplete =
         className="mt-3 h-auto py-2"
         disabled={(myStatus?.imageCount || 0) >= 4}
       />
+=======
+  className={cn(
+    "grid gap-3",
+    myImageTarget && myExcelTarget ? "md:grid-cols-2" : "md:grid-cols-1"
+  )}
+>
+  {myImageTarget && (
+    <div className="grid gap-3">
+      <div className="rounded-2xl border border-slate-200 p-4">
+        <div className="text-sm font-semibold text-slate-900">온습도계 사진 업로드</div>
+        <div className="mt-1 text-xs text-slate-500">
+          현재 {myStatus?.thermoPhotoCount || 0}/1개
+        </div>
+        <Input
+          type="file"
+          accept="image/*"
+          onChange={(event) => handleHeatwaveUpload(event, "thermoPhoto")}
+          className="mt-3 h-auto py-2"
+          disabled={(myStatus?.thermoPhotoCount || 0) >= 1}
+        />
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 p-4">
+        <div className="text-sm font-semibold text-slate-900">온습도계 관리대장 업로드</div>
+        <div className="mt-1 text-xs text-slate-500">
+          현재 {myStatus?.thermoLedgerCount || 0}/1개
+        </div>
+        <Input
+          type="file"
+          accept=".xls,.xlsx,.pdf,image/*"
+          onChange={(event) => handleHeatwaveUpload(event, "thermoLedger")}
+          className="mt-3 h-auto py-2"
+          disabled={(myStatus?.thermoLedgerCount || 0) >= 1}
+        />
+      </div>
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
     </div>
   )}
 
   {myExcelTarget && (
     <div className="rounded-2xl border border-slate-200 p-4">
+<<<<<<< HEAD
       <div className="text-sm font-semibold text-slate-900">엑셀파일 업로드</div>
       <div className="mt-1 text-xs text-slate-500">
         현재 {myStatus?.excelCount || 0}/1개
@@ -6906,6 +7059,18 @@ const myComplete =
         onChange={(event) => handleHeatwaveUpload(event, "excel")}
         className="mt-3 h-auto py-2"
         disabled={(myStatus?.excelCount || 0) >= 1}
+=======
+      <div className="text-sm font-semibold text-slate-900">휴게시간 관리대장 업로드</div>
+      <div className="mt-1 text-xs text-slate-500">
+        현재 {myStatus?.breakTimeLedgerCount || 0}/1개
+      </div>
+      <Input
+        type="file"
+        accept=".xls,.xlsx,.pdf,image/*"
+        onChange={(event) => handleHeatwaveUpload(event, "breakTimeLedger")}
+        className="mt-3 h-auto py-2"
+        disabled={(myStatus?.breakTimeLedgerCount || 0) >= 1}
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
       />
     </div>
   )}
@@ -6948,8 +7113,13 @@ const excelChecked = heatwaveExcelSelectedCompanies.includes(companyName);
 const checked = imageChecked || excelChecked;
 const status = getHeatwaveCompanyStatus(companyName);
 const shouldHighlight =
+<<<<<<< HEAD
   (imageChecked && status.imageCount < 4) ||
   (excelChecked && status.excelCount < 1);
+=======
+  (imageChecked && (status.thermoPhotoCount < 1 || status.thermoLedgerCount < 1)) ||
+  (excelChecked && status.breakTimeLedgerCount < 1);
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
 
                         return (
                           <label
@@ -6970,7 +7140,11 @@ const shouldHighlight =
     onChange={() => handleToggleHeatwaveCompany(companyName, "image")}
     className="h-4 w-4"
   />
+<<<<<<< HEAD
   이미지
+=======
+  온습도계
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
 </label>
 
 <label className="flex items-center gap-1 text-xs">
@@ -6980,13 +7154,17 @@ const shouldHighlight =
     onChange={() => handleToggleHeatwaveCompany(companyName, "excel")}
     className="h-4 w-4"
   />
+<<<<<<< HEAD
   엑셀
+=======
+  휴게시간 관리대장
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
 </label>
                             </span>
 
                             {checked && (
                               <span className="shrink-0 text-xs font-medium">
-                                이미지 {Math.min(status.imageCount, 4)}/4 · 엑셀 {Math.min(status.excelCount, 1)}/1
+                                온습도계 사진 {Math.min(status.thermoPhotoCount, 1)}/1 · 온습도계 관리대장 {Math.min(status.thermoLedgerCount, 1)}/1 · 휴게시간 관리대장 {Math.min(status.breakTimeLedgerCount, 1)}/1
                               </span>
                             )}
                           </label>
@@ -7007,21 +7185,27 @@ const shouldHighlight =
                     <table className="w-full table-fixed border-collapse text-sm">
                       <thead>
                         <tr className="bg-slate-100 text-slate-700">
-                          <th className="w-[28%] border border-black px-3 py-2 text-left">업체명</th>
-                          <th className="w-[16%] border border-black px-3 py-2 text-left">이미지</th>
-                          <th className="w-[16%] border border-black px-3 py-2 text-left">엑셀</th>
-                          <th className="border border-black px-3 py-2 text-left">상태</th>
+                          <th className="w-[22%] border border-black px-3 py-2 text-left">업체명</th>
+<th className="w-[18%] border border-black px-3 py-2 text-left">온습도계 사진</th>
+<th className="w-[20%] border border-black px-3 py-2 text-left">온습도계 관리대장</th>
+<th className="w-[20%] border border-black px-3 py-2 text-left">휴게시간 관리대장</th>
+<th className="border border-black px-3 py-2 text-left">상태</th>
                         </tr>
                       </thead>
 
                       <tbody>
                         {Array.from(new Set([...heatwaveImageSelectedCompanies, ...heatwaveExcelSelectedCompanies]))
+<<<<<<< HEAD
+=======
+  .filter((companyName) => isHeatwaveAdmin || companyName === myCompanyName)
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
   .sort((a, b) => a.localeCompare(b, "ko"))
   .map((companyName) => {
                           const status = getHeatwaveCompanyStatus(companyName);
 
                           return (
                             <tr
+<<<<<<< HEAD
                               key={companyName}
                               className={cn(
   ((heatwaveImageSelectedCompanies.includes(companyName) && status.imageCount < 4) ||
@@ -7044,6 +7228,52 @@ const shouldHighlight =
                                 </div>
                               </td>
                             </tr>
+=======
+  key={companyName}
+  className={cn(
+    ((heatwaveImageSelectedCompanies.includes(companyName) &&
+      (status.thermoPhotoCount < 1 || status.thermoLedgerCount < 1)) ||
+      (heatwaveExcelSelectedCompanies.includes(companyName) &&
+        status.breakTimeLedgerCount < 1)) &&
+      "bg-red-50 text-red-800"
+  )}
+>
+  <td className="border border-black px-3 py-2 font-semibold">{companyName}</td>
+
+  <td className="border border-black px-3 py-2">
+    {heatwaveImageSelectedCompanies.includes(companyName)
+      ? `${Math.min(status.thermoPhotoCount, 1)}/1`
+      : "대상 아님"}
+  </td>
+
+  <td className="border border-black px-3 py-2">
+    {heatwaveImageSelectedCompanies.includes(companyName)
+      ? `${Math.min(status.thermoLedgerCount, 1)}/1`
+      : "대상 아님"}
+  </td>
+
+  <td className="border border-black px-3 py-2">
+    {heatwaveExcelSelectedCompanies.includes(companyName)
+      ? `${Math.min(status.breakTimeLedgerCount, 1)}/1`
+      : "대상 아님"}
+  </td>
+
+  <td className="border border-black px-3 py-2 font-semibold">
+    <div>
+      {((!heatwaveImageSelectedCompanies.includes(companyName) ||
+        (status.thermoPhotoCount >= 1 && status.thermoLedgerCount >= 1)) &&
+        (!heatwaveExcelSelectedCompanies.includes(companyName) ||
+          status.breakTimeLedgerCount >= 1))
+        ? "완료"
+        : "미완료"}
+    </div>
+
+    <div className="mt-2">
+      {renderHeatwaveUploadFileList(companyName)}
+    </div>
+  </td>
+</tr>
+>>>>>>> 857d25c (Update heatwave upload categories and permissions)
                           );
                         })}
                       </tbody>
