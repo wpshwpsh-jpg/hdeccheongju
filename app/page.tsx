@@ -1556,9 +1556,9 @@ const getHeatwaveCompanyStatus = (companyName: string) => {
     thermoLedgerCount,
     breakTimeLedgerCount,
     isComplete:
-      thermoPhotoCount >= 1 &&
-      thermoLedgerCount >= 1 &&
-      breakTimeLedgerCount >= 1,
+  thermoPhotoCount >= 4 &&
+  thermoLedgerCount >= 1 &&
+  breakTimeLedgerCount >= 1,
   };
 };
 
@@ -1629,11 +1629,11 @@ const handleHeatwaveUpload = async (
     (item) => item.fileType === "breakTimeLedger" || item.fileType === "excel"
   ).length;
 
-  if (fileType === "thermoPhoto" && thermoPhotoCount >= 1) {
-    setHeatwaveMessage("온습도계 사진은 하루 1개까지만 업로드할 수 있습니다.");
-    event.target.value = "";
-    return;
-  }
+  if (fileType === "thermoPhoto" && thermoPhotoCount >= 4) {
+  setHeatwaveMessage("온습도계 사진은 하루 4개까지만 업로드할 수 있습니다.");
+  event.target.value = "";
+  return;
+}
 
   if (fileType === "thermoLedger" && thermoLedgerCount >= 1) {
     setHeatwaveMessage("온습도계 관리대장은 하루 1개까지만 업로드할 수 있습니다.");
@@ -6738,7 +6738,7 @@ const myImageTarget = myCompanyName ? heatwaveImageSelectedCompanies.includes(my
 const myExcelTarget = myCompanyName ? heatwaveExcelSelectedCompanies.includes(myCompanyName) : false;
 const myComplete =
   (!myImageTarget ||
-    ((myStatus?.thermoPhotoCount || 0) >= 1 &&
+    ((myStatus?.thermoPhotoCount || 0) >= 4 &&
       (myStatus?.thermoLedgerCount || 0) >= 1)) &&
   (!myExcelTarget || (myStatus?.breakTimeLedgerCount || 0) >= 1);
 
@@ -6806,7 +6806,7 @@ const myComplete =
                 const excelTarget = heatwaveExcelSelectedCompanies.includes(companyName);
 
                 const complete =
-  (!imageTarget || (status.thermoPhotoCount >= 1 && status.thermoLedgerCount >= 1)) &&
+  (!imageTarget || (status.thermoPhotoCount >= 4 && status.thermoLedgerCount >= 1)) &&
   (!excelTarget || status.breakTimeLedgerCount >= 1);
 
                 return (
@@ -6816,7 +6816,7 @@ const myComplete =
                     </td>
 
                     <td className="border border-black px-3 py-2">
-  {imageTarget ? `${Math.min(status.thermoPhotoCount, 1)}/1` : "대상 아님"}
+  {imageTarget ? `${Math.min(status.thermoPhotoCount, 4)}/4` : "대상 아님"}
 </td>
 
 <td className="border border-black px-3 py-2">
@@ -6898,7 +6898,7 @@ const myComplete =
           {heatwaveTab === "upload" && (
             <>
               <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-                선택 날짜: {formatMonthDay(selectedDate)} · 온습도계 사진 1개, 온습도계 관리대장 1개, 휴게시간 관리대장 1개 업로드
+                선택 날짜: {formatMonthDay(selectedDate)} · 온습도계 사진 4개, 온습도계 관리대장 1개, 휴게시간 관리대장 1개 업로드
               </div>
 
               <Card className="border-slate-200 shadow-none">
@@ -6926,14 +6926,14 @@ const myComplete =
       <div className="rounded-2xl border border-slate-200 p-4">
         <div className="text-sm font-semibold text-slate-900">온습도계 사진 업로드</div>
         <div className="mt-1 text-xs text-slate-500">
-          현재 {myStatus?.thermoPhotoCount || 0}/1개
+          현재 {myStatus?.thermoPhotoCount || 0}/4개
         </div>
         <Input
           type="file"
           accept="image/*"
           onChange={(event) => handleHeatwaveUpload(event, "thermoPhoto")}
           className="mt-3 h-auto py-2"
-          disabled={(myStatus?.thermoPhotoCount || 0) >= 1}
+          disabled={(myStatus?.thermoPhotoCount || 0) >= 4}
         />
       </div>
 
@@ -7007,7 +7007,7 @@ const excelChecked = heatwaveExcelSelectedCompanies.includes(companyName);
 const checked = imageChecked || excelChecked;
 const status = getHeatwaveCompanyStatus(companyName);
 const shouldHighlight =
-  (imageChecked && (status.thermoPhotoCount < 1 || status.thermoLedgerCount < 1)) ||
+  (imageChecked && (status.thermoPhotoCount < 4 || status.thermoLedgerCount < 1)) ||
   (excelChecked && status.breakTimeLedgerCount < 1);
 
                         return (
@@ -7045,7 +7045,7 @@ const shouldHighlight =
 
                             {checked && (
                               <span className="shrink-0 text-xs font-medium">
-                                온습도계 사진 {Math.min(status.thermoPhotoCount, 1)}/1 · 온습도계 관리대장 {Math.min(status.thermoLedgerCount, 1)}/1 · 휴게시간 관리대장 {Math.min(status.breakTimeLedgerCount, 1)}/1
+                                온습도계 사진 {Math.min(status.thermoPhotoCount, 4)}/4 · 온습도계 관리대장 {Math.min(status.thermoLedgerCount, 1)}/1 · 휴게시간 관리대장 {Math.min(status.breakTimeLedgerCount, 1)}/1
                               </span>
                             )}
                           </label>
@@ -7086,7 +7086,7 @@ const shouldHighlight =
   key={companyName}
   className={cn(
     ((heatwaveImageSelectedCompanies.includes(companyName) &&
-      (status.thermoPhotoCount < 1 || status.thermoLedgerCount < 1)) ||
+      (status.thermoPhotoCount < 4 || status.thermoLedgerCount < 1)) ||
       (heatwaveExcelSelectedCompanies.includes(companyName) &&
         status.breakTimeLedgerCount < 1)) &&
       "bg-red-50 text-red-800"
@@ -7096,7 +7096,7 @@ const shouldHighlight =
 
   <td className="border border-black px-3 py-2">
     {heatwaveImageSelectedCompanies.includes(companyName)
-      ? `${Math.min(status.thermoPhotoCount, 1)}/1`
+      ? `${Math.min(status.thermoPhotoCount, 4)}/4`
       : "대상 아님"}
   </td>
 
@@ -7115,7 +7115,7 @@ const shouldHighlight =
   <td className="border border-black px-3 py-2 font-semibold">
     <div>
       {((!heatwaveImageSelectedCompanies.includes(companyName) ||
-        (status.thermoPhotoCount >= 1 && status.thermoLedgerCount >= 1)) &&
+        ((status.thermoPhotoCount >= 4 && status.thermoLedgerCount >= 1)) &&
         (!heatwaveExcelSelectedCompanies.includes(companyName) ||
           status.breakTimeLedgerCount >= 1))
         ? "완료"
