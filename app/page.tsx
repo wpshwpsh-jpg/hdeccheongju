@@ -345,7 +345,7 @@ type HeatwaveUploadItem = {
   id: string;
   fileName: string;
   fileUrl: string;
-  fileType: "image" | "excel";
+  fileType: "image" | "excel" | "thermoPhoto" | "thermoLedger" | "breakTimeLedger";
   storagePath?: string;
   companyName?: string;
   uploadedByUid?: string;
@@ -920,9 +920,11 @@ const storage = isConfigured ? getStorage() : null;
   const [currentUser, setCurrentUser] = useState<UserItem | null>(null);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [entries, setEntries] = useState<EntryItem[]>([]);
-const [heatwaveSelectedCompanies, setHeatwaveSelectedCompanies] = useState<string[]>([]);
+const [heatwaveImageSelectedCompanies, setHeatwaveImageSelectedCompanies] = useState<string[]>([]);
+const [heatwaveExcelSelectedCompanies, setHeatwaveExcelSelectedCompanies] = useState<string[]>([]);
 const [heatwaveUploads, setHeatwaveUploads] = useState<Record<string, HeatwaveDateValue>>({});
 const [heatwaveMessage, setHeatwaveMessage] = useState("");
+const [heatwaveStatusPopupOpen, setHeatwaveStatusPopupOpen] = useState(false);
 const [heatwaveSharedFiles, setHeatwaveSharedFiles] = useState<Record<string, HeatwaveSharedDateValue>>({});
   const [selectedDate, setSelectedDate] = useState(() => getDefaultSelectedDateKey());
 const [manualSelectedDate, setManualSelectedDate] = useState("");
@@ -1044,7 +1046,7 @@ const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   createdByName?: string;
 } | null>(null);
   const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
-const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
+const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "", elderly: "유질환자" });
 const [heatwaveTab, setHeatwaveTab] = useState<"upload" | "heatSensitive">("upload");
   const [editSoloPopup, setEditSoloPopup] = useState({
   open: false,
@@ -1065,7 +1067,7 @@ const [editHeatSensitivePopup, setEditHeatSensitivePopup] = useState({
   company: "",
   name: "",
   content: "",
-  elderly: "x",
+  elderly: "유질환자",
 });
 
 const [editMaterialPopup, setEditMaterialPopup] = useState({
@@ -1439,38 +1441,52 @@ useEffect(() => {
   if (isDemoMode || !db || !currentUser) return;
 
   const unsubscribeSettings = onSnapshot(doc(db, "heatwaveSettings", "companies"), (snap) => {
-    const data = snap.exists() ? snap.data() : {};
-    const companies = Array.isArray(data.selectedCompanies) ? data.selectedCompanies : [];
-    setHeatwaveSelectedCompanies(companies.map(String));
-  });
+  if (!snap.exists()) return;
 
-  const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", selectedDate), (snap) => {
-    const data = snap.exists() ? (snap.data() as HeatwaveDateValue) : { date: selectedDate, uploads: {} };
+  const data = snap.data();
+  const oldCompanies = Array.isArray(data.selectedCompanies)
+    ? data.selectedCompanies.map(String)
+    : [];
 
-    setHeatwaveUploads((prev) => ({
-      ...prev,
-      [selectedDate]: {
-        date: selectedDate,
-        uploads: data.uploads || {},
-      },
-    }));
-  });
+  const imageCompanies = Array.isArray(data.selectedImageCompanies)
+    ? data.selectedImageCompanies.map(String)
+    : oldCompanies;
 
+  const excelCompanies = Array.isArray(data.selectedExcelCompanies)
+    ? data.selectedExcelCompanies.map(String)
+    : oldCompanies;
+
+  setHeatwaveImageSelectedCompanies(imageCompanies);
+  setHeatwaveExcelSelectedCompanies(excelCompanies);
+});
+
+const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", selectedDate), (snap) => {
+  if (!snap.exists()) return;
+
+  const data = snap.data() as HeatwaveDateValue;
+
+  setHeatwaveUploads((prev) => ({
+    ...prev,
+    [selectedDate]: {
+      date: selectedDate,
+      uploads: data.uploads || {},
+    },
+  }));
+});
   const unsubscribeSharedFiles = onSnapshot(doc(db, "heatwaveSharedFiles", selectedDate), (snap) => {
-    const data = snap.exists()
-      ? (snap.data() as HeatwaveSharedDateValue)
-      : { date: selectedDate, thermoHygrometerImage: null, breakTimeExcel: null };
+  if (!snap.exists()) return;
 
-    setHeatwaveSharedFiles((prev) => ({
-      ...prev,
-      [selectedDate]: {
-        date: selectedDate,
-        thermoHygrometerImage: data.thermoHygrometerImage || null,
-        breakTimeExcel: data.breakTimeExcel || null,
-      },
-    }));
-  });
+  const data = snap.data() as HeatwaveSharedDateValue;
 
+  setHeatwaveSharedFiles((prev) => ({
+    ...prev,
+    [selectedDate]: {
+      date: selectedDate,
+      thermoHygrometerImage: data.thermoHygrometerImage || null,
+      breakTimeExcel: data.breakTimeExcel || null,
+    },
+  }));
+});
   return () => {
     unsubscribeSettings();
     unsubscribeUploads();
@@ -1478,46 +1494,77 @@ useEffect(() => {
   };
 }, [db, isDemoMode, currentUser, selectedDate]);
 
-const handleToggleHeatwaveCompany = async (companyName: string) => {
-  if (!canManageHeatwaveCompanies || !db) return;
+const handleToggleHeatwaveCompany = async (
+  companyName: string,
+  fileType: "image" | "excel"
+) => {
+  if (!canManageHeatwaveCompanies || !db || !currentUser) return;
 
-  const nextCompanies = heatwaveSelectedCompanies.includes(companyName)
-    ? heatwaveSelectedCompanies.filter((item) => item !== companyName)
-    : [...heatwaveSelectedCompanies, companyName].sort((a, b) => a.localeCompare(b, "ko"));
+  const currentList =
+    fileType === "image"
+      ? heatwaveImageSelectedCompanies
+      : heatwaveExcelSelectedCompanies;
 
-  setHeatwaveSelectedCompanies(nextCompanies);
+  const nextList = currentList.includes(companyName)
+    ? currentList.filter((item) => item !== companyName)
+    : [...currentList, companyName].sort((a, b) => a.localeCompare(b, "ko"));
+
+  const nextImageCompanies =
+    fileType === "image" ? nextList : heatwaveImageSelectedCompanies;
+
+  const nextExcelCompanies =
+    fileType === "excel" ? nextList : heatwaveExcelSelectedCompanies;
+
+  setHeatwaveImageSelectedCompanies(nextImageCompanies);
+  setHeatwaveExcelSelectedCompanies(nextExcelCompanies);
 
   await setDoc(
     doc(db, "heatwaveSettings", "companies"),
     {
-      selectedCompanies: nextCompanies,
+      selectedImageCompanies: nextImageCompanies,
+      selectedExcelCompanies: nextExcelCompanies,
       updatedAt: serverTimestamp(),
-      updatedByUid: currentUser?.uid,
-      updatedByName: currentUser?.name,
+      updatedByUid: currentUser.uid || "",
+updatedByName: currentUser.name || "",
     },
     { merge: true }
   );
 };
-
 const getHeatwaveCompanyUploads = (companyName: string) =>
   heatwaveUploads[selectedDate]?.uploads?.[companyName] || [];
 
 const getHeatwaveCompanyStatus = (companyName: string) => {
   const uploads = getHeatwaveCompanyUploads(companyName);
-  const imageCount = uploads.filter((item) => item.fileType === "image").length;
-  const excelCount = uploads.filter((item) => item.fileType === "excel").length;
+
+  const thermoPhotoCount = uploads.filter(
+    (item) => item.fileType === "thermoPhoto" || item.fileType === "image"
+  ).length;
+
+  const thermoLedgerCount = uploads.filter(
+    (item) => item.fileType === "thermoLedger"
+  ).length;
+
+  const breakTimeLedgerCount = uploads.filter(
+    (item) => item.fileType === "breakTimeLedger" || item.fileType === "excel"
+  ).length;
 
   return {
     uploads,
-    imageCount,
-    excelCount,
-    isComplete: imageCount >= 4 && excelCount >= 1,
+    imageCount: thermoPhotoCount,
+    excelCount: breakTimeLedgerCount,
+    thermoPhotoCount,
+    thermoLedgerCount,
+    breakTimeLedgerCount,
+    isComplete:
+      thermoPhotoCount >= 1 &&
+      thermoLedgerCount >= 1 &&
+      breakTimeLedgerCount >= 1,
   };
 };
 
 const handleHeatwaveUpload = async (
   event: React.ChangeEvent<HTMLInputElement>,
-  fileType: "image" | "excel"
+  fileType: "thermoPhoto" | "thermoLedger" | "breakTimeLedger"
 ) => {
   setHeatwaveMessage("");
 
@@ -1532,49 +1579,76 @@ const handleHeatwaveUpload = async (
     return;
   }
 
-  if (!heatwaveSelectedCompanies.includes(companyName)) {
-    setHeatwaveMessage("혹서기 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다.");
+  const isTargetCompany =
+    fileType === "thermoPhoto" || fileType === "thermoLedger"
+      ? heatwaveImageSelectedCompanies.includes(companyName)
+      : heatwaveExcelSelectedCompanies.includes(companyName);
+
+  if (!isTargetCompany) {
+    setHeatwaveMessage(
+      fileType === "thermoPhoto" || fileType === "thermoLedger"
+        ? "온습도계 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다."
+        : "휴게시간 관리대장 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다."
+    );
     event.target.value = "";
     return;
   }
 
-    if (!db || !storage) {
+  if (!db || !storage) {
     setHeatwaveMessage("Firebase 연결 오류");
     event.target.value = "";
     return;
   }
 
-    const maxSize =
-    fileType === "image" ? MAX_HEATWAVE_IMAGE_FILE_SIZE : MAX_HEATWAVE_EXCEL_FILE_SIZE;
+  const maxSize =
+    fileType === "thermoPhoto"
+      ? MAX_HEATWAVE_IMAGE_FILE_SIZE
+      : MAX_HEATWAVE_EXCEL_FILE_SIZE;
 
   if (file.size > maxSize) {
     setHeatwaveMessage(
-      fileType === "image"
-        ? "이미지 파일은 5MB 이하만 업로드할 수 있습니다."
-        : "엑셀파일은 10MB 이하만 업로드할 수 있습니다."
+      fileType === "thermoPhoto"
+        ? "온습도계 사진은 5MB 이하만 업로드할 수 있습니다."
+        : "관리대장은 10MB 이하만 업로드할 수 있습니다."
     );
     event.target.value = "";
     return;
   }
 
   const currentUploads = getHeatwaveCompanyUploads(companyName);
-  const imageCount = currentUploads.filter((item) => item.fileType === "image").length;
-  const excelCount = currentUploads.filter((item) => item.fileType === "excel").length;
 
-  if (fileType === "image" && imageCount >= 4) {
-    setHeatwaveMessage("이미지는 하루 4개까지만 업로드할 수 있습니다.");
+  const thermoPhotoCount = currentUploads.filter(
+    (item) => item.fileType === "thermoPhoto" || item.fileType === "image"
+  ).length;
+
+  const thermoLedgerCount = currentUploads.filter(
+    (item) => item.fileType === "thermoLedger"
+  ).length;
+
+  const breakTimeLedgerCount = currentUploads.filter(
+    (item) => item.fileType === "breakTimeLedger" || item.fileType === "excel"
+  ).length;
+
+  if (fileType === "thermoPhoto" && thermoPhotoCount >= 1) {
+    setHeatwaveMessage("온습도계 사진은 하루 1개까지만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
 
-  if (fileType === "excel" && excelCount >= 1) {
-    setHeatwaveMessage("엑셀파일은 하루 1개까지만 업로드할 수 있습니다.");
+  if (fileType === "thermoLedger" && thermoLedgerCount >= 1) {
+    setHeatwaveMessage("온습도계 관리대장은 하루 1개까지만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (fileType === "breakTimeLedger" && breakTimeLedgerCount >= 1) {
+    setHeatwaveMessage("휴게시간 관리대장은 하루 1개까지만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
 
   try {
-        const safeCompanyName = companyName.replace(/[\\/:*?"<>|]/g, "-");
+    const safeCompanyName = companyName.replace(/[\\/:*?"<>|]/g, "-");
     const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
     const storagePath = `heatwaveUploads/${selectedDate}/${safeCompanyName}/${Date.now()}-${safeFileName}`;
     const fileRef = storageRef(storage, storagePath);
@@ -1590,13 +1664,22 @@ const handleHeatwaveUpload = async (
       storagePath,
       companyName,
       uploadedByUid: currentUser.uid || "",
-uploadedByName: currentUser.name || "",
-createdAt: new Date().toISOString(),
+      uploadedByName: currentUser.name || "",
+      createdAt: new Date().toISOString(),
     };
 
+    const latestUploadSnap = await getDoc(doc(db, "heatwaveUploads", selectedDate));
+
+    const latestUploadData = latestUploadSnap.exists()
+      ? (latestUploadSnap.data() as HeatwaveDateValue)
+      : { uploads: {} };
+
+    const latestUploads = latestUploadData.uploads || {};
+    const latestCompanyUploads = latestUploads[companyName] || [];
+
     const nextUploads = {
-      ...(heatwaveUploads[selectedDate]?.uploads || {}),
-      [companyName]: [...currentUploads, newUpload],
+      ...latestUploads,
+      [companyName]: [...latestCompanyUploads, newUpload],
     };
 
     setHeatwaveUploads((prev) => ({
@@ -1607,30 +1690,25 @@ createdAt: new Date().toISOString(),
       },
     }));
 
-    try {
-  await setDoc(
-    doc(db, "heatwaveUploads", selectedDate),
-    {
-      date: selectedDate,
-      uploads: nextUploads,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
-} catch (error) {
-  console.error("Firestore heatwaveUploads save error:", error);
-  throw error;
-}
+    await setDoc(
+      doc(db, "heatwaveUploads", selectedDate),
+      {
+        date: selectedDate,
+        uploads: nextUploads,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
 
     setHeatwaveMessage("업로드되었습니다.");
   } catch (error) {
     console.log("HEATWAVE UPLOAD ERROR:", error);
 
-setHeatwaveMessage(
-  error instanceof Error
-    ? `업로드 오류: ${error.message}`
-    : "업로드 중 오류가 발생했습니다."
-);
+    setHeatwaveMessage(
+      error instanceof Error
+        ? `업로드 오류: ${error.message}`
+        : "업로드 중 오류가 발생했습니다."
+    );
   }
 
   event.target.value = "";
@@ -1745,10 +1823,14 @@ const renderHeatwaveUploadFileList = (companyName: string) => {
         return (
           <div key={file.id} className="rounded-xl border border-slate-200 bg-white p-2 text-xs">
             <div className="font-semibold text-slate-800">
-              {file.fileType === "image" ? "이미지" : "엑셀"} · {file.fileName}
+              {file.fileType === "thermoPhoto" || file.fileType === "image"
+  ? "온습도계 사진"
+  : file.fileType === "thermoLedger"
+    ? "온습도계 관리대장"
+    : "휴게시간 관리대장"} · {file.fileName}
             </div>
 
-            {file.fileType === "image" && (
+            {(file.fileType === "thermoPhoto" || file.fileType === "image") && (
               <img
                 src={file.fileUrl}
                 alt={file.fileName}
@@ -1978,7 +2060,7 @@ setHeatwaveMessage(
   { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
   { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
   { key: "soloWorker", title: "단독작업자", description: "단독작업자 관리 페이지로 이동", icon: Users },
-  { key: "heatwave", title: "혹서기", description: "혹서기 이미지·엑셀 업로드 현황 관리", icon: CalendarDays },
+  { key: "heatwave", title: "혹서기", description: "혹서기 온습도계·휴게시간 관리대장 업로드 현황 관리", icon: CalendarDays },
   ...(canManageApprovals
     ? [{ key: "approval", title: "회원 승인 관리", description: "가입 신청 승인/반려 관리", icon: UserPlus }]
     : []),
@@ -3506,7 +3588,7 @@ const currentRows =
 
   setDabsData(nextData);
   await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
-  setHeatSensitiveInput({ building: "", company: "", name: "", content: "", elderly: "x" });
+  setHeatSensitiveInput({ building: "", company: "", name: "", content: "", elderly: "유질환자" });
 };
 
 const handleUpdateHeatSensitive = async () => {
@@ -3556,15 +3638,15 @@ const currentRows =
   await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
 
   setEditHeatSensitivePopup({
-    open: false,
-    itemId: "",
-    oldBuilding: "",
-    building: "",
-    company: "",
-    name: "",
-    content: "",
-    elderly: "x",
-  });
+  open: false,
+  itemId: "",
+  oldBuilding: "",
+  building: "",
+  company: "",
+  name: "",
+  content: "",
+  elderly: "유질환자",
+});
 };
 
 const handleDeleteHeatSensitive = async (itemId: string, building: string) => {
@@ -6652,6 +6734,14 @@ const renderPortfolioPage = () => {
 const renderHeatwavePage = () => {
   const myCompanyName = String(currentUser?.companyName || "").trim();
   const myStatus = myCompanyName ? getHeatwaveCompanyStatus(myCompanyName) : null;
+const myImageTarget = myCompanyName ? heatwaveImageSelectedCompanies.includes(myCompanyName) : false;
+const myExcelTarget = myCompanyName ? heatwaveExcelSelectedCompanies.includes(myCompanyName) : false;
+const myComplete =
+  const myComplete =
+  (!myImageTarget ||
+    ((myStatus?.thermoPhotoCount || 0) >= 1 &&
+      (myStatus?.thermoLedgerCount || 0) >= 1)) &&
+  (!myExcelTarget || (myStatus?.breakTimeLedgerCount || 0) >= 1);
 
   const heatSensitiveList = getSoloWorkerRowsByCompany(
     heatSensitiveRows,
@@ -6671,9 +6761,93 @@ const renderHeatwavePage = () => {
   return (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
-      {renderEditPopups()}
+{renderEditPopups()}
 
-      <Card>
+{heatwaveStatusPopupOpen && (
+  <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-base font-semibold text-slate-900">
+            혹서기 업로드 현황
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            기준일: {formatMonthDay(selectedDate)}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setHeatwaveStatusPopupOpen(false)}
+          className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-black">
+        <table className="w-full table-fixed border-collapse text-sm">
+          <thead>
+            <tr className="bg-slate-100 text-slate-700">
+              <th className="w-[22%] border border-black px-3 py-2 text-left">업체명</th>
+<th className="w-[18%] border border-black px-3 py-2 text-left">온습도계 사진</th>
+<th className="w-[20%] border border-black px-3 py-2 text-left">온습도계 관리대장</th>
+<th className="w-[20%] border border-black px-3 py-2 text-left">휴게시간 관리대장</th>
+<th className="border border-black px-3 py-2 text-left">상태</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {Array.from(new Set([...heatwaveImageSelectedCompanies, ...heatwaveExcelSelectedCompanies]))
+  .filter((companyName) => isHeatwaveAdmin || companyName === myCompanyName)
+  .sort((a, b) => a.localeCompare(b, "ko"))
+  .map((companyName) => {
+                const status = getHeatwaveCompanyStatus(companyName);
+                const imageTarget = heatwaveImageSelectedCompanies.includes(companyName);
+                const excelTarget = heatwaveExcelSelectedCompanies.includes(companyName);
+
+                const complete =
+  (!imageTarget || (status.thermoPhotoCount >= 1 && status.thermoLedgerCount >= 1)) &&
+  (!excelTarget || status.breakTimeLedgerCount >= 1);
+
+                return (
+                  <tr key={companyName} className={cn(!complete && "bg-red-50 text-red-800")}>
+                    <td className="border border-black px-3 py-2 font-semibold">
+                      {companyName}
+                    </td>
+
+                    <td className="border border-black px-3 py-2">
+  {imageTarget ? `${Math.min(status.thermoPhotoCount, 1)}/1` : "대상 아님"}
+</td>
+
+<td className="border border-black px-3 py-2">
+  {imageTarget ? `${Math.min(status.thermoLedgerCount, 1)}/1` : "대상 아님"}
+</td>
+
+<td className="border border-black px-3 py-2">
+  {excelTarget ? `${Math.min(status.breakTimeLedgerCount, 1)}/1` : "대상 아님"}
+</td>
+
+                    <td className="border border-black px-3 py-2 font-semibold">
+                      {complete ? "완료" : "미완료"}
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-5 flex justify-end">
+        <Button variant="outline" onClick={() => setHeatwaveStatusPopupOpen(false)}>
+          닫기
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+
+<Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <CardTitle className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5" />
@@ -6681,12 +6855,16 @@ const renderHeatwavePage = () => {
           </CardTitle>
 
           <div className="flex flex-wrap gap-2">
-           
+  {isHeatwaveAdmin && (
+  <Button variant="outline" onClick={() => setHeatwaveStatusPopupOpen(true)}>
+    업로드 현황
+  </Button>
+)}
 
-            <Button variant="outline" onClick={() => setCurrentPage("menu")}>
-              메뉴로 돌아가기
-            </Button>
-          </div>
+  <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+    메뉴로 돌아가기
+  </Button>
+</div>
         </CardHeader>
 
         <CardContent className="space-y-5">
@@ -6721,7 +6899,7 @@ const renderHeatwavePage = () => {
           {heatwaveTab === "upload" && (
             <>
               <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-                선택 날짜: {formatMonthDay(selectedDate)} · 업체별 이미지 4개, 엑셀파일 1개 업로드
+                선택 날짜: {formatMonthDay(selectedDate)} · 온습도계 사진 1개, 온습도계 관리대장 1개, 휴게시간 관리대장 1개 업로드
               </div>
 
               <Card className="border-slate-200 shadow-none">
@@ -6732,51 +6910,75 @@ const renderHeatwavePage = () => {
                 <CardContent className="space-y-4">
                   {!myCompanyName ? (
                     <div className="text-sm text-slate-500">업체 정보가 없습니다.</div>
-                  ) : !heatwaveSelectedCompanies.includes(myCompanyName) ? (
+                  ) : !myImageTarget && !myExcelTarget ? (
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                      현재 업체는 혹서기 업로드 대상 업체로 체크되어 있지 않습니다.
+                      현재 업체는 온습도계/휴게시간 관리대장 업로드 대상 업체로 체크되어 있지 않습니다.
                     </div>
                   ) : (
                     <>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <div className="rounded-2xl border border-slate-200 p-4">
-                          <div className="text-sm font-semibold text-slate-900">이미지 업로드</div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            현재 {myStatus?.imageCount || 0}/4개
-                          </div>
-                          <Input
-                            type="file"
-                            accept="image/*"
-                            onChange={(event) => handleHeatwaveUpload(event, "image")}
-                            className="mt-3 h-auto py-2"
-                            disabled={(myStatus?.imageCount || 0) >= 4}
-                          />
-                        </div>
+  <div
+  className={cn(
+    "grid gap-3",
+    myImageTarget && myExcelTarget ? "md:grid-cols-2" : "md:grid-cols-1"
+  )}
+>
+  {myImageTarget && (
+    <div className="grid gap-3">
+      <div className="rounded-2xl border border-slate-200 p-4">
+        <div className="text-sm font-semibold text-slate-900">온습도계 사진 업로드</div>
+        <div className="mt-1 text-xs text-slate-500">
+          현재 {myStatus?.thermoPhotoCount || 0}/1개
+        </div>
+        <Input
+          type="file"
+          accept="image/*"
+          onChange={(event) => handleHeatwaveUpload(event, "thermoPhoto")}
+          className="mt-3 h-auto py-2"
+          disabled={(myStatus?.thermoPhotoCount || 0) >= 1}
+        />
+      </div>
 
-                        <div className="rounded-2xl border border-slate-200 p-4">
-                          <div className="text-sm font-semibold text-slate-900">엑셀파일 업로드</div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            현재 {myStatus?.excelCount || 0}/1개
-                          </div>
-                          <Input
-                            type="file"
-                            accept=".xls,.xlsx"
-                            onChange={(event) => handleHeatwaveUpload(event, "excel")}
-                            className="mt-3 h-auto py-2"
-                            disabled={(myStatus?.excelCount || 0) >= 1}
-                          />
-                        </div>
-                      </div>
+      <div className="rounded-2xl border border-slate-200 p-4">
+        <div className="text-sm font-semibold text-slate-900">온습도계 관리대장 업로드</div>
+        <div className="mt-1 text-xs text-slate-500">
+          현재 {myStatus?.thermoLedgerCount || 0}/1개
+        </div>
+        <Input
+          type="file"
+          accept=".xls,.xlsx,.pdf,image/*"
+          onChange={(event) => handleHeatwaveUpload(event, "thermoLedger")}
+          className="mt-3 h-auto py-2"
+          disabled={(myStatus?.thermoLedgerCount || 0) >= 1}
+        />
+      </div>
+    </div>
+  )}
 
+  {myExcelTarget && (
+    <div className="rounded-2xl border border-slate-200 p-4">
+      <div className="text-sm font-semibold text-slate-900">휴게시간 관리대장 업로드</div>
+      <div className="mt-1 text-xs text-slate-500">
+        현재 {myStatus?.breakTimeLedgerCount || 0}/1개
+      </div>
+      <Input
+        type="file"
+        accept=".xls,.xlsx,.pdf,image/*"
+        onChange={(event) => handleHeatwaveUpload(event, "breakTimeLedger")}
+        className="mt-3 h-auto py-2"
+        disabled={(myStatus?.breakTimeLedgerCount || 0) >= 1}
+      />
+    </div>
+  )}
+</div>
                       <div
                         className={cn(
                           "rounded-2xl p-4 text-sm font-semibold",
-                          myStatus?.isComplete
+                          myComplete
                             ? "bg-emerald-50 text-emerald-700"
                             : "bg-red-50 text-red-700"
                         )}
                       >
-                        {myStatus?.isComplete ? "오늘 혹서기 업로드 완료" : "오늘 혹서기 업로드 미완료"}
+                        {myComplete ? "오늘 혹서기 업로드 완료" : "오늘 혹서기 업로드 미완료"}
                       </div>
 
                       <div className="rounded-2xl border border-slate-200 p-4">
@@ -6801,9 +7003,13 @@ const renderHeatwavePage = () => {
                   <CardContent className="space-y-3">
                     <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
                       {approvedCompanyNames.map((companyName) => {
-                        const checked = heatwaveSelectedCompanies.includes(companyName);
-                        const status = getHeatwaveCompanyStatus(companyName);
-                        const shouldHighlight = checked && !status.isComplete;
+                        const imageChecked = heatwaveImageSelectedCompanies.includes(companyName);
+const excelChecked = heatwaveExcelSelectedCompanies.includes(companyName);
+const checked = imageChecked || excelChecked;
+const status = getHeatwaveCompanyStatus(companyName);
+const shouldHighlight =
+  (imageChecked && (status.thermoPhotoCount < 1 || status.thermoLedgerCount < 1)) ||
+  (excelChecked && status.breakTimeLedgerCount < 1);
 
                         return (
                           <label
@@ -6815,18 +7021,32 @@ const renderHeatwavePage = () => {
                             )}
                           >
                             <span className="flex min-w-0 items-center gap-2">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => handleToggleHeatwaveCompany(companyName)}
-                                className="h-4 w-4"
-                              />
                               <span className="truncate font-semibold">{companyName}</span>
+
+<label className="ml-auto flex items-center gap-1 text-xs">
+  <input
+    type="checkbox"
+    checked={imageChecked}
+    onChange={() => handleToggleHeatwaveCompany(companyName, "image")}
+    className="h-4 w-4"
+  />
+  온습도계
+</label>
+
+<label className="flex items-center gap-1 text-xs">
+  <input
+    type="checkbox"
+    checked={excelChecked}
+    onChange={() => handleToggleHeatwaveCompany(companyName, "excel")}
+    className="h-4 w-4"
+  />
+  휴게시간 관리대장
+</label>
                             </span>
 
                             {checked && (
                               <span className="shrink-0 text-xs font-medium">
-                                이미지 {Math.min(status.imageCount, 4)}/4 · 엑셀 {Math.min(status.excelCount, 1)}/1
+                                온습도계 사진 {Math.min(status.thermoPhotoCount, 1)}/1 · 온습도계 관리대장 {Math.min(status.thermoLedgerCount, 1)}/1 · 휴게시간 관리대장 {Math.min(status.breakTimeLedgerCount, 1)}/1
                               </span>
                             )}
                           </label>
@@ -6847,32 +7067,67 @@ const renderHeatwavePage = () => {
                     <table className="w-full table-fixed border-collapse text-sm">
                       <thead>
                         <tr className="bg-slate-100 text-slate-700">
-                          <th className="w-[28%] border border-black px-3 py-2 text-left">업체명</th>
-                          <th className="w-[16%] border border-black px-3 py-2 text-left">이미지</th>
-                          <th className="w-[16%] border border-black px-3 py-2 text-left">엑셀</th>
-                          <th className="border border-black px-3 py-2 text-left">상태</th>
+                          <th className="w-[22%] border border-black px-3 py-2 text-left">업체명</th>
+<th className="w-[18%] border border-black px-3 py-2 text-left">온습도계 사진</th>
+<th className="w-[20%] border border-black px-3 py-2 text-left">온습도계 관리대장</th>
+<th className="w-[20%] border border-black px-3 py-2 text-left">휴게시간 관리대장</th>
+<th className="border border-black px-3 py-2 text-left">상태</th>
                         </tr>
                       </thead>
 
                       <tbody>
-                        {heatwaveSelectedCompanies.map((companyName) => {
+                        {Array.from(new Set([...heatwaveImageSelectedCompanies, ...heatwaveExcelSelectedCompanies]))
+  .filter((companyName) => isHeatwaveAdmin || companyName === myCompanyName)
+  .sort((a, b) => a.localeCompare(b, "ko"))
+  .map((companyName) => {
                           const status = getHeatwaveCompanyStatus(companyName);
 
                           return (
                             <tr
-                              key={companyName}
-                              className={cn(!status.isComplete && "bg-red-50 text-red-800")}
-                            >
-                              <td className="border border-black px-3 py-2 font-semibold">{companyName}</td>
-                              <td className="border border-black px-3 py-2">{Math.min(status.imageCount, 4)}/4</td>
-                              <td className="border border-black px-3 py-2">{Math.min(status.excelCount, 1)}/1</td>
-                              <td className="border border-black px-3 py-2 font-semibold">
-                                <div>{status.isComplete ? "완료" : "미완료"}</div>
-                                <div className="mt-2">
-                                  {renderHeatwaveUploadFileList(companyName)}
-                                </div>
-                              </td>
-                            </tr>
+  key={companyName}
+  className={cn(
+    ((heatwaveImageSelectedCompanies.includes(companyName) &&
+      (status.thermoPhotoCount < 1 || status.thermoLedgerCount < 1)) ||
+      (heatwaveExcelSelectedCompanies.includes(companyName) &&
+        status.breakTimeLedgerCount < 1)) &&
+      "bg-red-50 text-red-800"
+  )}
+>
+  <td className="border border-black px-3 py-2 font-semibold">{companyName}</td>
+
+  <td className="border border-black px-3 py-2">
+    {heatwaveImageSelectedCompanies.includes(companyName)
+      ? `${Math.min(status.thermoPhotoCount, 1)}/1`
+      : "대상 아님"}
+  </td>
+
+  <td className="border border-black px-3 py-2">
+    {heatwaveImageSelectedCompanies.includes(companyName)
+      ? `${Math.min(status.thermoLedgerCount, 1)}/1`
+      : "대상 아님"}
+  </td>
+
+  <td className="border border-black px-3 py-2">
+    {heatwaveExcelSelectedCompanies.includes(companyName)
+      ? `${Math.min(status.breakTimeLedgerCount, 1)}/1`
+      : "대상 아님"}
+  </td>
+
+  <td className="border border-black px-3 py-2 font-semibold">
+    <div>
+      {((!heatwaveImageSelectedCompanies.includes(companyName) ||
+        (status.thermoPhotoCount >= 1 && status.thermoLedgerCount >= 1)) &&
+        (!heatwaveExcelSelectedCompanies.includes(companyName) ||
+          status.breakTimeLedgerCount >= 1))
+        ? "완료"
+        : "미완료"}
+    </div>
+
+    <div className="mt-2">
+      {renderHeatwaveUploadFileList(companyName)}
+    </div>
+  </td>
+</tr>
                           );
                         })}
                       </tbody>
@@ -6940,23 +7195,42 @@ const renderHeatwavePage = () => {
                     placeholder="성명 입력"
                   />
 
-                  <Input
-                    value={heatSensitiveInput.content}
-                    onChange={(e) =>
-                      setHeatSensitiveInput({ ...heatSensitiveInput, content: e.target.value })
-                    }
-                    placeholder="관리 내용 입력"
-                  />
+                  <div className="space-y-2">
+  <Input
+    value={heatSensitiveInput.content}
+    onChange={(e) =>
+      setHeatSensitiveInput({ ...heatSensitiveInput, content: e.target.value })
+    }
+    placeholder="작업 내용 입력"
+  />
 
-                  <select
-                    value={heatSensitiveInput.elderly}
+  <div className="ml-auto w-1/2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+  <div className="font-semibold text-amber-900">민감군 작성 기준</div>
+
+  <div className="mt-1">
+    <span className="font-semibold">건설업신규자</span>
+    {" : "}
+    2주내 건설현장 근무이력 X
+  </div>
+
+  <div>
+    <span className="font-semibold">유질환자</span>
+    {" : "}
+    고혈압 등 개인지병 유질환자, 특정(정신질환)약물 복용자, 과거 온열질환 병력자
+  </div>
+</div>
+</div>
+
+<select
+  value={heatSensitiveInput.elderly}
                     onChange={(e) =>
                       setHeatSensitiveInput({ ...heatSensitiveInput, elderly: e.target.value })
                     }
                     className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
                   >
-                    <option value="o">민감군 o</option>
-                    <option value="x">민감군 x</option>
+                    <option value="유질환자">유질환자</option>
+<option value="고령자">고령자</option>
+<option value="건설업신규자">건설업신규자</option>
                   </select>
 
                   <Button onClick={handleAddHeatSensitive} disabled={!canEditDabs} className="w-full xl:w-auto">
@@ -7051,7 +7325,7 @@ const renderHeatwavePage = () => {
                               </div>
 
                               <div>
-                                <span className="mr-2 font-medium text-slate-500">관리</span>
+                                <span className="mr-2 font-medium text-slate-500">작업</span>
                                 <span className="text-slate-900">{item.content}</span>
                               </div>
 
@@ -7060,9 +7334,9 @@ const renderHeatwavePage = () => {
                                 <span
                                   className={cn(
                                     "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
-                                    item.elderly === "o"
-                                      ? "bg-amber-100 text-amber-700"
-                                      : "bg-slate-100 text-slate-600"
+                                    item.elderly
+  ? "bg-amber-100 text-amber-700"
+  : "bg-slate-100 text-slate-600"
                                   )}
                                 >
                                   {item.elderly}
@@ -7082,7 +7356,7 @@ const renderHeatwavePage = () => {
                           <th className="border border-black px-3 py-2 text-left w-[16%]">업체명</th>
                           <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
                           <th className="border border-black px-3 py-2 text-left w-[16%]">성명</th>
-                          <th className="border border-black px-3 py-2 text-left">관리 내용</th>
+                          <th className="border border-black px-3 py-2 text-left">작업 내용</th>
                           <th className="border border-black px-3 py-2 text-left w-[10%]">민감군</th>
                         </tr>
                       </thead>
@@ -7099,9 +7373,9 @@ const renderHeatwavePage = () => {
                             list.map((item, index) => {
                               const color = getCompanyColorByList(company, heatSensitiveCompanyColorList);
                               const sensitiveHighlight =
-                                item.elderly === "o"
-                                  ? "bg-amber-50 text-amber-700 font-semibold"
-                                  : "text-slate-600";
+  item.elderly
+    ? "bg-amber-50 text-amber-700 font-semibold"
+    : "text-slate-600";
 
                               return (
                                 <tr key={`${item.building}-${item.id}`}>
@@ -7289,8 +7563,8 @@ const renderHeatwavePage = () => {
     </Button>
 
     <Button variant="outline" onClick={() => setCurrentPage("menu")}>
-      메뉴로 돌아가기
-    </Button>
+  메뉴로 돌아가기
+</Button>
   </div>
 </div>
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr] lg:gap-6"><div className="space-y-6"><div ref={educationCaptureRef} className="bg-white">
@@ -7482,6 +7756,161 @@ const renderHeatwavePage = () => {
     </div>
   );
 
+const renderSoloWorkerPage = () => (
+  <div className="space-y-4 sm:space-y-6">
+    {renderTopBar()}
+    {renderEditPopups()}
+
+    <Card>
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-5 w-5" />
+          단독작업자
+        </CardTitle>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() =>
+              handleDownloadCaptureImage(
+                soloWorkerCaptureRef,
+                `단독작업자-${selectedDate}`
+              )
+            }
+          >
+            이미지 다운로드
+          </Button>
+
+          <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+            메뉴로 돌아가기
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-6">
+        <Card className="border-slate-200 shadow-none">
+          <CardHeader>
+            <CardTitle className="text-base">단독작업자</CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+              선택 날짜: {formatMonthDay(selectedDate)}
+            </div>
+
+            <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-slate-600">
+                  이전 날짜 선택
+                </label>
+                <Input
+                  type="date"
+                  value={loadSourceDate}
+                  onChange={(e) => setLoadSourceDate(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+
+              <Button
+                variant="outline"
+                onClick={() => handleLoadPreviousCompanyData("soloWorker")}
+              >
+                내 업체 단독작업자 불러오기
+              </Button>
+            </div>
+
+            <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
+              <select
+                value={soloWorkerInput.building}
+                onChange={(e) =>
+                  setSoloWorkerInput({
+                    ...soloWorkerInput,
+                    building: e.target.value,
+                  })
+                }
+                className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+              >
+                <option value="">동 선택</option>
+                {SOLO_WORKER_COLUMNS.map((column) => (
+                  <option key={column} value={column}>
+                    {column}
+                  </option>
+                ))}
+              </select>
+
+              {(currentUser?.role === "master" ||
+                currentUser?.role === "admin") && (
+                <Input
+                  value={soloWorkerInput.company}
+                  onChange={(e) =>
+                    setSoloWorkerInput({
+                      ...soloWorkerInput,
+                      company: e.target.value,
+                    })
+                  }
+                  placeholder="업체명 입력"
+                />
+              )}
+
+              <Input
+                value={soloWorkerInput.name}
+                onChange={(e) =>
+                  setSoloWorkerInput({
+                    ...soloWorkerInput,
+                    name: e.target.value,
+                  })
+                }
+                placeholder="성명 입력"
+              />
+
+              <Input
+                value={soloWorkerInput.content}
+                onChange={(e) =>
+                  setSoloWorkerInput({
+                    ...soloWorkerInput,
+                    content: e.target.value,
+                  })
+                }
+                placeholder="작업내용 입력"
+              />
+
+              <select
+                value={soloWorkerInput.elderly}
+                onChange={(e) =>
+                  setSoloWorkerInput({
+                    ...soloWorkerInput,
+                    elderly: e.target.value,
+                  })
+                }
+                className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+              >
+                <option value="x">고령자 x</option>
+                <option value="o">고령자 o</option>
+              </select>
+
+              <Button onClick={handleAddSoloWorker} disabled={!canEditDabs}>
+                추가
+              </Button>
+            </div>
+
+            <Input
+              value={soloCompanyFilter}
+              onChange={(e) => setSoloCompanyFilter(e.target.value)}
+              placeholder="업체명 검색"
+              className="max-w-sm"
+            />
+
+            <div ref={soloWorkerCaptureRef} className="bg-white">
+              {renderSoloWorkerMobileCards()}
+              {renderSoloWorkerDesktopTable()}
+            </div>
+          </CardContent>
+        </Card>
+      </CardContent>
+    </Card>
+  </div>
+);
+  
   if (!mounted) return null;
 
 return (
@@ -7595,21 +8024,23 @@ return (
       </div>
     )}
 
-    {!currentUser
-      ? renderAuthScreen()
-      : currentPage === "menu"
-        ? renderMenuScreen()
-        : currentPage === "dabs"
-          ? renderDabsPage()
-          : currentPage === "portfolio"
-            ? renderPortfolioPage()
-            : currentPage === "soloWorker"
-  ? renderDabsPage()
-  : currentPage === "heatwave"
-    ? renderHeatwavePage()
-              : currentPage === "approval"
-                ? renderApprovalPage()
-                : renderEducationPage()}
+    {!currentUser ? (
+  renderAuthScreen()
+) : currentPage === "menu" ? (
+  renderMenuScreen()
+) : currentPage === "dabs" ? (
+  renderDabsPage()
+) : currentPage === "portfolio" ? (
+  renderPortfolioPage()
+) : currentPage === "soloWorker" ? (
+  renderSoloWorkerPage()
+) : currentPage === "heatwave" ? (
+  renderHeatwavePage()
+) : currentPage === "approval" ? (
+  renderApprovalPage()
+) : (
+  renderEducationPage()
+)}
   </div>
 );
 }
