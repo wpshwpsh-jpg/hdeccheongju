@@ -33,7 +33,10 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  limit,
   onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -339,6 +342,19 @@ type EntryItem = {
   createdByName?: string;
   createdByRole?: string;
   createdAt?: string | null;
+};
+
+type ActivityLogItem = {
+  id: string;
+  action: string;
+  page?: string;
+  target?: string;
+  detail?: string;
+  actorUid?: string;
+  actorName?: string;
+  actorCompany?: string;
+  actorRole?: string;
+  createdAt?: any;
 };
 
 type HeatwaveUploadItem = {
@@ -920,6 +936,7 @@ const storage = isConfigured ? getStorage() : null;
   const [currentUser, setCurrentUser] = useState<UserItem | null>(null);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [entries, setEntries] = useState<EntryItem[]>([]);
+const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([]);
 const [heatwaveImageSelectedCompanies, setHeatwaveImageSelectedCompanies] = useState<string[]>([]);
 const [heatwaveExcelSelectedCompanies, setHeatwaveExcelSelectedCompanies] = useState<string[]>([]);
 const [heatwaveUploads, setHeatwaveUploads] = useState<Record<string, HeatwaveDateValue>>({});
@@ -1042,6 +1059,7 @@ const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   company: string;
   note: string;
   equipmentType: string;
+  logAction?: "입력" | "수정";
   createdByUid?: string;
   createdByName?: string;
 } | null>(null);
@@ -1307,7 +1325,12 @@ unsubscribeImages();
   const approvedUsers = useMemo(() => users.filter((user) => user.status === "approved"), [users]);
   const canApproveGeneral = currentUser?.role === "master" || currentUser?.role === "admin";
   const canApproveAdmin = currentUser?.role === "master";
-  const canManageApprovals = currentUser?.role === "master" || currentUser?.role === "admin";
+  const canManageApprovals =
+  currentUser?.role === "master" ||
+  currentUser?.role === "admin";
+
+const canViewActivityLogs =
+  currentUser?.role === "master";
   const canEditDabs = Boolean(currentUser && currentUser.status === "approved");
   const canUploadDabsImage = currentUser?.role === "master" || currentUser?.role === "admin";
   const canAdminEditDabsItem = currentUser?.role === "master" || currentUser?.role === "admin";
@@ -1423,6 +1446,61 @@ const saveDabsOverlaysToFirestore = async (
     { merge: true }
   );
 };
+
+const writeActivityLog = async ({
+  action,
+  page,
+  target,
+  detail,
+}: {
+  action: string;
+  page: string;
+  target?: string;
+  detail?: string;
+}) => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  await addDoc(collection(db, "activityLogs"), {
+    action,
+    page,
+    target: target || "",
+    detail: detail || "",
+    actorUid: currentUser.uid || "",
+    actorName: currentUser.name || "",
+    actorCompany: currentUser.companyName || "",
+    actorRole: currentUser.role || "general",
+    createdAt: serverTimestamp(),
+  });
+};  
+  
+useEffect(() => {
+  if (isDemoMode || !db || !currentUser) {
+    setActivityLogs([]);
+    return;
+  }
+
+  if (currentUser.role !== "master") {
+    setActivityLogs([]);
+    return;
+  }
+
+  const logsQuery = query(
+    collection(db, "activityLogs"),
+    orderBy("createdAt", "desc"),
+    limit(200)
+  );
+
+  const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
+    setActivityLogs(
+      snapshot.docs.map((item) => ({
+        id: item.id,
+        ...(item.data() as Omit<ActivityLogItem, "id">),
+      }))
+    );
+  });
+
+  return () => unsubscribeLogs();
+}, [db, isDemoMode, currentUser]);
 
 const approvedCompanyNames = useMemo(
   () =>
@@ -1560,6 +1638,22 @@ const getHeatwaveCompanyStatus = (companyName: string) => {
   thermoLedgerCount >= 1 &&
   breakTimeLedgerCount >= 1,
   };
+};
+
+const getHeatwaveFileTypeLabel = (
+  fileType: "image" | "excel" | "thermoPhoto" | "thermoLedger" | "breakTimeLedger"
+) => {
+  if (fileType === "thermoPhoto" || fileType === "image") return "온습도계 사진";
+  if (fileType === "thermoLedger") return "온습도계 관리대장";
+  if (fileType === "breakTimeLedger" || fileType === "excel") return "휴게시간 관리대장";
+  return "파일";
+};
+
+const getHeatwaveSharedFileKindLabel = (
+  fileKind: "thermoHygrometerImage" | "breakTimeExcel"
+) => {
+  if (fileKind === "thermoHygrometerImage") return "온습도계 이미지";
+  return "휴게시간 엑셀파일";
 };
 
 const handleHeatwaveUpload = async (
@@ -1700,7 +1794,14 @@ const handleHeatwaveUpload = async (
       { merge: true }
     );
 
-    setHeatwaveMessage("업로드되었습니다.");
+    await writeActivityLog({
+  action: "입력",
+  page: "혹서기",
+  target: companyName,
+  detail: `${getHeatwaveFileTypeLabel(fileType)} 업로드 / ${file.name}`,
+});
+
+setHeatwaveMessage("업로드되었습니다.");
   } catch (error) {
     console.log("HEATWAVE UPLOAD ERROR:", error);
 
@@ -1799,7 +1900,14 @@ const handleDeleteHeatwaveUpload = async (companyName: string, uploadId: string)
       { merge: true }
     );
 
-    setHeatwaveMessage("파일이 삭제되었습니다.");
+    await writeActivityLog({
+  action: "삭제",
+  page: "혹서기",
+  target: companyName,
+  detail: `${getHeatwaveFileTypeLabel(targetFile.fileType)} 삭제 / ${targetFile.fileName}`,
+});
+
+setHeatwaveMessage("파일이 삭제되었습니다.");
   } catch (error) {
     console.log("HEATWAVE DELETE ERROR:", error);
     setHeatwaveMessage("파일 삭제 중 오류가 발생했습니다.");
@@ -1911,7 +2019,14 @@ const handleDeleteHeatwaveSharedFile = async (
       { merge: true }
     );
 
-    setHeatwaveMessage("공통 파일이 삭제되었습니다.");
+    await writeActivityLog({
+  action: "삭제",
+  page: "혹서기",
+  target: "공통 파일",
+  detail: `${getHeatwaveSharedFileKindLabel(fileKind)} 삭제 / ${targetFile.fileName}`,
+});
+
+setHeatwaveMessage("공통 파일이 삭제되었습니다.");
   } catch (error) {
     console.log("HEATWAVE SHARED DELETE ERROR:", error);
     setHeatwaveMessage("공통 파일 삭제 중 오류가 발생했습니다.");
@@ -2036,11 +2151,18 @@ createdAt: new Date().toISOString(),
       { merge: true }
     );
 
-    setHeatwaveMessage(
-      fileKind === "thermoHygrometerImage"
-        ? "온습도계 이미지가 업로드되었습니다."
-        : "휴게시간 엑셀파일이 업로드되었습니다."
-    );
+    await writeActivityLog({
+  action: "입력",
+  page: "혹서기",
+  target: "공통 파일",
+  detail: `${getHeatwaveSharedFileKindLabel(fileKind)} 업로드 / ${file.name}`,
+});
+
+setHeatwaveMessage(
+  fileKind === "thermoHygrometerImage"
+    ? "온습도계 이미지가 업로드되었습니다."
+    : "휴게시간 엑셀파일이 업로드되었습니다."
+);
   } catch (error) {
     console.log("HEATWAVE SHARED FILE UPLOAD ERROR:", error);
 
@@ -2063,6 +2185,9 @@ setHeatwaveMessage(
   { key: "heatwave", title: "혹서기", description: "혹서기 온습도계·휴게시간 관리대장 업로드 현황 관리", icon: CalendarDays },
   ...(canManageApprovals
     ? [{ key: "approval", title: "회원 승인 관리", description: "가입 신청 승인/반려 관리", icon: UserPlus }]
+    : []),
+  ...(canViewActivityLogs
+    ? [{ key: "activityLog", title: "활동 로그", description: "입력·수정·삭제 기록 확인", icon: LayoutGrid }]
     : []),
 ];
 
@@ -2548,11 +2673,18 @@ setPortfolioSlideIndex(0);
 
   try {
     await addDoc(collection(db, "entries"), {
-  ...newEntryData,
-  createdAt: serverTimestamp(),
-});
+      ...newEntryData,
+      createdAt: serverTimestamp(),
+    });
 
-setEntryMessage("일정이 등록되었습니다.");
+    await writeActivityLog({
+      action: "입력",
+      page: "교육일정",
+      target: currentUser.companyName || "",
+      detail: `${selectedDate} ${effectiveSelectedTime}~${effectiveEndTime}`,
+    });
+
+    setEntryMessage("일정이 등록되었습니다.");
   } catch (error) {
     console.log("ENTRY ADD ERROR:", error);
     setEntryMessage("일정 등록 중 오류가 발생했습니다.");
@@ -2590,6 +2722,14 @@ setEntryMessage("일정이 등록되었습니다.");
 
   try {
     await deleteDoc(doc(db, "entries", entryId));
+
+    await writeActivityLog({
+      action: "삭제",
+      page: "교육일정",
+      target: targetEntry?.companyName || "",
+      detail: `${targetEntry?.date || ""} ${targetEntry?.startTime || ""}~${targetEntry?.endTime || ""}`,
+    });
+
     setEntryMessage("일정이 삭제되었습니다.");
   } catch (error: any) {
     console.log("ENTRY DELETE ERROR:", error);
@@ -2678,6 +2818,13 @@ const handleUpdateEntry = async () => {
       startTime: editEntryPopup.startTime,
       endTime: nextEndTime,
       companyName: editEntryPopup.companyName.trim(),
+    });
+
+    await writeActivityLog({
+      action: "수정",
+      page: "교육일정",
+      target: editEntryPopup.companyName.trim(),
+      detail: `${targetEntry.date} ${targetEntry.startTime}~${targetEntry.endTime} → ${editEntryPopup.date} ${editEntryPopup.startTime}~${nextEndTime}`,
     });
 
     setSelectedDate(editEntryPopup.date);
@@ -2982,11 +3129,11 @@ const cancelApprovalUser = async (uid: string) => {
   );
 
   const storageKey = getSectionStorageKey(activeDabsKey, sectionInput.building);
-const currentTabValue = dabsData[selectedDate]?.[storageKey];
-const currentRows =
-  typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
-    ? currentTabValue.rows || {}
-    : {};
+  const currentTabValue = dabsData[selectedDate]?.[storageKey];
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
 
   const buildingRows = currentRows[sectionInput.building] || [];
   const existingIndex = buildingRows.findIndex((item) => item.company === companyName);
@@ -3040,6 +3187,14 @@ const currentRows =
   setDabsData(nextData);
 
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: existingIndex >= 0 ? "수정" : "입력",
+    page: "DAB's회의",
+    target: companyName,
+    detail: `${activeDabsTab.label} / ${sectionInput.building} / ${inputContent}`,
+  });
+
   setSectionInput({ building: "", company: "", content: "", contentRedRanges: [] });
   setSectionTextSelection({ start: 0, end: 0 });
   setDabsMessage("저장되었습니다.");
@@ -3091,6 +3246,14 @@ const currentRows =
   setDabsData(nextData);
 
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "DAB's회의",
+    target: companyName,
+    detail: `${activeDabsTab.label} / ${time}시 / ${gate}게이트 / ${material.trim()} / ${vehicle.trim()} / ${location.trim()}`,
+  });
+
   setMaterialsInput({ gate: "1", company: "", material: "", vehicle: "", location: "", time: "06" });
   setDabsMessage("저장되었습니다.");
 };
@@ -3117,6 +3280,8 @@ const handleUpdateMaterial = async () => {
       ? currentTabValue.list || []
       : [];
 
+  const targetItem = currentList.find((item) => item.id === editMaterialPopup.itemId);
+
   const nextList = currentList.map((item) =>
     item.id === editMaterialPopup.itemId
       ? {
@@ -3142,6 +3307,13 @@ const handleUpdateMaterial = async () => {
   setDabsData(nextData);
 
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "수정",
+    page: "DAB's회의",
+    target: editMaterialPopup.company.trim(),
+    detail: `${activeDabsTab.label} / ${targetItem?.time || ""}시 ${targetItem?.gate || ""}게이트 ${targetItem?.material || ""} → ${editMaterialPopup.time}시 ${editMaterialPopup.gate}게이트 ${editMaterialPopup.material.trim()}`,
+  });
 
   setEditMaterialPopup({
     open: false,
@@ -3236,6 +3408,13 @@ const nextData = {
 
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
 
+  await writeActivityLog({
+    action: "수정",
+    page: "DAB's회의",
+    target: editSectionPopup.company.trim(),
+    detail: `${activeDabsTab.label} / ${oldBuilding} / ${targetItem.content || ""} → ${newBuilding} / ${nextContent}`,
+  });
+
   setEditSectionPopup({
     open: false,
     itemId: "",
@@ -3250,45 +3429,52 @@ const nextData = {
   setDabsMessage("수정되었습니다.");
 };
   const handleDeleteDabsItem = async (itemId: string, building: string | null = null) => {
-
   if (isSectionWorkTabKey(activeDabsKey)) {
     const sourceKey =
-  getMergedSectionKeys(activeDabsKey).find((key) => {
-    const tabValue = dabsData[selectedDate]?.[key];
-    const rows =
-      typeof tabValue === "object" && tabValue && "rows" in tabValue
-        ? tabValue.rows || {}
+      getMergedSectionKeys(activeDabsKey).find((key) => {
+        const tabValue = dabsData[selectedDate]?.[key];
+        const rows =
+          typeof tabValue === "object" && tabValue && "rows" in tabValue
+            ? tabValue.rows || {}
+            : {};
+
+        return building ? (rows[building] || []).some((item) => item.id === itemId) : false;
+      }) || activeDabsKey;
+
+    const currentTabValue = dabsData[selectedDate]?.[sourceKey];
+    const currentRows =
+      typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+        ? currentTabValue.rows || {}
         : {};
 
-    return building ? (rows[building] || []).some((item) => item.id === itemId) : false;
-  }) || activeDabsKey;
+    const nextRows = { ...currentRows };
+    const targetItem = building ? (nextRows[building] || []).find((item) => item.id === itemId) : undefined;
 
-const currentTabValue = dabsData[selectedDate]?.[sourceKey];
-const currentRows =
-  typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
-    ? currentTabValue.rows || {}
-    : {};
+    if (!canDeleteOwnItem(targetItem)) return;
 
-const nextRows = { ...currentRows };
+    if (building) {
+      nextRows[building] = (nextRows[building] || []).filter((item) => item.id !== itemId);
+    }
 
-if (building) {
-  const targetItem = (nextRows[building] || []).find((item) => item.id === itemId);
-  if (!canDeleteOwnItem(targetItem)) return;
-
-  nextRows[building] = (nextRows[building] || []).filter((item) => item.id !== itemId);
-}
-
-const nextData = {
-  ...dabsData,
-  [selectedDate]: {
-    ...(dabsData[selectedDate] || {}),
-    [sourceKey]: { rows: nextRows },
-  },
-};
+    const nextData = {
+      ...dabsData,
+      [selectedDate]: {
+        ...(dabsData[selectedDate] || {}),
+        [sourceKey]: { rows: nextRows },
+      },
+    };
 
     setDabsData(nextData);
-    
+
     await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+    await writeActivityLog({
+      action: "삭제",
+      page: "DAB's회의",
+      target: targetItem?.company || "",
+      detail: `${activeDabsTab.label} / ${building || ""} / ${targetItem?.content || ""}`,
+    });
+
     return;
   }
 
@@ -3298,22 +3484,30 @@ const nextData = {
       ? currentTabValue.list || []
       : [];
 
+  const targetItem = currentList.find((item) => item.id === itemId);
+
+  if (!canDeleteOwnItem(targetItem)) return;
+
   const nextData = {
     ...dabsData,
     [selectedDate]: {
       ...(dabsData[selectedDate] || {}),
       [activeDabsKey]: {
-        list: currentList.filter((item) => {
-  if (item.id !== itemId) return true;
-  return !canDeleteOwnItem(item);
-}),
+        list: currentList.filter((item) => item.id !== itemId),
       },
     },
   };
 
   setDabsData(nextData);
-  
+
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "DAB's회의",
+    target: targetItem?.company || "",
+    detail: `${activeDabsTab.label} / ${targetItem?.time || ""}시 / ${targetItem?.gate || ""}게이트 / ${targetItem?.material || ""} / ${targetItem?.vehicle || ""} / ${targetItem?.location || ""}`,
+  });
 };
 
 const handleLoadPreviousCompanyData = async (targetKey: string) => {
@@ -3460,7 +3654,16 @@ const handleAddSoloWorker = async () => {
   };
 
   setDabsData(nextData);
+
   await saveSoloWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "단독작업자",
+    target: companyName,
+    detail: `${soloWorkerInput.building} / ${soloWorkerInput.name.trim()} / ${soloWorkerInput.content.trim()} / 고령자 ${soloWorkerInput.elderly}`,
+  });
+
   setSoloWorkerInput({ building: "", company: "", name: "", content: "", elderly: "x" });
 };
 
@@ -3501,7 +3704,15 @@ const handleAddSoloWorker = async () => {
   };
 
   setDabsData(nextData);
+
   await saveSoloWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "수정",
+    page: "단독작업자",
+    target: editSoloPopup.company.trim(),
+    detail: `${editSoloPopup.oldBuilding} / ${targetItem.name || ""} / ${targetItem.content || ""} → ${editSoloPopup.building} / ${editSoloPopup.name.trim()} / ${editSoloPopup.content.trim()}`,
+  });
 
   setEditSoloPopup({
     open: false,
@@ -3516,15 +3727,14 @@ const handleAddSoloWorker = async () => {
 };
 
   const handleDeleteSoloWorker = async (itemId: string, building: string) => {
-
   const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
+  const targetItem = (currentRows[building] || []).find((item) => item.id === itemId);
+
+  if (!canDeleteOwnItem(targetItem)) return;
 
   const nextRows = {
     ...currentRows,
-    [building]: (currentRows[building] || []).filter((item) => {
-  if (item.id !== itemId) return true;
-  return !canDeleteOwnItem(item);
-}),
+    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
   };
 
   const nextData = {
@@ -3536,8 +3746,15 @@ const handleAddSoloWorker = async () => {
   };
 
   setDabsData(nextData);
-  
+
   await saveSoloWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "단독작업자",
+    target: targetItem?.company || "",
+    detail: `${building} / ${targetItem?.name || ""} / ${targetItem?.content || ""}`,
+  });
 };
 
 const handleAddHeatSensitive = async () => {
@@ -3555,12 +3772,12 @@ const handleAddHeatSensitive = async () => {
 
   const heatSensitiveValue = dabsData[selectedDate]?.heatSensitive;
 
-const currentRows =
-  typeof heatSensitiveValue === "object" &&
-  heatSensitiveValue &&
-  "rows" in heatSensitiveValue
-    ? heatSensitiveValue.rows || {}
-    : {};
+  const currentRows =
+    typeof heatSensitiveValue === "object" &&
+    heatSensitiveValue &&
+    "rows" in heatSensitiveValue
+      ? heatSensitiveValue.rows || {}
+      : {};
 
   const nextRows = {
     ...currentRows,
@@ -3587,7 +3804,16 @@ const currentRows =
   };
 
   setDabsData(nextData);
+
   await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "온열민감자",
+    target: companyName,
+    detail: `${heatSensitiveInput.building} / ${heatSensitiveInput.name.trim()} / ${heatSensitiveInput.content.trim()} / ${heatSensitiveInput.elderly}`,
+  });
+
   setHeatSensitiveInput({ building: "", company: "", name: "", content: "", elderly: "유질환자" });
 };
 
@@ -3597,12 +3823,13 @@ const handleUpdateHeatSensitive = async () => {
 
   const heatSensitiveValue = dabsData[selectedDate]?.heatSensitive;
 
-const currentRows =
-  typeof heatSensitiveValue === "object" &&
-  heatSensitiveValue &&
-  "rows" in heatSensitiveValue
-    ? heatSensitiveValue.rows || {}
-    : {};
+  const currentRows =
+    typeof heatSensitiveValue === "object" &&
+    heatSensitiveValue &&
+    "rows" in heatSensitiveValue
+      ? heatSensitiveValue.rows || {}
+      : {};
+
   const nextRows = { ...currentRows };
 
   const targetItem = (nextRows[editHeatSensitivePopup.oldBuilding] || []).find(
@@ -3635,36 +3862,45 @@ const currentRows =
   };
 
   setDabsData(nextData);
+
   await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
 
+  await writeActivityLog({
+    action: "수정",
+    page: "온열민감자",
+    target: editHeatSensitivePopup.company.trim(),
+    detail: `${editHeatSensitivePopup.oldBuilding} / ${targetItem.name || ""} / ${targetItem.content || ""} / ${targetItem.elderly || ""} → ${editHeatSensitivePopup.building} / ${editHeatSensitivePopup.name.trim()} / ${editHeatSensitivePopup.content.trim()} / ${editHeatSensitivePopup.elderly}`,
+  });
+
   setEditHeatSensitivePopup({
-  open: false,
-  itemId: "",
-  oldBuilding: "",
-  building: "",
-  company: "",
-  name: "",
-  content: "",
-  elderly: "유질환자",
-});
+    open: false,
+    itemId: "",
+    oldBuilding: "",
+    building: "",
+    company: "",
+    name: "",
+    content: "",
+    elderly: "유질환자",
+  });
 };
 
 const handleDeleteHeatSensitive = async (itemId: string, building: string) => {
   const heatSensitiveValue = dabsData[selectedDate]?.heatSensitive;
 
-const currentRows =
-  typeof heatSensitiveValue === "object" &&
-  heatSensitiveValue &&
-  "rows" in heatSensitiveValue
-    ? heatSensitiveValue.rows || {}
-    : {};
+  const currentRows =
+    typeof heatSensitiveValue === "object" &&
+    heatSensitiveValue &&
+    "rows" in heatSensitiveValue
+      ? heatSensitiveValue.rows || {}
+      : {};
+
+  const targetItem = (currentRows[building] || []).find((item) => item.id === itemId);
+
+  if (!canDeleteOwnItem(targetItem)) return;
 
   const nextRows = {
     ...currentRows,
-    [building]: (currentRows[building] || []).filter((item) => {
-      if (item.id !== itemId) return true;
-      return !canDeleteOwnItem(item);
-    }),
+    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
   };
 
   const nextData = {
@@ -3676,7 +3912,15 @@ const currentRows =
   };
 
   setDabsData(nextData);
+
   await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "온열민감자",
+    target: targetItem?.company || "",
+    detail: `${building} / ${targetItem?.name || ""} / ${targetItem?.content || ""} / ${targetItem?.elderly || ""}`,
+  });
 };
 
 const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
@@ -3718,23 +3962,24 @@ const handleUpdateOverlayInfo = async () => {
   }
 
   const currentValue = getOverlayBundle(editOverlayPopup.targetKey);
+  const targetMarker = (currentValue.markers || []).find((marker) => marker.id === editOverlayPopup.itemId);
 
   const nextMarkers =
-  editOverlayPopup.targetKey === "equipmentFlow"
-    ? (currentValue.markers || []).filter(
-        (marker) => marker.id !== editOverlayPopup.itemId
-      )
-    : (currentValue.markers || []).map((marker) =>
-        marker.id === editOverlayPopup.itemId
-          ? {
-              ...marker,
-              company: editOverlayPopup.company.trim(),
-              note: editOverlayPopup.note.trim(),
-              building: editOverlayPopup.building,
-              equipmentType: "",
-            }
-          : marker
-      );
+    editOverlayPopup.targetKey === "equipmentFlow"
+      ? (currentValue.markers || []).filter(
+          (marker) => marker.id !== editOverlayPopup.itemId
+        )
+      : (currentValue.markers || []).map((marker) =>
+          marker.id === editOverlayPopup.itemId
+            ? {
+                ...marker,
+                company: editOverlayPopup.company.trim(),
+                note: editOverlayPopup.note.trim(),
+                building: editOverlayPopup.building,
+                equipmentType: "",
+              }
+            : marker
+        );
 
   const nextData = {
     ...dabsOverlays,
@@ -3751,28 +3996,39 @@ const handleUpdateOverlayInfo = async () => {
 
   await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 
-  if (editOverlayPopup.targetKey === "equipmentFlow") {
-  setMoveOverlayTarget({
-    itemId: editOverlayPopup.itemId,
-    targetKey: "equipmentFlow",
-    mode: "arrow",
+  await writeActivityLog({
+    action: "수정",
+    page: "DAB's회의",
+    target: editOverlayPopup.company.trim(),
+    detail:
+      editOverlayPopup.targetKey === "equipmentFlow"
+        ? `장비동선 / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} → ${editOverlayPopup.company.trim()} / ${editOverlayPopup.note.trim()} / ${getEquipmentLabel(editOverlayPopup.equipmentType)}`
+        : `고위험작업 / ${targetMarker?.building || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} → ${editOverlayPopup.building} / ${editOverlayPopup.company.trim()} / ${editOverlayPopup.note.trim()}`,
   });
 
-  setPendingEquipmentMarker({
-    arrowId: editOverlayPopup.itemId,
-    company: editOverlayPopup.company.trim(),
-    note: editOverlayPopup.note.trim(),
-    equipmentType: editOverlayPopup.equipmentType,
-    createdByUid: currentUser?.uid,
-    createdByName: currentUser?.name,
-  });
-} else {
-  setMoveOverlayTarget({
-    itemId: editOverlayPopup.itemId,
-    targetKey: editOverlayPopup.targetKey,
-    mode: "marker",
-  });
-}
+  if (editOverlayPopup.targetKey === "equipmentFlow") {
+    setMoveOverlayTarget({
+      itemId: editOverlayPopup.itemId,
+      targetKey: "equipmentFlow",
+      mode: "arrow",
+    });
+
+    setPendingEquipmentMarker({
+      arrowId: editOverlayPopup.itemId,
+      company: editOverlayPopup.company.trim(),
+      note: editOverlayPopup.note.trim(),
+      equipmentType: editOverlayPopup.equipmentType,
+      logAction: "수정",
+      createdByUid: currentUser?.uid,
+      createdByName: currentUser?.name,
+    });
+  } else {
+    setMoveOverlayTarget({
+      itemId: editOverlayPopup.itemId,
+      targetKey: editOverlayPopup.targetKey,
+      mode: "marker",
+    });
+  }
 
   setEditOverlayPopup({
     open: false,
@@ -3788,10 +4044,10 @@ const handleUpdateOverlayInfo = async () => {
   setArrowPreview(null);
 
   setDabsMessage(
-  editOverlayPopup.targetKey === "equipmentFlow"
-    ? "수정되었습니다. 새 화살표 시작점과 종료점을 다시 선택하세요."
-    : "수정되었습니다. 새 위치를 선택하세요."
-);
+    editOverlayPopup.targetKey === "equipmentFlow"
+      ? "수정되었습니다. 새 화살표 시작점과 종료점을 다시 선택하세요."
+      : "수정되었습니다. 새 위치를 선택하세요."
+  );
 };
 
 const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey) => {
@@ -3816,7 +4072,17 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
 
   setDabsOverlays(nextData);
 
-await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "DAB's회의",
+    target: targetMarker?.company || "",
+    detail:
+      targetKey === "equipmentFlow"
+        ? `장비동선 / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} / ${targetMarker?.equipmentType ? getEquipmentLabel(targetMarker.equipmentType) : ""}`
+        : `고위험작업 / ${targetMarker?.building || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""}`,
+  });
 };
 
   const handleHighRiskImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -3875,6 +4141,13 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
       { merge: true }
     );
 
+    await writeActivityLog({
+      action: "수정",
+      page: "DAB's회의",
+      target: "공통 사진",
+      detail: `고위험작업/장비동선 사진 변경 / ${file.name}`,
+    });
+
     setDabsMessage("사진이 저장되었습니다.");
   } catch (error) {
     console.log("IMAGE UPLOAD ERROR:", error);
@@ -3884,14 +4157,17 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
   event.target.value = "";
 };
 
-  const openMarkerPopup = (event: React.MouseEvent<HTMLDivElement>) => {
+  const openMarkerPopup = async (event: React.MouseEvent<HTMLDivElement>) => {
   if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
 
   const point = getRelativePoint(event.clientX, event.clientY);
-if (!point) return;
+  if (!point) return;
 
-if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
+  if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
     const currentValue = getOverlayBundle("highRisk");
+    const targetMarker = (currentValue.markers || []).find(
+      (marker) => marker.id === moveOverlayTarget.itemId
+    );
 
     const nextMarkers = (currentValue.markers || []).map((marker) =>
       marker.id === moveOverlayTarget.itemId
@@ -3915,7 +4191,15 @@ if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "m
     };
 
     setDabsOverlays(nextData);
-    saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    await writeActivityLog({
+      action: "수정",
+      page: "DAB's회의",
+      target: targetMarker?.company || "",
+      detail: `고위험작업 위치 수정 / ${targetMarker?.building || ""} / ${targetMarker?.note || ""}`,
+    });
 
     setMoveOverlayTarget(null);
     setDabsMessage("위치가 수정되었습니다.");
@@ -3938,13 +4222,16 @@ if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "m
   if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
 
   const point = getRelativePoint(touch.clientX, touch.clientY);
-if (!point) return;
+  if (!point) return;
 
-lastTouchTimeRef.current = Date.now();
+  lastTouchTimeRef.current = Date.now();
   vibrateBriefly();
 
   if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
     const currentValue = getOverlayBundle("highRisk");
+    const targetMarker = (currentValue.markers || []).find(
+      (marker) => marker.id === moveOverlayTarget.itemId
+    );
 
     const nextMarkers = (currentValue.markers || []).map((marker) =>
       marker.id === moveOverlayTarget.itemId
@@ -3968,7 +4255,15 @@ lastTouchTimeRef.current = Date.now();
     };
 
     setDabsOverlays(nextData);
+
     await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    await writeActivityLog({
+      action: "수정",
+      page: "DAB's회의",
+      target: targetMarker?.company || "",
+      detail: `고위험작업 위치 수정 / ${targetMarker?.building || ""} / ${targetMarker?.note || ""}`,
+    });
 
     setMoveOverlayTarget(null);
     setDabsMessage("위치가 수정되었습니다.");
@@ -4050,20 +4345,21 @@ lastTouchTimeRef.current = Date.now();
       company: companyName,
       note: imagePopup.note.trim(),
       equipmentType: imagePopup.equipmentType,
+      logAction: "입력",
       createdByUid: currentUser?.uid,
       createdByName: currentUser?.name,
     });
 
     setImagePopup({
-    open: false,
-    x: 0,
-    y: 0,
-    company: "",
-    note: "",
-    equipmentType: "concrete_pump_truck",
-    building: "",
-    targetKey: "highRisk",
-  });
+      open: false,
+      x: 0,
+      y: 0,
+      company: "",
+      note: "",
+      equipmentType: "concrete_pump_truck",
+      building: "",
+      targetKey: "highRisk",
+    });
 
     setDabsMessage("상자를 표시할 위치를 한 번 더 클릭하세요.");
     return;
@@ -4093,7 +4389,15 @@ lastTouchTimeRef.current = Date.now();
   };
 
   setDabsOverlays(nextData);
+
   await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "DAB's회의",
+    target: companyName,
+    detail: `고위험작업 / ${imagePopup.building} / ${imagePopup.note.trim()}`,
+  });
 
   setImagePopup({
     open: false,
@@ -4197,9 +4501,9 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
   if (!point) return;
 
   if (
-  pendingEquipmentMarker &&
-  !(moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow")
-) {
+    pendingEquipmentMarker &&
+    !(moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow")
+  ) {
     const currentValue = getOverlayBundle("equipmentFlow");
 
     const marker = {
@@ -4226,7 +4530,15 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
     };
 
     setDabsOverlays(nextData);
+
     await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    await writeActivityLog({
+      action: pendingEquipmentMarker.logAction || "입력",
+      page: "DAB's회의",
+      target: pendingEquipmentMarker.company,
+      detail: `장비동선 / ${getEquipmentLabel(pendingEquipmentMarker.equipmentType)} / ${pendingEquipmentMarker.note}`,
+    });
 
     setPendingEquipmentMarker(null);
     setDabsMessage("장비동선이 저장되었습니다.");
@@ -4331,9 +4643,16 @@ if (
   setDabsOverlays(nextData);
   await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 
-  setPendingEquipmentMarker(null);
-  setDabsMessage("장비동선이 저장되었습니다.");
-  return;
+  await writeActivityLog({
+  action: pendingEquipmentMarker.logAction || "입력",
+  page: "DAB's회의",
+  target: pendingEquipmentMarker.company,
+  detail: `장비동선 / ${getEquipmentLabel(pendingEquipmentMarker.equipmentType)} / ${pendingEquipmentMarker.note}`,
+});
+
+setPendingEquipmentMarker(null);
+setDabsMessage("장비동선이 저장되었습니다.");
+return;
 }
 
 if (!arrowStart) return;
@@ -7700,7 +8019,103 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
     </div>
   );
 
-  const renderApprovalPage = () => (
+  const formatActivityLogTime = (value: any) => {
+  if (!value) return "-";
+
+  const date =
+    typeof value?.toDate === "function"
+      ? value.toDate()
+      : new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes()
+  ).padStart(2, "0")}`;
+};
+
+const renderActivityLogPage = () => (
+  <div className="space-y-4 sm:space-y-6">
+    {renderTopBar()}
+
+    <div className="flex flex-wrap justify-between gap-3">
+      <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+        메뉴로 돌아가기
+      </Button>
+    </div>
+
+    <Card className="rounded-[24px] border-0 shadow-sm">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <LayoutGrid className="h-5 w-5" />
+          활동 로그
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent>
+        {!canViewActivityLogs ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+            활동 로그는 마스터만 볼 수 있습니다.
+          </div>
+        ) : activityLogs.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+            기록된 로그가 없습니다.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-black">
+            <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-100 text-slate-700">
+                  <th className="w-[17%] border border-black px-3 py-2 text-left">시간</th>
+                  <th className="w-[10%] border border-black px-3 py-2 text-left">구분</th>
+                  <th className="w-[14%] border border-black px-3 py-2 text-left">페이지</th>
+                  <th className="w-[18%] border border-black px-3 py-2 text-left">작성자</th>
+                  <th className="border border-black px-3 py-2 text-left">내용</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {activityLogs.map((log) => (
+                  <tr key={log.id}>
+                    <td className="border border-black px-3 py-2 align-top">
+                      {formatActivityLogTime(log.createdAt)}
+                    </td>
+
+                    <td className="border border-black px-3 py-2 align-top font-semibold">
+                      {log.action}
+                    </td>
+
+                    <td className="border border-black px-3 py-2 align-top">
+                      {log.page || "-"}
+                    </td>
+
+                    <td className="border border-black px-3 py-2 align-top">
+                      <div className="font-medium">{log.actorName || "-"}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {log.actorCompany || "-"} · {getRoleLabel(log.actorRole || "general")}
+                      </div>
+                    </td>
+
+                    <td className="border border-black px-3 py-2 align-top">
+                      <div className="font-medium">{log.target || "-"}</div>
+                      <div className="mt-1 whitespace-pre-wrap break-all text-xs text-slate-600">
+                        {log.detail || "-"}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  </div>
+);
+
+const renderApprovalPage = () => (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
 
@@ -8116,6 +8531,8 @@ return (
   renderHeatwavePage()
 ) : currentPage === "approval" ? (
   renderApprovalPage()
+) : currentPage === "activityLog" ? (
+  renderActivityLogPage()
 ) : (
   renderEducationPage()
 )}
