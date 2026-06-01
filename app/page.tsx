@@ -5036,7 +5036,100 @@ const posY = adjustedPosition?.y ?? marker.y;
     </div>
   );
 
-  const renderSectionMobileCards = (
+  const renderBottomCalendar = () => (
+  <Card className="rounded-[24px] border-0 bg-white shadow-sm">
+    <CardHeader className="flex flex-row items-center justify-between">
+      <CardTitle>월간 달력</CardTitle>
+
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() =>
+            setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))
+          }
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+
+        <div className="min-w-28 text-center text-sm font-semibold lg:min-w-36 lg:text-base">
+          {monthLabel}
+        </div>
+
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() =>
+            setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))
+          }
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </CardHeader>
+
+    <CardContent>
+      <div className="grid grid-cols-7 gap-1 lg:gap-2">
+        {weekLabels.map((label) => (
+          <div key={label} className="rounded-xl bg-slate-100 py-2 text-center text-[10px] font-semibold text-slate-600 lg:text-xs">
+            {label}
+          </div>
+        ))}
+
+        {monthGrid.map((date) => {
+          const key = formatDateKey(date);
+          const isCurrentMonth = date.getMonth() === currentDate.getMonth();
+          const isToday = key === todayKey;
+          const isSelected = key === selectedDate;
+          const cellEntries = entries.filter((entry) => entry.date === key);
+
+          return (
+            <button
+              key={key}
+              onClick={() => setSelectedDate(key)}
+              className={cn(
+                "min-h-[72px] rounded-xl border p-1.5 text-left transition sm:min-h-[82px] sm:p-2",
+                isSelected
+                  ? "border-slate-900 bg-slate-100"
+                  : isCurrentMonth
+                    ? "border-slate-200 bg-white shadow-sm"
+                    : "border-slate-100 bg-slate-50 text-slate-400"
+              )}
+            >
+              <div className="mb-1 flex items-center justify-between sm:mb-2">
+                <div
+                  className={cn(
+                    "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold lg:h-6 lg:w-6 lg:text-xs",
+                    isToday ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                  )}
+                >
+                  {date.getDate()}
+                </div>
+
+                <Badge className="px-1.5 py-0">{cellEntries.length}</Badge>
+              </div>
+
+              <div className="space-y-1">
+                {cellEntries.map((entry) => (
+                  <div key={entry.id} className="rounded-lg bg-slate-50 p-1 text-[9px] text-slate-700 lg:p-1.5 lg:text-[10px]">
+                    <div className="font-semibold text-slate-900">
+                      {entry.startTime}
+                    </div>
+                    <div className="whitespace-pre-wrap break-words leading-tight">
+                      {entry.companyName}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </CardContent>
+  </Card>
+);
+
+const renderSectionMobileCards = (
   columns: string[],
   rows: Record<string, DabsRowItem[]>
 ) => (
@@ -7845,8 +7938,12 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
               </CardContent>
             </Card>
           )}
-        </CardContent>
+                </CardContent>
       </Card>
+
+      <div className="bg-white">
+        {renderBottomCalendar()}
+      </div>
     </div>
   );
 };
@@ -7953,19 +8050,8 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
   </div>
 </div>
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr] lg:gap-6"><div className="space-y-6"><div ref={educationCaptureRef} className="bg-white">
-  <Card className="rounded-[24px] border-0 bg-white shadow-sm"><CardHeader className="flex flex-row items-center justify-between"><CardTitle>월간 달력</CardTitle><div className="flex items-center gap-2"><Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}><ChevronLeft className="h-4 w-4" /></Button><div className="min-w-28 text-center text-sm font-semibold lg:min-w-36 lg:text-base">{monthLabel}</div><Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}><ChevronRight className="h-4 w-4" /></Button></div></CardHeader><CardContent><div className="grid grid-cols-7 gap-1 lg:gap-2">{weekLabels.map((label) => <div key={label} className="rounded-xl bg-slate-100 py-2 text-center text-[10px] font-semibold text-slate-600 lg:text-xs">{label}</div>)}{monthGrid.map((date) => { const key = formatDateKey(date); const isCurrentMonth = date.getMonth() === currentDate.getMonth(); const isToday = key === todayKey; const isSelected = key === selectedDate; const cellEntries = entries.filter((entry) => entry.date === key); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("min-h-[72px] rounded-xl border p-1.5 text-left transition sm:min-h-[82px] sm:p-2", isSelected ? "border-slate-900 bg-slate-100" : isCurrentMonth ? "border-slate-200 bg-white shadow-sm" : "border-slate-100 bg-slate-50 text-slate-400")}><div className="mb-1 flex items-center justify-between sm:mb-2"><div className={cn("flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold lg:h-6 lg:w-6 lg:text-xs", isToday ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")}>{date.getDate()}</div><Badge className="px-1.5 py-0">{cellEntries.length}</Badge></div><div className="space-y-1">{cellEntries.map((entry) => (
-  <div
-    key={entry.id}
-    className="rounded-lg bg-slate-50 p-1 text-[9px] text-slate-700 lg:p-1.5 lg:text-[10px]"
-  >
-    <div className="font-semibold text-slate-900">
-  {entry.startTime}
-</div>
-<div className="whitespace-pre-wrap break-words leading-tight">
-  {entry.companyName}
-</div>
-  </div>
-))}</div></button>; })}</div></CardContent></Card></div></div><div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>일정 입력</CardTitle></CardHeader><CardContent className="space-y-4">{!currentUser ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">일정 등록은 승인된 계정으로 로그인한 뒤 사용할 수 있습니다.</div> : <><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><label className="text-xs font-medium text-slate-600">일자 선택</label><Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9" /></div><div className="space-y-2"><label className="text-xs font-medium text-slate-600">시간 선택</label><select value={effectiveSelectedTime} onChange={(e) => setSelectedTime(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100" disabled={availableTimes.length === 0}>{availableTimes.length === 0 ? <option value="">선택 가능한 시간이 없습니다</option> : availableTimes.map((time) => <option key={time} value={time}>{time}</option>)}</select><div className="text-xs text-slate-500">{availableTimes.length === 0 ? "해당 일자는 선택 가능한 시간이 없습니다" : `자동 표기 시간: ${effectiveSelectedTime} ~ ${effectiveEndTime}`}</div></div></div><div className="flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-slate-500">작성자: {currentUser.name} · {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}</div><Button className="w-full lg:w-auto" onClick={addEntry} disabled={availableTimes.length === 0}>일정 등록</Button></div></>}{entryMessage && (
+  {renderBottomCalendar()}
+</div></div><div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>일정 입력</CardTitle></CardHeader><CardContent className="space-y-4">{!currentUser ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">일정 등록은 승인된 계정으로 로그인한 뒤 사용할 수 있습니다.</div> : <><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><label className="text-xs font-medium text-slate-600">일자 선택</label><Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9" /></div><div className="space-y-2"><label className="text-xs font-medium text-slate-600">시간 선택</label><select value={effectiveSelectedTime} onChange={(e) => setSelectedTime(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100" disabled={availableTimes.length === 0}>{availableTimes.length === 0 ? <option value="">선택 가능한 시간이 없습니다</option> : availableTimes.map((time) => <option key={time} value={time}>{time}</option>)}</select><div className="text-xs text-slate-500">{availableTimes.length === 0 ? "해당 일자는 선택 가능한 시간이 없습니다" : `자동 표기 시간: ${effectiveSelectedTime} ~ ${effectiveEndTime}`}</div></div></div><div className="flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-slate-500">작성자: {currentUser.name} · {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}</div><Button className="w-full lg:w-auto" onClick={addEntry} disabled={availableTimes.length === 0}>일정 등록</Button></div></>}{entryMessage && (
   <div className="text-sm text-slate-600">{entryMessage}</div>
 )}
 
