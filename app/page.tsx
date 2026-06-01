@@ -1155,21 +1155,7 @@ const portfolioCaptureRef = useRef<HTMLDivElement | null>(null);const educationC
     }));
   });
 
-const unsubscribeHeatSensitive = onSnapshot(doc(db, "heatSensitiveWorkers", selectedDate), (snap) => {
-  if (!snap.exists()) return;
-
-  const data = snap.data() as { rows?: Record<string, DabsRowItem[]> };
-
-  setDabsData((prev) => ({
-    ...prev,
-    [selectedDate]: {
-      ...(prev[selectedDate] || {}),
-      heatSensitive: {
-        rows: data.rows || {},
-      },
-    },
-  }));
-});
+const unsubscribeHeatSensitive = () => {};
 
 const unsubscribeOverlays = onSnapshot(doc(db, "dabsOverlays", selectedDate), (snap) => {
   if (!snap.exists()) return;
@@ -1404,10 +1390,12 @@ const saveHeatSensitiveWorkersToFirestore = async (
   if (isDemoMode || !db || !currentUser) return;
 
   await setDoc(
-    doc(db, "heatSensitiveWorkers", dateKey),
+    doc(db, "dabsMeetings", dateKey),
     {
       date: dateKey,
-      rows,
+      heatSensitive: {
+        rows,
+      },
       updatedAt: serverTimestamp(),
     },
     { merge: true }
