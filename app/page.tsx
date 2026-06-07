@@ -218,10 +218,10 @@ function getTodayKey() {
   return formatDateKey(new Date());
 }
 
-function getThisWeekSaturdayKey() {
-  const d = new Date();
-  const day = d.getDay();
-  const daysUntilSaturday = (6 - day + 7) % 7;
+function getSaturdayKeyFromDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const d = new Date(year, month - 1, day);
+  const daysUntilSaturday = (6 - d.getDay() + 7) % 7;
 
   d.setDate(d.getDate() + daysUntilSaturday);
 
@@ -1084,7 +1084,7 @@ const [supplementNightText, setSupplementNightText] = useState("");
 const [supplementMorningText, setSupplementMorningText] = useState("");
 const [supplementMessage, setSupplementMessage] = useState("");
 
-const supplementNightMorningDateKey = getTodayKey();
+const supplementNightMorningDateKey = selectedDate;
 
 const [supplementNightMorningRows, setSupplementNightMorningRows] = useState<Array<{
   id: string;
@@ -1142,7 +1142,7 @@ const [editSupplementTomorrowPopup, setEditSupplementTomorrowPopup] = useState({
 const [manualSupplementWeekendDate, setManualSupplementWeekendDate] = useState("");
 const [manualSupplementWeekendDateSavedToday, setManualSupplementWeekendDateSavedToday] = useState("");
 
-const supplementWeekendDefaultDateKey = getThisWeekSaturdayKey();
+const supplementWeekendDefaultDateKey = getSaturdayKeyFromDateKey(selectedDate);
 
 const supplementWeekendDateKey =
   manualSupplementWeekendDate && manualSupplementWeekendDateSavedToday === getTodayKey()
@@ -4578,7 +4578,7 @@ const handleLoadPreviousCompanyData = async (targetKey: string) => {
   if (!currentUser?.companyName) return;
 
   if (!loadSourceDate || loadSourceDate === selectedDate) {
-    setDabsMessage("불러올 날자를 확인하세요.");
+    setDabsMessage("불러올 날짜를 확인하세요.");
     return;
   }
 
@@ -7170,9 +7170,9 @@ return (
               <CardHeader><CardTitle className="text-base">{activeDabsTab.label}</CardTitle></CardHeader>
 <CardContent className="space-y-3 p-2 md:p-6">
   <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-  선택 날자: {formatMonthDay(selectedDate)}
+  선택 날짜: {formatMonthDay(selectedDate)}
 </div>
-  {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날자와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && (
+  {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날짜와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && (
   <div className="text-xs text-slate-500">
     첫 번째 클릭은 시작점, 두 번째 클릭은 종료점입니다. 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요. 수정 시에도 화살표를 다시 지정한 뒤 상자 위치를 선택합니다.
   </div>
@@ -7185,7 +7185,7 @@ return (
                 {isSectionTab && <>
   <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
     <div className="space-y-2">
-      <label className="text-xs font-medium text-slate-600">이전 날자 선택</label>
+      <label className="text-xs font-medium text-slate-600">이전 날짜 선택</label>
       <Input
         type="date"
         value={loadSourceDate}
@@ -8401,7 +8401,7 @@ const myComplete =
           {heatwaveTab === "upload" && (
             <>
               <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-                선택 날자: {formatMonthDay(selectedDate)} · 온습도계 사진 4개, 온습도계 관리대장 1개, 휴게시간 관리대장 1개 업로드
+                선택 날짜: {formatMonthDay(selectedDate)} · 온습도계 사진 4개, 온습도계 관리대장 1개, 휴게시간 관리대장 1개 업로드
               </div>
 
               <Card className="border-slate-200 shadow-none">
@@ -8712,7 +8712,7 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
 
               <CardContent className="space-y-4">
                 <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-                  선택 날자: {formatMonthDay(selectedDate)}
+                  선택 날짜: {formatMonthDay(selectedDate)}
                 </div>
 
                 <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
@@ -9595,7 +9595,7 @@ const renderSupplementWorkPage = () => (
 
             <CardContent className="space-y-5">
               <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-                선택 날자: {formatMonthDay(selectedDate)}
+                선택 날짜: {formatMonthDay(selectedDate)}
               </div>
 
               {canManageSupplementNotice && (
@@ -9646,7 +9646,7 @@ const renderSupplementWorkPage = () => (
               )}
 
               <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-  이 탭은 선택 날자와 관계없이 오늘 날자({formatMonthDay(supplementNightMorningDateKey)}) 기준으로 저장됩니다.
+  이 탭은 선택 날짜({formatMonthDay(selectedDate)}) 기준으로 저장됩니다.
 </div>
 
 <div className="grid gap-4 lg:grid-cols-2">
@@ -9775,7 +9775,7 @@ const renderSupplementWorkPage = () => (
 
     <CardContent className="space-y-5">
       <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-        선택 날자: {formatMonthDay(selectedDate)}
+        선택 날짜: {formatMonthDay(selectedDate)}
       </div>
 
       {canManageSupplementNotice && (
@@ -9984,8 +9984,8 @@ const renderSupplementWorkPage = () => (
       <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
         이 탭의 기준일: {formatMonthDay(supplementWeekendDateKey)}
         {manualSupplementWeekendDate && manualSupplementWeekendDateSavedToday === getTodayKey()
-          ? " · 임시 변경 적용 중"
-          : " · 기본값은 이번 주 토요일"}
+  ? " · 주말 보충작업 탭 임시 날짜 적용 중"
+  : ` · 선택 날짜(${formatMonthDay(selectedDate)})가 속한 주의 토요일`}
       </div>
 
       {canAdminEditDabsItem && (
@@ -10235,13 +10235,13 @@ const renderSoloWorkerPage = () => (
 
           <CardContent className="space-y-4">
             <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-              선택 날자: {formatMonthDay(selectedDate)}
+              선택 날짜: {formatMonthDay(selectedDate)}
             </div>
 
             <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
               <div className="space-y-2">
                 <label className="text-xs font-medium text-slate-600">
-                  이전 날자 선택
+                  이전 날짜 선택
                 </label>
                 <Input
                   type="date"
