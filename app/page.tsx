@@ -1066,6 +1066,13 @@ const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
 const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "", elderly: "유질환자" });
 const [heatwaveTab, setHeatwaveTab] = useState<"upload" | "heatSensitive">("upload");
+
+const [supplementTab, setSupplementTab] = useState<"nightMorning" | "tomorrow" | "weekend">("nightMorning");
+const [supplementNoticeText, setSupplementNoticeText] = useState("");
+const [supplementNoticeImage, setSupplementNoticeImage] = useState("");
+const [supplementNightText, setSupplementNightText] = useState("");
+const [supplementMorningText, setSupplementMorningText] = useState("");
+const [supplementMessage, setSupplementMessage] = useState("");
   const [editSoloPopup, setEditSoloPopup] = useState({
   open: false,
   itemId: "",
@@ -1506,6 +1513,23 @@ const approvedCompanyNames = useMemo(
 useEffect(() => {
   if (isDemoMode || !db || !currentUser) return;
 
+  const unsubscribeSupplement = onSnapshot(doc(db, "supplementWorks", selectedDate), (snap) => {
+    if (!snap.exists()) {
+      setSupplementNoticeText("");
+      setSupplementNoticeImage("");
+      setSupplementNightText("");
+      setSupplementMorningText("");
+      return;
+    }
+
+    const data = snap.data();
+
+    setSupplementNoticeText(String(data.noticeText || ""));
+    setSupplementNoticeImage(String(data.noticeImage || ""));
+    setSupplementNightText(String(data.nightText || ""));
+    setSupplementMorningText(String(data.morningText || ""));
+  });
+
   const unsubscribeSettings = onSnapshot(doc(db, "heatwaveSettings", "companies"), (snap) => {
   if (!snap.exists()) return;
 
@@ -1554,6 +1578,7 @@ const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", selectedDate), 
   }));
 });
   return () => {
+    unsubscribeSupplement();
     unsubscribeSettings();
     unsubscribeUploads();
     unsubscribeSharedFiles();
@@ -2163,7 +2188,150 @@ setHeatwaveMessage(
 );
   }
 
+    event.target.value = "";
+};
+
+const canManageSupplementNotice = currentUser?.role === "master" || currentUser?.role === "admin";
+
+const getSupplementCopyText = () => {
+  return [supplementNightText.trim(), supplementMorningText.trim()]
+    .filter(Boolean)
+    .join("\n\n");
+};
+
+const handleSaveSupplementNightMorning = async () => {
+  setSupplementMessage("");
+
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return;
+  }
+
+  await setDoc(
+    doc(db, "supplementWorks", selectedDate),
+    {
+      date: selectedDate,
+      nightText: supplementNightText,
+      morningText: supplementMorningText,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+
+  await writeActivityLog({
+    action: "입력",
+    page: "보충작업",
+    target: "금일야간/명일조출",
+    detail: `${supplementNightText.length}자 / ${supplementMorningText.length}자`,
+  });
+
+  setSupplementMessage("저장되었습니다.");
+};
+
+const handleSaveSupplementNotice = async () => {
+  setSupplementMessage("");
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지는 마스터, 관리자만 저장할 수 있습니다.");
+    return;
+  }
+
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return;
+  }
+
+  await setDoc(
+    doc(db, "supplementWorks", selectedDate),
+    {
+      date: selectedDate,
+      noticeText: supplementNoticeText,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+
+  await writeActivityLog({
+    action: "수정",
+    page: "보충작업",
+    target: "공지",
+    detail: supplementNoticeText,
+  });
+
+  setSupplementMessage("공지가 저장되었습니다.");
+};
+
+const handleSupplementNoticeImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  setSupplementMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지 이미지는 마스터, 관리자만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `supplementWorks/${selectedDate}/notice-${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    setSupplementNoticeImage(fileUrl);
+
+    await setDoc(
+      doc(db, "supplementWorks", selectedDate),
+      {
+        date: selectedDate,
+        noticeImage: fileUrl,
+        noticeImageStoragePath: storagePath,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action: "수정",
+      page: "보충작업",
+      target: "공지 이미지",
+      detail: file.name,
+    });
+
+    setSupplementMessage("공지 이미지가 업로드되었습니다.");
+  } catch (error) {
+    console.log("SUPPLEMENT NOTICE IMAGE UPLOAD ERROR:", error);
+    setSupplementMessage("공지 이미지 업로드 중 오류가 발생했습니다.");
+  }
+
   event.target.value = "";
+};
+
+const handleCopySupplementNightMorning = async () => {
+  const copyText = getSupplementCopyText();
+
+  if (!copyText) {
+    setSupplementMessage("복사할 내용이 없습니다.");
+    return;
+  }
+
+  await navigator.clipboard.writeText(copyText);
+  setSupplementMessage("복사되었습니다.");
 };
 
   const menuItems = [
@@ -2171,6 +2339,7 @@ setHeatwaveMessage(
   { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
   { key: "soloWorker", title: "단독작업자", description: "단독작업자 관리 페이지로 이동", icon: Users },
   { key: "heatwave", title: "혹서기", description: "혹서기 온습도계·휴게시간 관리대장 업로드 현황 관리", icon: CalendarDays },
+{ key: "supplementWork", title: "보충작업", description: "금일야간/명일조출, 명일·주말 보충작업 관리", icon: CalendarDays },
   ...(canManageApprovals
     ? [{ key: "approval", title: "회원 승인 관리", description: "가입 신청 승인/반려 관리", icon: UserPlus }]
     : []),
@@ -8323,6 +8492,195 @@ const renderApprovalPage = () => (
     </div>
   );
 
+const renderSupplementWorkPage = () => (
+  <div className="space-y-4 sm:space-y-6">
+    {renderTopBar()}
+
+    <Card>
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <CalendarDays className="h-5 w-5" />
+          보충작업
+        </CardTitle>
+
+        <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+          메뉴로 돌아가기
+        </Button>
+      </CardHeader>
+
+      <CardContent className="space-y-5">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: "nightMorning", label: "금일야간/명일조출" },
+            { key: "tomorrow", label: "명일 보충작업" },
+            { key: "weekend", label: "주말 보충작업" },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setSupplementTab(tab.key as typeof supplementTab)}
+              className={cn(
+                "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                supplementTab === tab.key
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {supplementTab === "nightMorning" && (
+          <Card className="border-slate-200 shadow-none">
+            <CardHeader>
+              <CardTitle className="text-base">금일야간/명일조출</CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-5">
+              <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+                선택 날짜: {formatMonthDay(selectedDate)}
+              </div>
+
+              {canManageSupplementNotice && (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-sm font-semibold text-slate-900">
+                    관리자 공지 입력
+                  </div>
+
+                  <TextArea
+                    value={supplementNoticeText}
+                    onChange={(e) => setSupplementNoticeText(e.target.value)}
+                    placeholder="공지 내용을 입력하세요."
+                  />
+
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleSupplementNoticeImageUpload}
+                    className="h-auto py-2"
+                  />
+
+                  <Button onClick={handleSaveSupplementNotice}>
+                    공지 저장
+                  </Button>
+                </div>
+              )}
+
+              {(supplementNoticeText || supplementNoticeImage) && (
+                <div className="space-y-3 rounded-2xl border border-black bg-white p-4">
+                  <div className="text-sm font-semibold text-slate-900">
+                    공지
+                  </div>
+
+                  {supplementNoticeText && (
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+                      {supplementNoticeText}
+                    </div>
+                  )}
+
+                  {supplementNoticeImage && (
+                    <img
+                      src={supplementNoticeImage}
+                      alt="보충작업 공지 이미지"
+                      className="max-h-80 rounded-2xl border border-slate-200 object-contain"
+                    />
+                  )}
+                </div>
+              )}
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-slate-600">
+                    금일 야간
+                  </label>
+                  <TextArea
+                    value={supplementNightText}
+                    onChange={(e) => setSupplementNightText(e.target.value)}
+                    placeholder="□ 금일 야간(05월 29 금) 총원 : 65명..."
+                    className="min-h-[260px]"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-slate-600">
+                    명일 조출
+                  </label>
+                  <TextArea
+                    value={supplementMorningText}
+                    onChange={(e) => setSupplementMorningText(e.target.value)}
+                    placeholder="□ 명일 조출(05월 30일 토) 총원 : 120명..."
+                    className="min-h-[260px]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={handleSaveSupplementNightMorning}>
+                  저장
+                </Button>
+
+                <Button variant="outline" onClick={handleCopySupplementNightMorning}>
+                  표 내용 복사
+                </Button>
+              </div>
+
+              {supplementMessage && (
+                <div className="text-sm text-slate-600">
+                  {supplementMessage}
+                </div>
+              )}
+
+              <div className="overflow-x-auto rounded-2xl border border-black">
+                <table className="w-full table-fixed border-collapse text-sm">
+                  <tbody>
+                    <tr>
+                      <th className="w-[180px] border border-black bg-slate-100 px-3 py-2 text-left align-top">
+                        금일 야간
+                      </th>
+                      <td className="border border-black px-3 py-2 align-top">
+                        <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+                          {supplementNightText || "입력 없음"}
+                        </pre>
+                      </td>
+                    </tr>
+
+                    <tr>
+                      <th className="w-[180px] border border-black bg-slate-100 px-3 py-2 text-left align-top">
+                        명일 조출
+                      </th>
+                      <td className="border border-black px-3 py-2 align-top">
+                        <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+                          {supplementMorningText || "입력 없음"}
+                        </pre>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {supplementTab === "tomorrow" && (
+          <Card className="border-slate-200 shadow-none">
+            <CardContent className="p-6 text-sm text-slate-500">
+              명일 보충작업 탭은 다음 단계에서 추가합니다.
+            </CardContent>
+          </Card>
+        )}
+
+        {supplementTab === "weekend" && (
+          <Card className="border-slate-200 shadow-none">
+            <CardContent className="p-6 text-sm text-slate-500">
+              주말 보충작업 탭은 다음 단계에서 추가합니다.
+            </CardContent>
+          </Card>
+        )}
+      </CardContent>
+    </Card>
+  </div>
+);
+
 const renderSoloWorkerPage = () => (
   <div className="space-y-4 sm:space-y-6">
     {renderTopBar()}
@@ -8603,6 +8961,8 @@ return (
   renderSoloWorkerPage()
 ) : currentPage === "heatwave" ? (
   renderHeatwavePage()
+) : currentPage === "supplementWork" ? (
+  renderSupplementWorkPage()
 ) : currentPage === "approval" ? (
   renderApprovalPage()
 ) : currentPage === "activityLog" ? (
