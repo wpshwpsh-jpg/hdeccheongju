@@ -1073,6 +1073,42 @@ const [supplementNoticeImage, setSupplementNoticeImage] = useState("");
 const [supplementNightText, setSupplementNightText] = useState("");
 const [supplementMorningText, setSupplementMorningText] = useState("");
 const [supplementMessage, setSupplementMessage] = useState("");
+
+const [supplementTomorrowNoticeText, setSupplementTomorrowNoticeText] = useState("");
+const [supplementTomorrowNoticeImage, setSupplementTomorrowNoticeImage] = useState("");
+const [supplementTomorrowRows, setSupplementTomorrowRows] = useState<Array<{
+  id: string;
+  workType: string;
+  company: string;
+  location: string;
+  workerCount: string;
+  supervisorCount: string;
+  content: string;
+  safetyAction: string;
+  createdByUid?: string;
+  createdByName?: string;
+}>>([]);
+
+const [supplementTomorrowInput, setSupplementTomorrowInput] = useState({
+  workType: "조출",
+  location: "",
+  workerCount: "",
+  supervisorCount: "",
+  content: "",
+  safetyAction: "",
+});
+
+const [editSupplementTomorrowPopup, setEditSupplementTomorrowPopup] = useState({
+  open: false,
+  id: "",
+  workType: "조출",
+  company: "",
+  location: "",
+  workerCount: "",
+  supervisorCount: "",
+  content: "",
+  safetyAction: "",
+});
   const [editSoloPopup, setEditSoloPopup] = useState({
   open: false,
   itemId: "",
@@ -1516,18 +1552,26 @@ useEffect(() => {
   const unsubscribeSupplement = onSnapshot(doc(db, "supplementWorks", selectedDate), (snap) => {
     if (!snap.exists()) {
       setSupplementNoticeText("");
-      setSupplementNoticeImage("");
-      setSupplementNightText("");
-      setSupplementMorningText("");
-      return;
+setSupplementNoticeImage("");
+setSupplementNightText("");
+setSupplementMorningText("");
+
+setSupplementTomorrowNoticeText("");
+setSupplementTomorrowNoticeImage("");
+setSupplementTomorrowRows([]);
+return;
     }
 
     const data = snap.data();
 
     setSupplementNoticeText(String(data.noticeText || ""));
-    setSupplementNoticeImage(String(data.noticeImage || ""));
-    setSupplementNightText(String(data.nightText || ""));
-    setSupplementMorningText(String(data.morningText || ""));
+setSupplementNoticeImage(String(data.noticeImage || ""));
+setSupplementNightText(String(data.nightText || ""));
+setSupplementMorningText(String(data.morningText || ""));
+
+setSupplementTomorrowNoticeText(String(data.tomorrowNoticeText || ""));
+setSupplementTomorrowNoticeImage(String(data.tomorrowNoticeImage || ""));
+setSupplementTomorrowRows(Array.isArray(data.tomorrowRows) ? data.tomorrowRows : []);
   });
 
   const unsubscribeSettings = onSnapshot(doc(db, "heatwaveSettings", "companies"), (snap) => {
@@ -2331,7 +2375,271 @@ const handleCopySupplementNightMorning = async () => {
   }
 
   await navigator.clipboard.writeText(copyText);
-  setSupplementMessage("복사되었습니다.");
+    setSupplementMessage("복사되었습니다.");
+};
+
+const handleSaveSupplementTomorrowNotice = async () => {
+  setSupplementMessage("");
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지는 마스터, 관리자만 저장할 수 있습니다.");
+    return;
+  }
+
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return;
+  }
+
+  await setDoc(
+    doc(db, "supplementWorks", selectedDate),
+    {
+      date: selectedDate,
+      tomorrowNoticeText: supplementTomorrowNoticeText,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+
+  await writeActivityLog({
+    action: "수정",
+    page: "보충작업",
+    target: "명일 보충작업 공지",
+    detail: supplementTomorrowNoticeText,
+  });
+
+  setSupplementMessage("공지가 저장되었습니다.");
+};
+
+const handleSupplementTomorrowNoticeImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  setSupplementMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지 이미지는 마스터, 관리자만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `supplementWorks/${selectedDate}/tomorrow-notice-${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    setSupplementTomorrowNoticeImage(fileUrl);
+
+    await setDoc(
+      doc(db, "supplementWorks", selectedDate),
+      {
+        date: selectedDate,
+        tomorrowNoticeImage: fileUrl,
+        tomorrowNoticeImageStoragePath: storagePath,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action: "수정",
+      page: "보충작업",
+      target: "명일 보충작업 공지 이미지",
+      detail: file.name,
+    });
+
+    setSupplementMessage("공지 이미지가 업로드되었습니다.");
+  } catch (error) {
+    console.log("SUPPLEMENT TOMORROW NOTICE IMAGE UPLOAD ERROR:", error);
+    setSupplementMessage("공지 이미지 업로드 중 오류가 발생했습니다.");
+  }
+
+  event.target.value = "";
+};
+
+const saveSupplementTomorrowRows = async (
+  rows: typeof supplementTomorrowRows,
+  action: string,
+  target: string,
+  detail: string
+) => {
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return;
+  }
+
+  setSupplementTomorrowRows(rows);
+
+  await setDoc(
+    doc(db, "supplementWorks", selectedDate),
+    {
+      date: selectedDate,
+      tomorrowRows: rows,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+
+  await writeActivityLog({
+    action,
+    page: "보충작업",
+    target,
+    detail,
+  });
+};
+
+const handleAddSupplementTomorrowRow = async () => {
+  setSupplementMessage("");
+
+  if (!currentUser) {
+    setSupplementMessage("로그인 후 입력할 수 있습니다.");
+    return;
+  }
+
+  if (
+    !supplementTomorrowInput.location.trim() ||
+    !supplementTomorrowInput.workerCount.trim() ||
+    !supplementTomorrowInput.supervisorCount.trim() ||
+    !supplementTomorrowInput.content.trim() ||
+    !supplementTomorrowInput.safetyAction.trim()
+  ) {
+    setSupplementMessage("모든 입력값을 입력하세요.");
+    return;
+  }
+
+  const companyName = String(currentUser.companyName || "").trim();
+
+  const newRow = {
+    id: createLocalId("supplement-tomorrow"),
+    workType: supplementTomorrowInput.workType,
+    company: companyName,
+    location: supplementTomorrowInput.location.trim(),
+    workerCount: supplementTomorrowInput.workerCount.trim(),
+    supervisorCount: supplementTomorrowInput.supervisorCount.trim(),
+    content: supplementTomorrowInput.content.trim(),
+    safetyAction: supplementTomorrowInput.safetyAction.trim(),
+    createdByUid: currentUser.uid,
+    createdByName: currentUser.name,
+  };
+
+  const nextRows = [...supplementTomorrowRows, newRow];
+
+  await saveSupplementTomorrowRows(
+    nextRows,
+    "입력",
+    companyName,
+    `${newRow.workType} / ${newRow.location} / 작업인원 ${newRow.workerCount} / 관리감독자 ${newRow.supervisorCount} / ${newRow.content}`
+  );
+
+  setSupplementTomorrowInput({
+    workType: "조출",
+    location: "",
+    workerCount: "",
+    supervisorCount: "",
+    content: "",
+    safetyAction: "",
+  });
+
+  setSupplementMessage("저장되었습니다.");
+};
+
+const handleUpdateSupplementTomorrowRow = async () => {
+  setSupplementMessage("");
+
+  if (!canAdminEditDabsItem) {
+    setSupplementMessage("수정은 마스터, 관리자만 가능합니다.");
+    return;
+  }
+
+  if (
+    !editSupplementTomorrowPopup.id ||
+    !editSupplementTomorrowPopup.company.trim() ||
+    !editSupplementTomorrowPopup.location.trim() ||
+    !editSupplementTomorrowPopup.workerCount.trim() ||
+    !editSupplementTomorrowPopup.supervisorCount.trim() ||
+    !editSupplementTomorrowPopup.content.trim() ||
+    !editSupplementTomorrowPopup.safetyAction.trim()
+  ) {
+    setSupplementMessage("모든 입력값을 입력하세요.");
+    return;
+  }
+
+  const targetRow = supplementTomorrowRows.find(
+    (row) => row.id === editSupplementTomorrowPopup.id
+  );
+
+  const nextRows = supplementTomorrowRows.map((row) =>
+    row.id === editSupplementTomorrowPopup.id
+      ? {
+          ...row,
+          workType: editSupplementTomorrowPopup.workType,
+          company: editSupplementTomorrowPopup.company.trim(),
+          location: editSupplementTomorrowPopup.location.trim(),
+          workerCount: editSupplementTomorrowPopup.workerCount.trim(),
+          supervisorCount: editSupplementTomorrowPopup.supervisorCount.trim(),
+          content: editSupplementTomorrowPopup.content.trim(),
+          safetyAction: editSupplementTomorrowPopup.safetyAction.trim(),
+        }
+      : row
+  );
+
+  await saveSupplementTomorrowRows(
+    nextRows,
+    "수정",
+    editSupplementTomorrowPopup.company.trim(),
+    `${targetRow?.workType || ""} / ${targetRow?.location || ""} → ${editSupplementTomorrowPopup.workType} / ${editSupplementTomorrowPopup.location.trim()}`
+  );
+
+  setEditSupplementTomorrowPopup({
+    open: false,
+    id: "",
+    workType: "조출",
+    company: "",
+    location: "",
+    workerCount: "",
+    supervisorCount: "",
+    content: "",
+    safetyAction: "",
+  });
+
+  setSupplementMessage("수정되었습니다.");
+};
+
+const handleDeleteSupplementTomorrowRow = async (rowId: string) => {
+  setSupplementMessage("");
+
+  const targetRow = supplementTomorrowRows.find((row) => row.id === rowId);
+
+  if (!canDeleteOwnItem(targetRow)) {
+    setSupplementMessage("본인이 입력한 항목 또는 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  const nextRows = supplementTomorrowRows.filter((row) => row.id !== rowId);
+
+  await saveSupplementTomorrowRows(
+    nextRows,
+    "삭제",
+    targetRow?.company || "",
+    `${targetRow?.workType || ""} / ${targetRow?.location || ""} / ${targetRow?.content || ""}`
+  );
+
+  setSupplementMessage("삭제되었습니다.");
 };
 
   const menuItems = [
@@ -8496,6 +8804,109 @@ const renderSupplementWorkPage = () => (
   <div className="space-y-4 sm:space-y-6">
     {renderTopBar()}
 
+    {editSupplementTomorrowPopup.open && (
+      <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+        <div className="w-full max-w-2xl rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+          <div className="text-base font-semibold text-slate-900">
+            명일 보충작업 수정
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <select
+              value={editSupplementTomorrowPopup.workType}
+              onChange={(e) =>
+                setEditSupplementTomorrowPopup((prev) => ({ ...prev, workType: e.target.value }))
+              }
+              className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+            >
+              <option value="조출">조출</option>
+              <option value="점심">점심</option>
+              <option value="야간">야간</option>
+            </select>
+
+            <Input
+              value={editSupplementTomorrowPopup.company}
+              onChange={(e) =>
+                setEditSupplementTomorrowPopup((prev) => ({ ...prev, company: e.target.value }))
+              }
+              placeholder="업체명"
+            />
+
+            <Input
+              value={editSupplementTomorrowPopup.location}
+              onChange={(e) =>
+                setEditSupplementTomorrowPopup((prev) => ({ ...prev, location: e.target.value }))
+              }
+              placeholder="작업위치"
+            />
+
+            <Input
+              type="number"
+              min="0"
+              value={editSupplementTomorrowPopup.workerCount}
+              onChange={(e) =>
+                setEditSupplementTomorrowPopup((prev) => ({ ...prev, workerCount: e.target.value }))
+              }
+              placeholder="작업인원"
+            />
+
+            <Input
+              type="number"
+              min="0"
+              value={editSupplementTomorrowPopup.supervisorCount}
+              onChange={(e) =>
+                setEditSupplementTomorrowPopup((prev) => ({ ...prev, supervisorCount: e.target.value }))
+              }
+              placeholder="관리감독자"
+            />
+
+            <Input
+              value={editSupplementTomorrowPopup.content}
+              onChange={(e) =>
+                setEditSupplementTomorrowPopup((prev) => ({ ...prev, content: e.target.value }))
+              }
+              placeholder="작업내용"
+            />
+
+            <Input
+              value={editSupplementTomorrowPopup.safetyAction}
+              onChange={(e) =>
+                setEditSupplementTomorrowPopup((prev) => ({ ...prev, safetyAction: e.target.value }))
+              }
+              placeholder="안전대책, 조치사항"
+              className="md:col-span-2"
+            />
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              className="w-full lg:w-auto"
+              onClick={() =>
+                setEditSupplementTomorrowPopup({
+                  open: false,
+                  id: "",
+                  workType: "조출",
+                  company: "",
+                  location: "",
+                  workerCount: "",
+                  supervisorCount: "",
+                  content: "",
+                  safetyAction: "",
+                })
+              }
+            >
+              취소
+            </Button>
+
+            <Button className="w-full lg:w-auto" onClick={handleUpdateSupplementTomorrowRow}>
+              저장
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+
     <Card>
       <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <CardTitle className="flex items-center gap-2">
@@ -8662,12 +9073,207 @@ const renderSupplementWorkPage = () => (
         )}
 
         {supplementTab === "tomorrow" && (
-          <Card className="border-slate-200 shadow-none">
-            <CardContent className="p-6 text-sm text-slate-500">
-              명일 보충작업 탭은 다음 단계에서 추가합니다.
-            </CardContent>
-          </Card>
-        )}
+  <Card className="border-slate-200 shadow-none">
+    <CardHeader>
+      <CardTitle className="text-base">명일 보충작업</CardTitle>
+    </CardHeader>
+
+    <CardContent className="space-y-5">
+      <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+        선택 날짜: {formatMonthDay(selectedDate)}
+      </div>
+
+      {canManageSupplementNotice && (
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-sm font-semibold text-slate-900">
+            관리자 공지 입력
+          </div>
+
+          <TextArea
+            value={supplementTomorrowNoticeText}
+            onChange={(e) => setSupplementTomorrowNoticeText(e.target.value)}
+            placeholder="명일 보충작업 공지 내용을 입력하세요."
+          />
+
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={handleSupplementTomorrowNoticeImageUpload}
+            className="h-auto py-2"
+          />
+
+          <Button onClick={handleSaveSupplementTomorrowNotice}>
+            공지 저장
+          </Button>
+        </div>
+      )}
+
+      {(supplementTomorrowNoticeText || supplementTomorrowNoticeImage) && (
+        <div className="space-y-3 rounded-2xl border border-black bg-white p-4">
+          <div className="text-sm font-semibold text-slate-900">
+            공지
+          </div>
+
+          {supplementTomorrowNoticeText && (
+            <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+              {supplementTomorrowNoticeText}
+            </div>
+          )}
+
+          {supplementTomorrowNoticeImage && (
+            <img
+              src={supplementTomorrowNoticeImage}
+              alt="명일 보충작업 공지 이미지"
+              className="max-h-80 rounded-2xl border border-slate-200 object-contain"
+            />
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-2 xl:grid-cols-[110px_1fr_100px_110px_1fr_1fr_auto]">
+        <select
+          value={supplementTomorrowInput.workType}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, workType: e.target.value }))
+          }
+          className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+        >
+          <option value="조출">조출</option>
+          <option value="점심">점심</option>
+          <option value="야간">야간</option>
+        </select>
+
+        <Input
+          value={supplementTomorrowInput.location}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, location: e.target.value }))
+          }
+          placeholder="작업위치"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={supplementTomorrowInput.workerCount}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, workerCount: e.target.value }))
+          }
+          placeholder="작업인원"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={supplementTomorrowInput.supervisorCount}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, supervisorCount: e.target.value }))
+          }
+          placeholder="관리감독자"
+        />
+
+        <Input
+          value={supplementTomorrowInput.content}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, content: e.target.value }))
+          }
+          placeholder="작업내용"
+        />
+
+        <Input
+          value={supplementTomorrowInput.safetyAction}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, safetyAction: e.target.value }))
+          }
+          placeholder="안전대책, 조치사항"
+        />
+
+        <Button onClick={handleAddSupplementTomorrowRow}>
+          입력
+        </Button>
+      </div>
+
+      {supplementMessage && (
+        <div className="text-sm text-slate-600">
+          {supplementMessage}
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-2xl border border-black">
+        <table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
+          <thead>
+            <tr className="bg-slate-100 text-slate-700">
+              <th className="w-[90px] border border-black px-2 py-2 text-left">작업구분</th>
+              <th className="w-[140px] border border-black px-2 py-2 text-left">업체명</th>
+              <th className="w-[150px] border border-black px-2 py-2 text-left">작업위치</th>
+              <th className="w-[90px] border border-black px-2 py-2 text-left">작업인원</th>
+              <th className="w-[100px] border border-black px-2 py-2 text-left">관리감독자</th>
+              <th className="border border-black px-2 py-2 text-left">작업내용</th>
+              <th className="border border-black px-2 py-2 text-left">안전대책, 조치사항</th>
+              <th className="w-[100px] border border-black px-2 py-2 text-left">관리</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {supplementTomorrowRows.length === 0 ? (
+              <tr>
+                <td className="border border-black px-3 py-3 text-center text-slate-400" colSpan={8}>
+                  입력 없음
+                </td>
+              </tr>
+            ) : (
+              supplementTomorrowRows.map((row) => (
+                <tr key={row.id}>
+                  <td className="border border-black px-2 py-2 align-top">{row.workType}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.company}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.location}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.workerCount}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.supervisorCount}</td>
+                  <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.content}</td>
+                  <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.safetyAction}</td>
+                  <td className="border border-black px-2 py-2 align-top">
+                    <div className="flex flex-wrap gap-1">
+                      {canAdminEditDabsItem && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditSupplementTomorrowPopup({
+                              open: true,
+                              id: row.id,
+                              workType: row.workType || "조출",
+                              company: row.company || "",
+                              location: row.location || "",
+                              workerCount: row.workerCount || "",
+                              supervisorCount: row.supervisorCount || "",
+                              content: row.content || "",
+                              safetyAction: row.safetyAction || "",
+                            })
+                          }
+                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                        >
+                          수정
+                        </button>
+                      )}
+
+                      {canDeleteOwnItem(row) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSupplementTomorrowRow(row.id)}
+                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </CardContent>
+  </Card>
+)}
 
         {supplementTab === "weekend" && (
           <Card className="border-slate-200 shadow-none">
