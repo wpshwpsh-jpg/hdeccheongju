@@ -1631,9 +1631,27 @@ const approvedCompanyNames = useMemo(
 useEffect(() => {
   if (isDemoMode || !db || !currentUser) return;
 
+  let isActiveSupplementSnapshot = true;
+
+  setSupplementNoticeText("");
+  setSupplementNoticeImage("");
+  setSupplementNightText("");
+  setSupplementMorningText("");
+  setSupplementNightMorningRows([]);
+
+  setSupplementTomorrowNoticeText("");
+  setSupplementTomorrowNoticeImage("");
+  setSupplementTomorrowRows([]);
+
+  setSupplementWeekendNoticeText("");
+  setSupplementWeekendNoticeImage("");
+  setSupplementWeekendRows([]);
+
   const unsubscribeSupplementNightMorning = onSnapshot(
   doc(db, "supplementWorks", supplementNightMorningDateKey),
   (snap) => {
+    if (!isActiveSupplementSnapshot) return;
+
     if (!snap.exists()) {
       setSupplementNoticeText("");
       setSupplementNoticeImage("");
@@ -1656,6 +1674,8 @@ useEffect(() => {
 const unsubscribeSupplementTomorrow = onSnapshot(
   doc(db, "supplementWorks", selectedDate),
   (snap) => {
+    if (!isActiveSupplementSnapshot) return;
+
     if (!snap.exists()) {
       setSupplementTomorrowNoticeText("");
       setSupplementTomorrowNoticeImage("");
@@ -1674,6 +1694,8 @@ const unsubscribeSupplementTomorrow = onSnapshot(
 const unsubscribeSupplementWeekend = onSnapshot(
   doc(db, "supplementWorks", supplementWeekendDateKey),
   (snap) => {
+    if (!isActiveSupplementSnapshot) return;
+
     if (!snap.exists()) {
       setSupplementWeekendNoticeText("");
       setSupplementWeekendNoticeImage("");
@@ -1737,6 +1759,8 @@ const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", selectedDate), 
   }));
 });
   return () => {
+    isActiveSupplementSnapshot = false;
+
     unsubscribeSupplementNightMorning();
 unsubscribeSupplementTomorrow();
 unsubscribeSupplementWeekend();
