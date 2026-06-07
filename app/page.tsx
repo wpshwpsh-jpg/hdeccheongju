@@ -218,6 +218,16 @@ function getTodayKey() {
   return formatDateKey(new Date());
 }
 
+function getThisWeekSaturdayKey() {
+  const d = new Date();
+  const day = d.getDay();
+  const daysUntilSaturday = (6 - day + 7) % 7;
+
+  d.setDate(d.getDate() + daysUntilSaturday);
+
+  return formatDateKey(d);
+}
+
 function getMonthGrid(currentDate: Date) {
   const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
   const start = new Date(firstDay);
@@ -1128,6 +1138,50 @@ const [editSupplementTomorrowPopup, setEditSupplementTomorrowPopup] = useState({
   content: "",
   safetyAction: "",
 });
+
+const [manualSupplementWeekendDate, setManualSupplementWeekendDate] = useState("");
+const [manualSupplementWeekendDateSavedToday, setManualSupplementWeekendDateSavedToday] = useState("");
+
+const supplementWeekendDefaultDateKey = getThisWeekSaturdayKey();
+
+const supplementWeekendDateKey =
+  manualSupplementWeekendDate && manualSupplementWeekendDateSavedToday === getTodayKey()
+    ? manualSupplementWeekendDate
+    : supplementWeekendDefaultDateKey;
+
+const [supplementWeekendNoticeText, setSupplementWeekendNoticeText] = useState("");
+const [supplementWeekendNoticeImage, setSupplementWeekendNoticeImage] = useState("");
+const [supplementWeekendRows, setSupplementWeekendRows] = useState<Array<{
+  id: string;
+  workType: string;
+  company: string;
+  location: string;
+  workerCount: string;
+  supervisorCount: string;
+  content: string;
+  safetyAction: string;
+  createdByUid?: string;
+  createdByName?: string;
+}>>([]);
+
+const [supplementWeekendInput, setSupplementWeekendInput] = useState({
+  location: "",
+  workerCount: "",
+  supervisorCount: "",
+  content: "",
+  safetyAction: "",
+});
+
+const [editSupplementWeekendPopup, setEditSupplementWeekendPopup] = useState({
+  open: false,
+  id: "",
+  company: "",
+  location: "",
+  workerCount: "",
+  supervisorCount: "",
+  content: "",
+  safetyAction: "",
+});
   const [editSoloPopup, setEditSoloPopup] = useState({
   open: false,
   itemId: "",
@@ -1400,6 +1454,15 @@ useEffect(() => {
   }
 }, [manualSelectedDate, manualSelectedDateSavedToday]);
 
+useEffect(() => {
+  const today = getTodayKey();
+
+  if (manualSupplementWeekendDate && manualSupplementWeekendDateSavedToday !== today) {
+    setManualSupplementWeekendDate("");
+    setManualSupplementWeekendDateSavedToday("");
+  }
+}, [manualSupplementWeekendDate, manualSupplementWeekendDateSavedToday]);
+
 const handleManualSelectedDateChange = (dateKey: string) => {
   if (!canManualChangeSelectedDate) return;
 
@@ -1608,6 +1671,24 @@ const unsubscribeSupplementTomorrow = onSnapshot(
   }
 );
 
+const unsubscribeSupplementWeekend = onSnapshot(
+  doc(db, "supplementWorks", supplementWeekendDateKey),
+  (snap) => {
+    if (!snap.exists()) {
+      setSupplementWeekendNoticeText("");
+      setSupplementWeekendNoticeImage("");
+      setSupplementWeekendRows([]);
+      return;
+    }
+
+    const data = snap.data();
+
+    setSupplementWeekendNoticeText(String(data.weekendNoticeText || ""));
+    setSupplementWeekendNoticeImage(String(data.weekendNoticeImage || ""));
+    setSupplementWeekendRows(Array.isArray(data.weekendRows) ? data.weekendRows : []);
+  }
+);
+
   const unsubscribeSettings = onSnapshot(doc(db, "heatwaveSettings", "companies"), (snap) => {
   if (!snap.exists()) return;
 
@@ -1658,11 +1739,12 @@ const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", selectedDate), 
   return () => {
     unsubscribeSupplementNightMorning();
 unsubscribeSupplementTomorrow();
+unsubscribeSupplementWeekend();
     unsubscribeSettings();
     unsubscribeUploads();
     unsubscribeSharedFiles();
   };
-}, [db, isDemoMode, currentUser, selectedDate]);
+}, [db, isDemoMode, currentUser, selectedDate, supplementWeekendDateKey]);
 
 const handleToggleHeatwaveCompany = async (
   companyName: string,
@@ -2830,6 +2912,333 @@ const handleDeleteSupplementTomorrowRow = async (rowId: string) => {
   );
 
   setSupplementMessage("삭제되었습니다.");
+};
+
+const handleSupplementWeekendDateChange = (dateKey: string) => {
+  if (!canAdminEditDabsItem) return;
+
+  setManualSupplementWeekendDate(dateKey);
+  setManualSupplementWeekendDateSavedToday(getTodayKey());
+};
+
+const handleResetSupplementWeekendDate = () => {
+  setManualSupplementWeekendDate("");
+  setManualSupplementWeekendDateSavedToday("");
+};
+
+const handleSaveSupplementWeekendNotice = async () => {
+  setSupplementMessage("");
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지는 마스터, 관리자만 저장할 수 있습니다.");
+    return;
+  }
+
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return;
+  }
+
+  await setDoc(
+    doc(db, "supplementWorks", supplementWeekendDateKey),
+    {
+      date: supplementWeekendDateKey,
+      weekendNoticeText: supplementWeekendNoticeText,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+
+  await writeActivityLog({
+    action: "수정",
+    page: "보충작업",
+    target: "주말 보충작업 공지",
+    detail: supplementWeekendNoticeText,
+  });
+
+  setSupplementMessage("공지가 저장되었습니다.");
+};
+
+const handleSupplementWeekendNoticeImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  setSupplementMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지 이미지는 마스터, 관리자만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `supplementWorks/${supplementWeekendDateKey}/weekend-notice-${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    setSupplementWeekendNoticeImage(fileUrl);
+
+    await setDoc(
+      doc(db, "supplementWorks", supplementWeekendDateKey),
+      {
+        date: supplementWeekendDateKey,
+        weekendNoticeImage: fileUrl,
+        weekendNoticeImageStoragePath: storagePath,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action: "수정",
+      page: "보충작업",
+      target: "주말 보충작업 공지 이미지",
+      detail: file.name,
+    });
+
+    setSupplementMessage("공지 이미지가 업로드되었습니다.");
+  } catch (error) {
+    console.log("SUPPLEMENT WEEKEND NOTICE IMAGE UPLOAD ERROR:", error);
+    setSupplementMessage("공지 이미지 업로드 중 오류가 발생했습니다.");
+  }
+
+  event.target.value = "";
+};
+
+const saveSupplementWeekendRows = async (
+  rows: typeof supplementWeekendRows,
+  action: string,
+  target: string,
+  detail: string
+) => {
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return;
+  }
+
+  setSupplementWeekendRows(rows);
+
+  await setDoc(
+    doc(db, "supplementWorks", supplementWeekendDateKey),
+    {
+      date: supplementWeekendDateKey,
+      weekendRows: rows,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+
+  await writeActivityLog({
+    action,
+    page: "보충작업",
+    target,
+    detail,
+  });
+};
+
+const handleAddSupplementWeekendRow = async () => {
+  setSupplementMessage("");
+
+  if (!currentUser) {
+    setSupplementMessage("로그인 후 입력할 수 있습니다.");
+    return;
+  }
+
+  if (
+    !supplementWeekendInput.location.trim() ||
+    !supplementWeekendInput.workerCount.trim() ||
+    !supplementWeekendInput.supervisorCount.trim() ||
+    !supplementWeekendInput.content.trim() ||
+    !supplementWeekendInput.safetyAction.trim()
+  ) {
+    setSupplementMessage("모든 입력값을 입력하세요.");
+    return;
+  }
+
+  const companyName = String(currentUser.companyName || "").trim();
+
+  const newRow = {
+    id: createLocalId("supplement-weekend"),
+    workType: "주말",
+    company: companyName,
+    location: supplementWeekendInput.location.trim(),
+    workerCount: supplementWeekendInput.workerCount.trim(),
+    supervisorCount: supplementWeekendInput.supervisorCount.trim(),
+    content: supplementWeekendInput.content.trim(),
+    safetyAction: supplementWeekendInput.safetyAction.trim(),
+    createdByUid: currentUser.uid,
+    createdByName: currentUser.name,
+  };
+
+  const nextRows = [...supplementWeekendRows, newRow];
+
+  await saveSupplementWeekendRows(
+    nextRows,
+    "입력",
+    companyName,
+    `주말 / ${newRow.location} / 작업인원 ${newRow.workerCount} / 관리감독자 ${newRow.supervisorCount} / ${newRow.content}`
+  );
+
+  setSupplementWeekendInput({
+    location: "",
+    workerCount: "",
+    supervisorCount: "",
+    content: "",
+    safetyAction: "",
+  });
+
+  setSupplementMessage("저장되었습니다.");
+};
+
+const handleUpdateSupplementWeekendRow = async () => {
+  setSupplementMessage("");
+
+  if (!canAdminEditDabsItem) {
+    setSupplementMessage("수정은 마스터, 관리자만 가능합니다.");
+    return;
+  }
+
+  if (
+    !editSupplementWeekendPopup.id ||
+    !editSupplementWeekendPopup.company.trim() ||
+    !editSupplementWeekendPopup.location.trim() ||
+    !editSupplementWeekendPopup.workerCount.trim() ||
+    !editSupplementWeekendPopup.supervisorCount.trim() ||
+    !editSupplementWeekendPopup.content.trim() ||
+    !editSupplementWeekendPopup.safetyAction.trim()
+  ) {
+    setSupplementMessage("모든 입력값을 입력하세요.");
+    return;
+  }
+
+  const targetRow = supplementWeekendRows.find(
+    (row) => row.id === editSupplementWeekendPopup.id
+  );
+
+  const nextRows = supplementWeekendRows.map((row) =>
+    row.id === editSupplementWeekendPopup.id
+      ? {
+          ...row,
+          workType: "주말",
+          company: editSupplementWeekendPopup.company.trim(),
+          location: editSupplementWeekendPopup.location.trim(),
+          workerCount: editSupplementWeekendPopup.workerCount.trim(),
+          supervisorCount: editSupplementWeekendPopup.supervisorCount.trim(),
+          content: editSupplementWeekendPopup.content.trim(),
+          safetyAction: editSupplementWeekendPopup.safetyAction.trim(),
+        }
+      : row
+  );
+
+  await saveSupplementWeekendRows(
+    nextRows,
+    "수정",
+    editSupplementWeekendPopup.company.trim(),
+    `${targetRow?.location || ""} → ${editSupplementWeekendPopup.location.trim()}`
+  );
+
+  setEditSupplementWeekendPopup({
+    open: false,
+    id: "",
+    company: "",
+    location: "",
+    workerCount: "",
+    supervisorCount: "",
+    content: "",
+    safetyAction: "",
+  });
+
+  setSupplementMessage("수정되었습니다.");
+};
+
+const handleDeleteSupplementWeekendRow = async (rowId: string) => {
+  setSupplementMessage("");
+
+  const targetRow = supplementWeekendRows.find((row) => row.id === rowId);
+
+  if (!canDeleteOwnItem(targetRow)) {
+    setSupplementMessage("본인이 입력한 항목 또는 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  const nextRows = supplementWeekendRows.filter((row) => row.id !== rowId);
+
+  await saveSupplementWeekendRows(
+    nextRows,
+    "삭제",
+    targetRow?.company || "",
+    `${targetRow?.workType || ""} / ${targetRow?.location || ""} / ${targetRow?.content || ""}`
+  );
+
+  setSupplementMessage("삭제되었습니다.");
+};
+
+const handleDownloadSupplementWeekendExcel = () => {
+  const headers = ["작업구분", "업체명", "작업위치", "작업인원", "관리감독자", "작업내용", "안전대책, 조치사항"];
+
+  const rows = supplementWeekendRows.map((row) => [
+    row.workType,
+    row.company,
+    row.location,
+    row.workerCount,
+    row.supervisorCount,
+    row.content,
+    row.safetyAction,
+  ]);
+
+  const html = `
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+      </head>
+      <body>
+        <table border="1">
+          <thead>
+            <tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                (row) =>
+                  `<tr>${row
+                    .map((cell) => `<td>${String(cell || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</td>`)
+                    .join("")}</tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `;
+
+  const blob = new Blob([html], {
+    type: "application/vnd.ms-excel;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `주말보충작업-${supplementWeekendDateKey}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 
   const menuItems = [
@@ -9052,108 +9461,97 @@ const renderSupplementWorkPage = () => (
   </div>
 )}
 
-{editSupplementTomorrowPopup.open && (
-      <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
-        <div className="w-full max-w-2xl rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
-          <div className="text-base font-semibold text-slate-900">
-            명일 보충작업 수정
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <select
-              value={editSupplementTomorrowPopup.workType}
-              onChange={(e) =>
-                setEditSupplementTomorrowPopup((prev) => ({ ...prev, workType: e.target.value }))
-              }
-              className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
-            >
-              <option value="조출">조출</option>
-              <option value="점심">점심</option>
-              <option value="야간">야간</option>
-            </select>
-
-            <Input
-              value={editSupplementTomorrowPopup.company}
-              onChange={(e) =>
-                setEditSupplementTomorrowPopup((prev) => ({ ...prev, company: e.target.value }))
-              }
-              placeholder="업체명"
-            />
-
-            <Input
-              value={editSupplementTomorrowPopup.location}
-              onChange={(e) =>
-                setEditSupplementTomorrowPopup((prev) => ({ ...prev, location: e.target.value }))
-              }
-              placeholder="작업위치"
-            />
-
-            <Input
-              type="number"
-              min="0"
-              value={editSupplementTomorrowPopup.workerCount}
-              onChange={(e) =>
-                setEditSupplementTomorrowPopup((prev) => ({ ...prev, workerCount: e.target.value }))
-              }
-              placeholder="작업인원"
-            />
-
-            <Input
-              type="number"
-              min="0"
-              value={editSupplementTomorrowPopup.supervisorCount}
-              onChange={(e) =>
-                setEditSupplementTomorrowPopup((prev) => ({ ...prev, supervisorCount: e.target.value }))
-              }
-              placeholder="관리감독자"
-            />
-
-            <Input
-              value={editSupplementTomorrowPopup.content}
-              onChange={(e) =>
-                setEditSupplementTomorrowPopup((prev) => ({ ...prev, content: e.target.value }))
-              }
-              placeholder="작업내용"
-            />
-
-            <Input
-              value={editSupplementTomorrowPopup.safetyAction}
-              onChange={(e) =>
-                setEditSupplementTomorrowPopup((prev) => ({ ...prev, safetyAction: e.target.value }))
-              }
-              placeholder="안전대책, 조치사항"
-              className="md:col-span-2"
-            />
-          </div>
-
-          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button
-              variant="outline"
-              className="w-full lg:w-auto"
-              onClick={() =>
-                setEditSupplementTomorrowPopup({
-                  open: false,
-                  id: "",
-                  workType: "조출",
-                  company: "",
-                  location: "",
-                  workerCount: "",
-                  supervisorCount: "",
-                  content: "",
-                  safetyAction: "",
-                })
-              }
-            >
-              취소
-            </Button>
-
-            <Button className="w-full lg:w-auto" onClick={handleUpdateSupplementTomorrowRow}>
-              저장
-            </Button>
-          </div>
-        </div>
+{editSupplementWeekendPopup.open && (
+  <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-2xl rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="text-base font-semibold text-slate-900">
+        주말 보충작업 수정
       </div>
-    )}
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <Input value="주말" disabled />
+
+        <Input
+          value={editSupplementWeekendPopup.company}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, company: e.target.value }))
+          }
+          placeholder="업체명"
+        />
+
+        <Input
+          value={editSupplementWeekendPopup.location}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, location: e.target.value }))
+          }
+          placeholder="작업위치"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={editSupplementWeekendPopup.workerCount}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, workerCount: e.target.value }))
+          }
+          placeholder="작업인원"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={editSupplementWeekendPopup.supervisorCount}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, supervisorCount: e.target.value }))
+          }
+          placeholder="관리감독자"
+        />
+
+        <Input
+          value={editSupplementWeekendPopup.content}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, content: e.target.value }))
+          }
+          placeholder="작업내용"
+        />
+
+        <Input
+          value={editSupplementWeekendPopup.safetyAction}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, safetyAction: e.target.value }))
+          }
+          placeholder="안전대책, 조치사항"
+          className="md:col-span-2"
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button
+          variant="outline"
+          className="w-full lg:w-auto"
+          onClick={() =>
+            setEditSupplementWeekendPopup({
+              open: false,
+              id: "",
+              company: "",
+              location: "",
+              workerCount: "",
+              supervisorCount: "",
+              content: "",
+              safetyAction: "",
+            })
+          }
+        >
+          취소
+        </Button>
+
+        <Button className="w-full lg:w-auto" onClick={handleUpdateSupplementWeekendRow}>
+          저장
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
 
     <Card>
       <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -9577,12 +9975,222 @@ const renderSupplementWorkPage = () => (
 )}
 
         {supplementTab === "weekend" && (
-          <Card className="border-slate-200 shadow-none">
-            <CardContent className="p-6 text-sm text-slate-500">
-              주말 보충작업 탭은 다음 단계에서 추가합니다.
-            </CardContent>
-          </Card>
-        )}
+  <Card className="border-slate-200 shadow-none">
+    <CardHeader>
+      <CardTitle className="text-base">주말 보충작업</CardTitle>
+    </CardHeader>
+
+    <CardContent className="space-y-5">
+      <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+        이 탭의 기준일: {formatMonthDay(supplementWeekendDateKey)}
+        {manualSupplementWeekendDate && manualSupplementWeekendDateSavedToday === getTodayKey()
+          ? " · 임시 변경 적용 중"
+          : " · 기본값은 이번 주 토요일"}
+      </div>
+
+      {canAdminEditDabsItem && (
+        <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_auto] md:items-center">
+          <Input
+            type="date"
+            value={supplementWeekendDateKey}
+            onChange={(e) => handleSupplementWeekendDateChange(e.target.value)}
+            className="h-9 bg-white"
+          />
+
+          <Button variant="outline" size="sm" onClick={handleResetSupplementWeekendDate}>
+            토요일 기본값으로 복귀
+          </Button>
+
+          <div className="text-[11px] text-slate-500 md:col-span-2">
+            이 날짜 변경은 주말 보충작업 탭에만 적용됩니다. 다음날 접속 시 자동으로 이번 주 토요일 기준으로 돌아갑니다.
+          </div>
+        </div>
+      )}
+
+      {canManageSupplementNotice && (
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-sm font-semibold text-slate-900">
+            관리자 공지 입력
+          </div>
+
+          <TextArea
+            value={supplementWeekendNoticeText}
+            onChange={(e) => setSupplementWeekendNoticeText(e.target.value)}
+            placeholder="주말 보충작업 공지 내용을 입력하세요."
+          />
+
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={handleSupplementWeekendNoticeImageUpload}
+            className="h-auto py-2"
+          />
+
+          <Button onClick={handleSaveSupplementWeekendNotice}>
+            공지 저장
+          </Button>
+        </div>
+      )}
+
+      {(supplementWeekendNoticeText || supplementWeekendNoticeImage) && (
+        <div className="space-y-3 rounded-2xl border border-black bg-white p-4">
+          <div className="text-sm font-semibold text-slate-900">
+            공지
+          </div>
+
+          {supplementWeekendNoticeText && (
+            <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+              {supplementWeekendNoticeText}
+            </div>
+          )}
+
+          {supplementWeekendNoticeImage && (
+            <img
+              src={supplementWeekendNoticeImage}
+              alt="주말 보충작업 공지 이미지"
+              className="max-h-80 rounded-2xl border border-slate-200 object-contain"
+            />
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-2 xl:grid-cols-[110px_1fr_100px_110px_1fr_1fr_auto_auto]">
+        <Input value="주말" disabled />
+
+        <Input
+          value={supplementWeekendInput.location}
+          onChange={(e) =>
+            setSupplementWeekendInput((prev) => ({ ...prev, location: e.target.value }))
+          }
+          placeholder="작업위치"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={supplementWeekendInput.workerCount}
+          onChange={(e) =>
+            setSupplementWeekendInput((prev) => ({ ...prev, workerCount: e.target.value }))
+          }
+          placeholder="작업인원"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={supplementWeekendInput.supervisorCount}
+          onChange={(e) =>
+            setSupplementWeekendInput((prev) => ({ ...prev, supervisorCount: e.target.value }))
+          }
+          placeholder="관리감독자"
+        />
+
+        <Input
+          value={supplementWeekendInput.content}
+          onChange={(e) =>
+            setSupplementWeekendInput((prev) => ({ ...prev, content: e.target.value }))
+          }
+          placeholder="작업내용"
+        />
+
+        <Input
+          value={supplementWeekendInput.safetyAction}
+          onChange={(e) =>
+            setSupplementWeekendInput((prev) => ({ ...prev, safetyAction: e.target.value }))
+          }
+          placeholder="안전대책, 조치사항"
+        />
+
+        <Button onClick={handleAddSupplementWeekendRow}>
+          입력
+        </Button>
+
+        <Button variant="outline" onClick={handleDownloadSupplementWeekendExcel}>
+          엑셀 다운로드
+        </Button>
+      </div>
+
+      {supplementMessage && (
+        <div className="text-sm text-slate-600">
+          {supplementMessage}
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-2xl border border-black">
+        <table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
+          <thead>
+            <tr className="bg-slate-100 text-slate-700">
+              <th className="w-[90px] border border-black px-2 py-2 text-left">작업구분</th>
+              <th className="w-[140px] border border-black px-2 py-2 text-left">업체명</th>
+              <th className="w-[150px] border border-black px-2 py-2 text-left">작업위치</th>
+              <th className="w-[90px] border border-black px-2 py-2 text-left">작업인원</th>
+              <th className="w-[100px] border border-black px-2 py-2 text-left">관리감독자</th>
+              <th className="border border-black px-2 py-2 text-left">작업내용</th>
+              <th className="border border-black px-2 py-2 text-left">안전대책, 조치사항</th>
+              <th className="w-[100px] border border-black px-2 py-2 text-left">관리</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {supplementWeekendRows.length === 0 ? (
+              <tr>
+                <td className="border border-black px-3 py-3 text-center text-slate-400" colSpan={8}>
+                  입력 없음
+                </td>
+              </tr>
+            ) : (
+              supplementWeekendRows.map((row) => (
+                <tr key={row.id}>
+                  <td className="border border-black px-2 py-2 align-top">{row.workType}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.company}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.location}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.workerCount}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.supervisorCount}</td>
+                  <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.content}</td>
+                  <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.safetyAction}</td>
+                  <td className="border border-black px-2 py-2 align-top">
+                    <div className="flex flex-wrap gap-1">
+                      {canAdminEditDabsItem && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditSupplementWeekendPopup({
+                              open: true,
+                              id: row.id,
+                              company: row.company || "",
+                              location: row.location || "",
+                              workerCount: row.workerCount || "",
+                              supervisorCount: row.supervisorCount || "",
+                              content: row.content || "",
+                              safetyAction: row.safetyAction || "",
+                            })
+                          }
+                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                        >
+                          수정
+                        </button>
+                      )}
+
+                      {canDeleteOwnItem(row) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSupplementWeekendRow(row.id)}
+                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </CardContent>
+  </Card>
+)}
       </CardContent>
     </Card>
   </div>
