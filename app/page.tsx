@@ -1074,6 +1074,25 @@ const [supplementNightText, setSupplementNightText] = useState("");
 const [supplementMorningText, setSupplementMorningText] = useState("");
 const [supplementMessage, setSupplementMessage] = useState("");
 
+const supplementNightMorningDateKey = getTodayKey();
+
+const [supplementNightMorningRows, setSupplementNightMorningRows] = useState<Array<{
+  id: string;
+  company: string;
+  nightText: string;
+  morningText: string;
+  createdByUid?: string;
+  createdByName?: string;
+}>>([]);
+
+const [editSupplementNightMorningPopup, setEditSupplementNightMorningPopup] = useState({
+  open: false,
+  id: "",
+  company: "",
+  nightText: "",
+  morningText: "",
+});
+
 const [supplementTomorrowNoticeText, setSupplementTomorrowNoticeText] = useState("");
 const [supplementTomorrowNoticeImage, setSupplementTomorrowNoticeImage] = useState("");
 const [supplementTomorrowRows, setSupplementTomorrowRows] = useState<Array<{
@@ -1549,30 +1568,45 @@ const approvedCompanyNames = useMemo(
 useEffect(() => {
   if (isDemoMode || !db || !currentUser) return;
 
-  const unsubscribeSupplement = onSnapshot(doc(db, "supplementWorks", selectedDate), (snap) => {
+  const unsubscribeSupplementNightMorning = onSnapshot(
+  doc(db, "supplementWorks", supplementNightMorningDateKey),
+  (snap) => {
     if (!snap.exists()) {
       setSupplementNoticeText("");
-setSupplementNoticeImage("");
-setSupplementNightText("");
-setSupplementMorningText("");
-
-setSupplementTomorrowNoticeText("");
-setSupplementTomorrowNoticeImage("");
-setSupplementTomorrowRows([]);
-return;
+      setSupplementNoticeImage("");
+      setSupplementNightText("");
+      setSupplementMorningText("");
+      setSupplementNightMorningRows([]);
+      return;
     }
 
     const data = snap.data();
 
     setSupplementNoticeText(String(data.noticeText || ""));
-setSupplementNoticeImage(String(data.noticeImage || ""));
-setSupplementNightText(String(data.nightText || ""));
-setSupplementMorningText(String(data.morningText || ""));
+    setSupplementNoticeImage(String(data.noticeImage || ""));
+    setSupplementNightText("");
+    setSupplementMorningText("");
+    setSupplementNightMorningRows(Array.isArray(data.nightMorningRows) ? data.nightMorningRows : []);
+  }
+);
 
-setSupplementTomorrowNoticeText(String(data.tomorrowNoticeText || ""));
-setSupplementTomorrowNoticeImage(String(data.tomorrowNoticeImage || ""));
-setSupplementTomorrowRows(Array.isArray(data.tomorrowRows) ? data.tomorrowRows : []);
-  });
+const unsubscribeSupplementTomorrow = onSnapshot(
+  doc(db, "supplementWorks", selectedDate),
+  (snap) => {
+    if (!snap.exists()) {
+      setSupplementTomorrowNoticeText("");
+      setSupplementTomorrowNoticeImage("");
+      setSupplementTomorrowRows([]);
+      return;
+    }
+
+    const data = snap.data();
+
+    setSupplementTomorrowNoticeText(String(data.tomorrowNoticeText || ""));
+    setSupplementTomorrowNoticeImage(String(data.tomorrowNoticeImage || ""));
+    setSupplementTomorrowRows(Array.isArray(data.tomorrowRows) ? data.tomorrowRows : []);
+  }
+);
 
   const unsubscribeSettings = onSnapshot(doc(db, "heatwaveSettings", "companies"), (snap) => {
   if (!snap.exists()) return;
@@ -1622,7 +1656,8 @@ const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", selectedDate), 
   }));
 });
   return () => {
-    unsubscribeSupplement();
+    unsubscribeSupplementNightMorning();
+unsubscribeSupplementTomorrow();
     unsubscribeSettings();
     unsubscribeUploads();
     unsubscribeSharedFiles();
@@ -2238,25 +2273,30 @@ setHeatwaveMessage(
 const canManageSupplementNotice = currentUser?.role === "master" || currentUser?.role === "admin";
 
 const getSupplementCopyText = () => {
-  return [supplementNightText.trim(), supplementMorningText.trim()]
+  return supplementNightMorningRows
+    .map((row) => [row.nightText.trim(), row.morningText.trim()].filter(Boolean).join("\n\n"))
     .filter(Boolean)
     .join("\n\n");
 };
 
-const handleSaveSupplementNightMorning = async () => {
-  setSupplementMessage("");
-
+const saveSupplementNightMorningRows = async (
+  rows: typeof supplementNightMorningRows,
+  action: string,
+  target: string,
+  detail: string
+) => {
   if (!db || !currentUser) {
     setSupplementMessage("Firebase 연결 오류");
     return;
   }
 
+  setSupplementNightMorningRows(rows);
+
   await setDoc(
-    doc(db, "supplementWorks", selectedDate),
+    doc(db, "supplementWorks", supplementNightMorningDateKey),
     {
-      date: selectedDate,
-      nightText: supplementNightText,
-      morningText: supplementMorningText,
+      date: supplementNightMorningDateKey,
+      nightMorningRows: rows,
       updatedAt: serverTimestamp(),
       updatedByUid: currentUser.uid || "",
       updatedByName: currentUser.name || "",
@@ -2265,13 +2305,175 @@ const handleSaveSupplementNightMorning = async () => {
   );
 
   await writeActivityLog({
-    action: "입력",
+    action,
     page: "보충작업",
-    target: "금일야간/명일조출",
-    detail: `${supplementNightText.length}자 / ${supplementMorningText.length}자`,
+    target,
+    detail,
+  });
+};
+
+const handleSaveSupplementNightMorning = async () => {
+  setSupplementMessage("");
+
+  if (!currentUser) {
+    setSupplementMessage("로그인 후 입력할 수 있습니다.");
+    return;
+  }
+
+  if (!supplementNightText.trim() && !supplementMorningText.trim()) {
+    setSupplementMessage("금일 야간 또는 명일 조출 내용을 입력하세요.");
+    return;
+  }
+
+  const companyName = String(currentUser.companyName || "").trim();
+
+  const newRow = {
+    id: createLocalId("supplement-night-morning"),
+    company: companyName,
+    nightText: supplementNightText.trim(),
+    morningText: supplementMorningText.trim(),
+    createdByUid: currentUser.uid,
+    createdByName: currentUser.name,
+  };
+
+  await saveSupplementNightMorningRows(
+    [...supplementNightMorningRows, newRow],
+    "입력",
+    companyName,
+    `금일야간 ${newRow.nightText.length}자 / 명일조출 ${newRow.morningText.length}자`
+  );
+
+  setSupplementNightText("");
+  setSupplementMorningText("");
+  setSupplementMessage("저장되었습니다.");
+};
+
+const handleUpdateSupplementNightMorningRow = async () => {
+  setSupplementMessage("");
+
+  if (!canAdminEditDabsItem) {
+    setSupplementMessage("수정은 마스터, 관리자만 가능합니다.");
+    return;
+  }
+
+  if (!editSupplementNightMorningPopup.id) return;
+
+  const targetRow = supplementNightMorningRows.find(
+    (row) => row.id === editSupplementNightMorningPopup.id
+  );
+
+  const nextRows = supplementNightMorningRows.map((row) =>
+    row.id === editSupplementNightMorningPopup.id
+      ? {
+          ...row,
+          company: editSupplementNightMorningPopup.company.trim(),
+          nightText: editSupplementNightMorningPopup.nightText.trim(),
+          morningText: editSupplementNightMorningPopup.morningText.trim(),
+        }
+      : row
+  );
+
+  await saveSupplementNightMorningRows(
+    nextRows,
+    "수정",
+    editSupplementNightMorningPopup.company.trim(),
+    `${targetRow?.company || ""} → ${editSupplementNightMorningPopup.company.trim()}`
+  );
+
+  setEditSupplementNightMorningPopup({
+    open: false,
+    id: "",
+    company: "",
+    nightText: "",
+    morningText: "",
   });
 
-  setSupplementMessage("저장되었습니다.");
+  setSupplementMessage("수정되었습니다.");
+};
+
+const handleDeleteSupplementNightMorningRow = async (rowId: string) => {
+  setSupplementMessage("");
+
+  const targetRow = supplementNightMorningRows.find((row) => row.id === rowId);
+
+  if (!canDeleteOwnItem(targetRow)) {
+    setSupplementMessage("본인이 입력한 항목 또는 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  await saveSupplementNightMorningRows(
+    supplementNightMorningRows.filter((row) => row.id !== rowId),
+    "삭제",
+    targetRow?.company || "",
+    `${targetRow?.nightText || ""} / ${targetRow?.morningText || ""}`
+  );
+
+  setSupplementMessage("삭제되었습니다.");
+};
+
+const handleCopySupplementNightMorning = async () => {
+  const copyText = getSupplementCopyText();
+
+  if (!copyText) {
+    setSupplementMessage("복사할 내용이 없습니다.");
+    return;
+  }
+
+  await navigator.clipboard.writeText(copyText);
+  setSupplementMessage("복사되었습니다.");
+};
+
+const handleDownloadSupplementTomorrowExcel = () => {
+  const headers = ["작업구분", "업체명", "작업위치", "작업인원", "관리감독자", "작업내용", "안전대책, 조치사항"];
+
+  const rows = supplementTomorrowRows.map((row) => [
+    row.workType,
+    row.company,
+    row.location,
+    row.workerCount,
+    row.supervisorCount,
+    row.content,
+    row.safetyAction,
+  ]);
+
+  const html = `
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+      </head>
+      <body>
+        <table border="1">
+          <thead>
+            <tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                (row) =>
+                  `<tr>${row
+                    .map((cell) => `<td>${String(cell || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</td>`)
+                    .join("")}</tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `;
+
+  const blob = new Blob([html], {
+    type: "application/vnd.ms-excel;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `명일보충작업-${selectedDate}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 
 const handleSaveSupplementNotice = async () => {
@@ -2288,9 +2490,9 @@ const handleSaveSupplementNotice = async () => {
   }
 
   await setDoc(
-    doc(db, "supplementWorks", selectedDate),
+    doc(db, "supplementWorks", supplementNightMorningDateKey),
     {
-      date: selectedDate,
+      date: supplementNightMorningDateKey,
       noticeText: supplementNoticeText,
       updatedAt: serverTimestamp(),
       updatedByUid: currentUser.uid || "",
@@ -2329,7 +2531,7 @@ const handleSupplementNoticeImageUpload = async (event: React.ChangeEvent<HTMLIn
 
   try {
     const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
-    const storagePath = `supplementWorks/${selectedDate}/notice-${Date.now()}-${safeFileName}`;
+    const storagePath = `supplementWorks/${supplementNightMorningDateKey}/notice-${Date.now()}-${safeFileName}`;
     const fileRef = storageRef(storage, storagePath);
 
     await uploadBytes(fileRef, file);
@@ -2338,9 +2540,9 @@ const handleSupplementNoticeImageUpload = async (event: React.ChangeEvent<HTMLIn
     setSupplementNoticeImage(fileUrl);
 
     await setDoc(
-      doc(db, "supplementWorks", selectedDate),
+      doc(db, "supplementWorks", supplementNightMorningDateKey),
       {
-        date: selectedDate,
+        date: supplementNightMorningDateKey,
         noticeImage: fileUrl,
         noticeImageStoragePath: storagePath,
         updatedAt: serverTimestamp(),
@@ -2364,18 +2566,6 @@ const handleSupplementNoticeImageUpload = async (event: React.ChangeEvent<HTMLIn
   }
 
   event.target.value = "";
-};
-
-const handleCopySupplementNightMorning = async () => {
-  const copyText = getSupplementCopyText();
-
-  if (!copyText) {
-    setSupplementMessage("복사할 내용이 없습니다.");
-    return;
-  }
-
-  await navigator.clipboard.writeText(copyText);
-    setSupplementMessage("복사되었습니다.");
 };
 
 const handleSaveSupplementTomorrowNotice = async () => {
@@ -8804,7 +8994,65 @@ const renderSupplementWorkPage = () => (
   <div className="space-y-4 sm:space-y-6">
     {renderTopBar()}
 
-    {editSupplementTomorrowPopup.open && (
+    {editSupplementNightMorningPopup.open && (
+  <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-2xl rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="text-base font-semibold text-slate-900">
+        금일야간/명일조출 수정
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <Input
+          value={editSupplementNightMorningPopup.company}
+          onChange={(e) =>
+            setEditSupplementNightMorningPopup((prev) => ({ ...prev, company: e.target.value }))
+          }
+          placeholder="업체명"
+        />
+
+        <TextArea
+          value={editSupplementNightMorningPopup.nightText}
+          onChange={(e) =>
+            setEditSupplementNightMorningPopup((prev) => ({ ...prev, nightText: e.target.value }))
+          }
+          placeholder="금일 야간"
+        />
+
+        <TextArea
+          value={editSupplementNightMorningPopup.morningText}
+          onChange={(e) =>
+            setEditSupplementNightMorningPopup((prev) => ({ ...prev, morningText: e.target.value }))
+          }
+          placeholder="명일 조출"
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button
+          variant="outline"
+          className="w-full lg:w-auto"
+          onClick={() =>
+            setEditSupplementNightMorningPopup({
+              open: false,
+              id: "",
+              company: "",
+              nightText: "",
+              morningText: "",
+            })
+          }
+        >
+          취소
+        </Button>
+
+        <Button className="w-full lg:w-auto" onClick={handleUpdateSupplementNightMorningRow}>
+          저장
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+
+{editSupplementTomorrowPopup.open && (
       <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
         <div className="w-full max-w-2xl rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
           <div className="text-base font-semibold text-slate-900">
@@ -8999,75 +9247,124 @@ const renderSupplementWorkPage = () => (
                 </div>
               )}
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-slate-600">
-                    금일 야간
-                  </label>
-                  <TextArea
-                    value={supplementNightText}
-                    onChange={(e) => setSupplementNightText(e.target.value)}
-                    placeholder="□ 금일 야간(05월 29 금) 총원 : 65명..."
-                    className="min-h-[260px]"
-                  />
-                </div>
+              <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+  이 탭은 선택 날짜와 관계없이 오늘 날짜({formatMonthDay(supplementNightMorningDateKey)}) 기준으로 저장됩니다.
+</div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-slate-600">
-                    명일 조출
-                  </label>
-                  <TextArea
-                    value={supplementMorningText}
-                    onChange={(e) => setSupplementMorningText(e.target.value)}
-                    placeholder="□ 명일 조출(05월 30일 토) 총원 : 120명..."
-                    className="min-h-[260px]"
-                  />
-                </div>
+<div className="grid gap-4 lg:grid-cols-2">
+  <div className="space-y-2">
+    <label className="text-xs font-medium text-slate-600">
+      금일 야간
+    </label>
+    <TextArea
+  value={supplementNightText}
+  onChange={(e) => setSupplementNightText(e.target.value)}
+  className="min-h-[260px]"
+/>
+  </div>
+
+  <div className="space-y-2">
+    <label className="text-xs font-medium text-slate-600">
+      명일 조출
+    </label>
+    <TextArea
+  value={supplementMorningText}
+  onChange={(e) => setSupplementMorningText(e.target.value)}
+  className="min-h-[260px]"
+/>
+  </div>
+</div>
+
+<div className="flex flex-wrap gap-2">
+  <Button onClick={handleSaveSupplementNightMorning}>
+    입력
+  </Button>
+
+  <Button variant="outline" onClick={handleCopySupplementNightMorning}>
+    표 내용 복사
+  </Button>
+</div>
+
+{supplementMessage && (
+  <div className="text-sm text-slate-600">
+    {supplementMessage}
+  </div>
+)}
+
+<div className="overflow-x-auto rounded-2xl border border-black">
+  <table className="w-full min-w-[900px] table-fixed border-collapse text-sm">
+    <thead>
+      <tr className="bg-slate-100 text-slate-700">
+        <th className="w-[150px] border border-black px-3 py-2 text-left">업체명</th>
+        <th className="border border-black px-3 py-2 text-left">금일 야간</th>
+        <th className="border border-black px-3 py-2 text-left">명일 조출</th>
+        <th className="w-[100px] border border-black px-3 py-2 text-left">관리</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {supplementNightMorningRows.length === 0 ? (
+        <tr>
+          <td className="border border-black px-3 py-3 text-center text-slate-400" colSpan={4}>
+            입력 없음
+          </td>
+        </tr>
+      ) : (
+        supplementNightMorningRows.map((row) => (
+          <tr key={row.id}>
+            <td className="border border-black px-3 py-2 align-top font-semibold">
+              {row.company}
+            </td>
+
+            <td className="border border-black px-3 py-2 align-top">
+              <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+                {row.nightText || "입력 없음"}
+              </pre>
+            </td>
+
+            <td className="border border-black px-3 py-2 align-top">
+              <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+                {row.morningText || "입력 없음"}
+              </pre>
+            </td>
+
+            <td className="border border-black px-3 py-2 align-top">
+              <div className="flex flex-wrap gap-1">
+                {canAdminEditDabsItem && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditSupplementNightMorningPopup({
+                        open: true,
+                        id: row.id,
+                        company: row.company || "",
+                        nightText: row.nightText || "",
+                        morningText: row.morningText || "",
+                      })
+                    }
+                    className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                  >
+                    수정
+                  </button>
+                )}
+
+                {canDeleteOwnItem(row) && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSupplementNightMorningRow(row.id)}
+                    className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                  >
+                    삭제
+                  </button>
+                )}
               </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={handleSaveSupplementNightMorning}>
-                  저장
-                </Button>
-
-                <Button variant="outline" onClick={handleCopySupplementNightMorning}>
-                  표 내용 복사
-                </Button>
-              </div>
-
-              {supplementMessage && (
-                <div className="text-sm text-slate-600">
-                  {supplementMessage}
-                </div>
-              )}
-
-              <div className="overflow-x-auto rounded-2xl border border-black">
-                <table className="w-full table-fixed border-collapse text-sm">
-                  <tbody>
-                    <tr>
-                      <th className="w-[180px] border border-black bg-slate-100 px-3 py-2 text-left align-top">
-                        금일 야간
-                      </th>
-                      <td className="border border-black px-3 py-2 align-top">
-                        <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
-                          {supplementNightText || "입력 없음"}
-                        </pre>
-                      </td>
-                    </tr>
-
-                    <tr>
-                      <th className="w-[180px] border border-black bg-slate-100 px-3 py-2 text-left align-top">
-                        명일 조출
-                      </th>
-                      <td className="border border-black px-3 py-2 align-top">
-                        <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
-                          {supplementMorningText || "입력 없음"}
-                        </pre>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+            </td>
+          </tr>
+        ))
+      )}
+    </tbody>
+  </table>
+</div>
             </CardContent>
           </Card>
         )}
@@ -9188,8 +9485,12 @@ const renderSupplementWorkPage = () => (
         />
 
         <Button onClick={handleAddSupplementTomorrowRow}>
-          입력
-        </Button>
+  입력
+</Button>
+
+<Button variant="outline" onClick={handleDownloadSupplementTomorrowExcel}>
+  엑셀 다운로드
+</Button>
       </div>
 
       {supplementMessage && (
