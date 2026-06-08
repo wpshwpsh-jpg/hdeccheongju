@@ -5900,7 +5900,7 @@ const posY = adjustedPosition?.y ?? marker.y;
 >
   <div
     className={cn(
-  "relative origin-center scale-100 rounded-lg border px-[4px] py-[2px] shadow-md backdrop-blur-[1px] lg:scale-[1.5] lg:rounded-2xl lg:px-2 lg:py-2",
+  "relative origin-center scale-100 rounded-lg border px-[4px] py-[2px] shadow-md backdrop-blur-[1px] lg:scale-[1.3] lg:rounded-2xl lg:px-2 lg:py-2",
   color.bg,
   color.text
 )}
@@ -5908,25 +5908,25 @@ const posY = adjustedPosition?.y ?? marker.y;
                   <div className={cn("flex flex-col items-center text-center", isHighRiskMarker
   ? "min-w-[100px] max-w-[140px] gap-0 lg:min-w-[170px] lg:max-w-[250px] lg:gap-1"
 : "min-w-[120px] max-w-[160px] gap-0 lg:min-w-[240px] lg:max-w-[340px] lg:gap-1")}>
-                    {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[15px] font-bold leading-none shadow-sm lg:text-[17px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm lg:p-1"><EquipmentIcon type={marker.equipmentType} className="h-6 w-6 lg:h-14 lg:w-14" /></span></> : null}
+                    {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[13px] font-bold leading-none shadow-sm lg:text-[15px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm lg:p-1"><EquipmentIcon type={marker.equipmentType} className="h-6 w-6 lg:h-12 lg:w-12" /></span></> : null}
                     {isHighRiskMarker ? (
   <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2">
     <div className={cn("text-[22px] font-bold leading-tight tracking-tight lg:text-[26px]", buildingColor)}>
       {marker.building || "동 미선택"}
     </div>
-    <div className="mt-1 text-[22px] font-bold leading-tight lg:text-[26px]">
+    <div className="mt-1 text-[19px] font-bold leading-tight lg:text-[22px]">
   {marker.company || "업체명 없음"}
 </div>
-    <div className="mt-1 break-words text-[22px] font-bold leading-tight lg:text-[26px]">
+    <div className="mt-1 break-words text-[19px] font-bold leading-tight lg:text-[22px]">
   {marker.note || "작업내용 없음"}
 </div>
   </div>
 ) : (
   <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2">
-    <div className="text-[22px] font-bold leading-tight lg:text-[26px]">
+    <div className="text-[19px] font-bold leading-tight lg:text-[22px]">
   {marker.company || "업체명 없음"}
 </div>
-    <div className="mt-1 break-words text-[22px] font-bold leading-tight lg:text-[26px]">
+    <div className="mt-1 break-words text-[19px] font-bold leading-tight lg:text-[22px]">
   {marker.note || "작업내용 없음"}
 </div>
   </div>
