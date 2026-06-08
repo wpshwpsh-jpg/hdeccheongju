@@ -849,7 +849,7 @@ function MobileListCard({ title, children, action }: { title: ReactNode; childre
   );
 }
 
-const TABLE_BASE_CLASS = "w-full table-fixed border-collapse text-[21px]";
+const TABLE_BASE_CLASS = "w-full table-fixed border-collapse text-[32px]";
 
 const dottedRow = (index: number) =>
   index > 0 ? "border-t border-dashed border-black pt-2" : "";
@@ -5900,35 +5900,35 @@ const posY = adjustedPosition?.y ?? marker.y;
 >
   <div
     className={cn(
-  "relative origin-center scale-[0.73] rounded-lg border px-[3px] py-[1px] shadow-md backdrop-blur-[1px] lg:scale-100 lg:rounded-2xl lg:px-1 lg:py-1",
+  "relative origin-center scale-100 rounded-lg border px-[4px] py-[2px] shadow-md backdrop-blur-[1px] lg:scale-[1.5] lg:rounded-2xl lg:px-2 lg:py-2",
   color.bg,
   color.text
 )}
   >
                   <div className={cn("flex flex-col items-center text-center", isHighRiskMarker
-  ? "min-w-[69px] max-w-[96px] gap-0 lg:min-w-[139px] lg:max-w-[187px] lg:gap-1"
-: "min-w-[85px] max-w-[112px] gap-0 lg:min-w-[200px] lg:max-w-[253px] lg:gap-1")}>
-                    {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold leading-none shadow-sm lg:text-[11px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm lg:p-1"><EquipmentIcon type={marker.equipmentType} className="h-4 w-4 lg:h-10 lg:w-10" /></span></> : null}
+  ? "min-w-[100px] max-w-[140px] gap-0 lg:min-w-[170px] lg:max-w-[250px] lg:gap-1"
+: "min-w-[120px] max-w-[160px] gap-0 lg:min-w-[240px] lg:max-w-[340px] lg:gap-1")}>
+                    {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[15px] font-bold leading-none shadow-sm lg:text-[17px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm lg:p-1"><EquipmentIcon type={marker.equipmentType} className="h-6 w-6 lg:h-14 lg:w-14" /></span></> : null}
                     {isHighRiskMarker ? (
   <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2">
-    <div className={cn("text-[15px] font-bold leading-tight tracking-tight lg:text-[17px]", buildingColor)}>
+    <div className={cn("text-[22px] font-bold leading-tight tracking-tight lg:text-[26px]", buildingColor)}>
       {marker.building || "동 미선택"}
     </div>
-    <div className="mt-1 text-[15px] font-bold leading-tight lg:text-[17px]">
-      {marker.company || "업체명 없음"}
-    </div>
-    <div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[17px]">
-      {marker.note || "작업내용 없음"}
-    </div>
+    <div className="mt-1 text-[22px] font-bold leading-tight lg:text-[26px]">
+  {marker.company || "업체명 없음"}
+</div>
+    <div className="mt-1 break-words text-[22px] font-bold leading-tight lg:text-[26px]">
+  {marker.note || "작업내용 없음"}
+</div>
   </div>
 ) : (
   <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2">
-    <div className="text-[15px] font-bold leading-tight lg:text-[17px]">
-      {marker.company || "업체명 없음"}
-    </div>
-    <div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[17px]">
-      {marker.note || "작업내용 없음"}
-    </div>
+    <div className="text-[22px] font-bold leading-tight lg:text-[26px]">
+  {marker.company || "업체명 없음"}
+</div>
+    <div className="mt-1 break-words text-[22px] font-bold leading-tight lg:text-[26px]">
+  {marker.note || "작업내용 없음"}
+</div>
   </div>
 )}
                   </div>
@@ -7368,9 +7368,9 @@ return (
       
     >
       <colgroup>
-  <col style={{ width: "9%" }} />
-  <col style={{ width: "18%" }} />
-  <col />
+  <col style={{ width: "13%" }} />
+  <col style={{ width: "27%" }} />
+  <col style={{ width: "60%" }} />
 </colgroup>
 
       <thead>
@@ -8217,7 +8217,7 @@ const renderPortfolioPage = () => {
 <div className="min-h-0 flex-1 bg-white text-slate-900">
         {slide.type === "overlay" && (
   <div className="flex h-full w-full items-center justify-center overflow-hidden bg-white p-4">
-    <div className="h-full w-full origin-center scale-90">
+    <div className="h-full w-full origin-center scale-100">
       {renderOverlayImage(
         slide.key === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow,
         true,
