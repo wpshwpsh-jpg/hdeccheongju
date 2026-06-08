@@ -7852,14 +7852,14 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[], title: s
 
   return (
     <div className="flex h-full w-full items-center justify-center overflow-hidden p-1">
-  <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[17px] xl:text-[18px]">
+  <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[26px] xl:text-[27px]">
   <caption className="caption-top pb-1 text-left font-bold text-slate-900">
     {title}
   </caption>
         <colgroup>
-  <col style={{ width: "9%" }} />
-  <col style={{ width: "11%" }} />
-  <col />
+  <col style={{ width: "13%" }} />
+  <col style={{ width: "27%" }} />
+  <col style={{ width: "60%" }} />
 </colgroup>
 
         <thead>
@@ -7951,7 +7951,7 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
 
   return (
     <div className="flex h-full w-full items-start justify-center overflow-auto p-6">
-      <table className="w-[88vw] table-fixed border-collapse bg-white text-[20px]">
+      <table className="w-[88vw] table-fixed border-collapse bg-white text-[30px]">
   <caption className="caption-top pb-1 text-left font-bold text-slate-900">
     {title}
   </caption>
@@ -8055,7 +8055,7 @@ const renderPortfolioSoloWorkerTable = (
 
   return (
     <div className="flex h-full w-full items-center justify-center overflow-hidden p-1">
-      <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[17px] xl:text-[18px]">
+      <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[26px] xl:text-[27px]">
         <caption className="caption-top pb-1 text-left font-bold text-slate-900">
           {title}
         </caption>
