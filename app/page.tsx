@@ -2393,29 +2393,37 @@ const saveSupplementNightMorningRows = async (
 ) => {
   if (!db || !currentUser) {
     setSupplementMessage("Firebase 연결 오류");
-    return;
+    return false;
   }
 
-  setSupplementNightMorningRows(rows);
+  try {
+    setSupplementNightMorningRows(rows);
 
-  await setDoc(
-    doc(db, "supplementWorks", supplementNightMorningDateKey),
-    {
-      date: supplementNightMorningDateKey,
-      nightMorningRows: rows,
-      updatedAt: serverTimestamp(),
-      updatedByUid: currentUser.uid || "",
-      updatedByName: currentUser.name || "",
-    },
-    { merge: true }
-  );
+    await setDoc(
+      doc(db, "supplementWorks", supplementNightMorningDateKey),
+      {
+        date: supplementNightMorningDateKey,
+        nightMorningRows: rows,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
 
-  await writeActivityLog({
-    action,
-    page: "보충작업",
-    target,
-    detail,
-  });
+    await writeActivityLog({
+      action,
+      page: "보충작업",
+      target,
+      detail,
+    });
+
+    return true;
+  } catch (error) {
+    console.log("SUPPLEMENT NIGHT MORNING SAVE ERROR:", error);
+    setSupplementMessage("저장 권한 또는 네트워크 오류로 저장되지 않았습니다.");
+    return false;
+  }
 };
 
 const handleSaveSupplementNightMorning = async () => {
@@ -2442,12 +2450,14 @@ const handleSaveSupplementNightMorning = async () => {
     createdByName: currentUser.name,
   };
 
-  await saveSupplementNightMorningRows(
+  const saved = await saveSupplementNightMorningRows(
     [...supplementNightMorningRows, newRow],
     "입력",
     companyName,
     `금일야간 ${newRow.nightText.length}자 / 명일조출 ${newRow.morningText.length}자`
   );
+
+  if (!saved) return;
 
   setSupplementNightText("");
   setSupplementMorningText("");
@@ -2774,29 +2784,37 @@ const saveSupplementTomorrowRows = async (
 ) => {
   if (!db || !currentUser) {
     setSupplementMessage("Firebase 연결 오류");
-    return;
+    return false;
   }
 
-  setSupplementTomorrowRows(rows);
+  try {
+    setSupplementTomorrowRows(rows);
 
-  await setDoc(
-    doc(db, "supplementWorks", selectedDate),
-    {
-      date: selectedDate,
-      tomorrowRows: rows,
-      updatedAt: serverTimestamp(),
-      updatedByUid: currentUser.uid || "",
-      updatedByName: currentUser.name || "",
-    },
-    { merge: true }
-  );
+    await setDoc(
+      doc(db, "supplementWorks", selectedDate),
+      {
+        date: selectedDate,
+        tomorrowRows: rows,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
 
-  await writeActivityLog({
-    action,
-    page: "보충작업",
-    target,
-    detail,
-  });
+    await writeActivityLog({
+      action,
+      page: "보충작업",
+      target,
+      detail,
+    });
+
+    return true;
+  } catch (error) {
+    console.log("SUPPLEMENT TOMORROW SAVE ERROR:", error);
+    setSupplementMessage("저장 권한 또는 네트워크 오류로 저장되지 않았습니다.");
+    return false;
+  }
 };
 
 const handleAddSupplementTomorrowRow = async () => {
@@ -2835,12 +2853,14 @@ const handleAddSupplementTomorrowRow = async () => {
 
   const nextRows = [...supplementTomorrowRows, newRow];
 
-  await saveSupplementTomorrowRows(
+  const saved = await saveSupplementTomorrowRows(
     nextRows,
     "입력",
     companyName,
     `${newRow.workType} / ${newRow.location} / 작업인원 ${newRow.workerCount} / 관리감독자 ${newRow.supervisorCount} / ${newRow.content}`
   );
+
+  if (!saved) return;
 
   setSupplementTomorrowInput({
     workType: "조출",
@@ -3050,29 +3070,37 @@ const saveSupplementWeekendRows = async (
 ) => {
   if (!db || !currentUser) {
     setSupplementMessage("Firebase 연결 오류");
-    return;
+    return false;
   }
 
-  setSupplementWeekendRows(rows);
+  try {
+    setSupplementWeekendRows(rows);
 
-  await setDoc(
-    doc(db, "supplementWorks", supplementWeekendDateKey),
-    {
-      date: supplementWeekendDateKey,
-      weekendRows: rows,
-      updatedAt: serverTimestamp(),
-      updatedByUid: currentUser.uid || "",
-      updatedByName: currentUser.name || "",
-    },
-    { merge: true }
-  );
+    await setDoc(
+      doc(db, "supplementWorks", supplementWeekendDateKey),
+      {
+        date: supplementWeekendDateKey,
+        weekendRows: rows,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
 
-  await writeActivityLog({
-    action,
-    page: "보충작업",
-    target,
-    detail,
-  });
+    await writeActivityLog({
+      action,
+      page: "보충작업",
+      target,
+      detail,
+    });
+
+    return true;
+  } catch (error) {
+    console.log("SUPPLEMENT WEEKEND SAVE ERROR:", error);
+    setSupplementMessage("저장 권한 또는 네트워크 오류로 저장되지 않았습니다.");
+    return false;
+  }
 };
 
 const handleAddSupplementWeekendRow = async () => {
@@ -3111,12 +3139,14 @@ const handleAddSupplementWeekendRow = async () => {
 
   const nextRows = [...supplementWeekendRows, newRow];
 
-  await saveSupplementWeekendRows(
+  const saved = await saveSupplementWeekendRows(
     nextRows,
     "입력",
     companyName,
     `주말 / ${newRow.location} / 작업인원 ${newRow.workerCount} / 관리감독자 ${newRow.supervisorCount} / ${newRow.content}`
   );
+
+  if (!saved) return;
 
   setSupplementWeekendInput({
     location: "",
