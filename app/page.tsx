@@ -3445,11 +3445,6 @@ const soloCompanyColorList = useMemo(
   [soloRows]
 );
 
-const heatSensitiveCompanyColorList = useMemo(
-  () => getUniqueCompaniesFromRows(heatSensitiveRows),
-  [heatSensitiveRows]
-);
-
 useEffect(() => {
   if (portfolioSlideIndex >= portfolioSlides.length) {
     setPortfolioSlideIndex(0);
