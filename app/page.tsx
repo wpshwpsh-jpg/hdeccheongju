@@ -8639,19 +8639,13 @@ const checked = imageChecked || excelChecked;
 </td>
 
   <td className="border border-black px-3 py-2 font-semibold">
-    <div>
-      {(!heatwaveImageSelectedCompanies.includes(companyName) ||
-  (status.thermoPhotoCount >= 4 && status.thermoLedgerCount >= 1)) &&
-(!heatwaveExcelSelectedCompanies.includes(companyName) ||
-  status.breakTimeLedgerCount >= 1)
-  ? "완료"
-  : "미완료"}
-    </div>
-
-    <div className="mt-2">
-      {renderHeatwaveUploadFileList(companyName)}
-    </div>
-  </td>
+  {(!heatwaveImageSelectedCompanies.includes(companyName) ||
+    (status.thermoPhotoCount >= 4 && status.thermoLedgerCount >= 1)) &&
+  (!heatwaveExcelSelectedCompanies.includes(companyName) ||
+    status.breakTimeLedgerCount >= 1)
+    ? "완료"
+    : "미완료"}
+</td>
 </tr>
                           );
                         })}
