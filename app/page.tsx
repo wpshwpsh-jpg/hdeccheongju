@@ -1075,7 +1075,6 @@ const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
 } | null>(null);
   const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
 const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "", elderly: "유질환자" });
-const [heatwaveTab, setHeatwaveTab] = useState<"upload" | "heatSensitive">("upload");
 
 const [supplementTab, setSupplementTab] = useState<"nightMorning" | "tomorrow" | "weekend">("nightMorning");
 const [supplementNoticeText, setSupplementNoticeText] = useState("");
@@ -8272,22 +8271,7 @@ const myComplete =
       (myStatus?.thermoLedgerCount || 0) >= 1)) &&
   (!myExcelTarget || (myStatus?.breakTimeLedgerCount || 0) >= 1);
 
-  const heatSensitiveList = getSoloWorkerRowsByCompany(
-    heatSensitiveRows,
-    heatSensitiveCompanyFilter
-  );
-
-  const heatSensitiveGrouped = heatSensitiveList.reduce(
-    (acc, item) => {
-      const key = item.company || "-";
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(item);
-      return acc;
-    },
-    {} as Record<string, Array<DabsRowItem & { building: string }>>
-  );
-
-  return (
+    return (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
 {renderEditPopups()}
@@ -8424,36 +8408,8 @@ const myComplete =
         </CardHeader>
 
         <CardContent className="space-y-5">
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setHeatwaveTab("upload")}
-              className={cn(
-                "rounded-2xl px-4 py-2 text-sm font-medium transition",
-                heatwaveTab === "upload"
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              )}
-            >
-              혹서기 업로드
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setHeatwaveTab("heatSensitive")}
-              className={cn(
-                "rounded-2xl px-4 py-2 text-sm font-medium transition",
-                heatwaveTab === "heatSensitive"
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              )}
-            >
-              온열질환 민감군
-            </button>
-          </div>
-
-          {heatwaveTab === "upload" && (
-            <>
+          
+        
               <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
                 선택 날짜: {formatMonthDay(selectedDate)} · 온습도계 사진 4개, 온습도계 관리대장 1개, 휴게시간 관리대장 1개 업로드
               </div>
@@ -8562,10 +8518,6 @@ const myComplete =
                         const imageChecked = heatwaveImageSelectedCompanies.includes(companyName);
 const excelChecked = heatwaveExcelSelectedCompanies.includes(companyName);
 const checked = imageChecked || excelChecked;
-const status = getHeatwaveCompanyStatus(companyName);
-const thermoPhotoDone = status.thermoPhotoCount >= 4;
-const thermoLedgerDone = status.thermoLedgerCount >= 1;
-const breakTimeDone = status.breakTimeLedgerCount >= 1;
 
                         return (
                           <label
@@ -8600,42 +8552,7 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
 </label>
                             </span>
 
-                            {checked && (
-  <div className="flex shrink-0 flex-wrap gap-2 text-xs font-semibold">
-    <span
-      className={cn(
-        "rounded px-2 py-1",
-        thermoPhotoDone
-          ? "bg-green-100 text-green-700"
-          : "bg-red-50 text-red-700"
-      )}
-    >
-      온습도계 사진 {Math.min(status.thermoPhotoCount, 4)}/4
-    </span>
-
-    <span
-      className={cn(
-        "rounded px-2 py-1",
-        thermoLedgerDone
-          ? "bg-green-100 text-green-700"
-          : "bg-red-50 text-red-700"
-      )}
-    >
-      온습도계 관리대장 {Math.min(status.thermoLedgerCount, 1)}/1
-    </span>
-
-    <span
-      className={cn(
-        "rounded px-2 py-1",
-        breakTimeDone
-          ? "bg-green-100 text-green-700"
-          : "bg-red-50 text-red-700"
-      )}
-    >
-      휴게시간 관리대장 {Math.min(status.breakTimeLedgerCount, 1)}/1
-    </span>
-  </div>
-)}
+                            
                           </label>
                         );
                       })}
@@ -8743,10 +8660,9 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
                   </div>
                 </CardContent>
               </Card>
-            </>
-          )}
+                        </>
 
-          {heatwaveTab === "heatSensitive" && (
+          {false && (
             <Card className="border-slate-200 shadow-none">
               <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <CardTitle className="text-base">온열질환 민감군</CardTitle>
