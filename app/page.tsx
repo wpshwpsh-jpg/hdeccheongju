@@ -8714,6 +8714,8 @@ const checked = imageChecked || excelChecked;
     placeholder="작업 내용 입력"
   />
 
+                  </div>
+
                   <Button onClick={handleAddHeatSensitive} disabled={!canEditDabs} className="w-full xl:w-auto">
                     추가
                   </Button>
