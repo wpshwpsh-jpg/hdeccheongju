@@ -1074,7 +1074,7 @@ const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   createdByName?: string;
 } | null>(null);
   const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
-const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "", elderly: "유질환자" });
+const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "" });
 
 const [supplementTab, setSupplementTab] = useState<"nightMorning" | "tomorrow" | "weekend">("nightMorning");
 const [supplementNoticeText, setSupplementNoticeText] = useState("");
@@ -1200,7 +1200,6 @@ const [editHeatSensitivePopup, setEditHeatSensitivePopup] = useState({
   company: "",
   name: "",
   content: "",
-  elderly: "유질환자",
 });
 
 const [editMaterialPopup, setEditMaterialPopup] = useState({
@@ -4900,7 +4899,6 @@ const handleAddHeatSensitive = async () => {
         company: companyName,
         name: heatSensitiveInput.name.trim(),
         content: heatSensitiveInput.content.trim(),
-        elderly: heatSensitiveInput.elderly,
         createdByUid: currentUser?.uid,
         createdByName: currentUser?.name,
       },
@@ -4923,10 +4921,10 @@ const handleAddHeatSensitive = async () => {
     action: "입력",
     page: "온열민감자",
     target: companyName,
-    detail: `${heatSensitiveInput.building} / ${heatSensitiveInput.name.trim()} / ${heatSensitiveInput.content.trim()} / ${heatSensitiveInput.elderly}`,
+    detail: `${heatSensitiveInput.building} / ${heatSensitiveInput.name.trim()} / ${heatSensitiveInput.content.trim()}`,
   });
 
-  setHeatSensitiveInput({ building: "", company: "", name: "", content: "", elderly: "유질환자" });
+  setHeatSensitiveInput({ building: "", company: "", name: "", content: "" });
 };
 
 const handleUpdateHeatSensitive = async () => {
@@ -4961,7 +4959,7 @@ const handleUpdateHeatSensitive = async () => {
       company: editHeatSensitivePopup.company.trim(),
       name: editHeatSensitivePopup.name.trim(),
       content: editHeatSensitivePopup.content.trim(),
-      elderly: editHeatSensitivePopup.elderly,
+      
     },
   ];
 
@@ -4981,7 +4979,7 @@ const handleUpdateHeatSensitive = async () => {
     action: "수정",
     page: "온열민감자",
     target: editHeatSensitivePopup.company.trim(),
-    detail: `${editHeatSensitivePopup.oldBuilding} / ${targetItem.name || ""} / ${targetItem.content || ""} / ${targetItem.elderly || ""} → ${editHeatSensitivePopup.building} / ${editHeatSensitivePopup.name.trim()} / ${editHeatSensitivePopup.content.trim()} / ${editHeatSensitivePopup.elderly}`,
+    detail: `${editHeatSensitivePopup.oldBuilding} / ${targetItem.name || ""} / ${targetItem.content || ""} → ${editHeatSensitivePopup.building} / ${editHeatSensitivePopup.name.trim()} / ${editHeatSensitivePopup.content.trim()}`,
   });
 
   setEditHeatSensitivePopup({
@@ -5031,7 +5029,7 @@ const handleDeleteHeatSensitive = async (itemId: string, building: string) => {
     action: "삭제",
     page: "온열민감자",
     target: targetItem?.company || "",
-    detail: `${building} / ${targetItem?.name || ""} / ${targetItem?.content || ""} / ${targetItem?.elderly || ""}`,
+    detail: `${building} / ${targetItem?.name || ""} / ${targetItem?.content || ""}`,
   });
 };
 
@@ -8651,17 +8649,17 @@ const checked = imageChecked || excelChecked;
               </Card>
                         </>
 
-          {false && (
+          {true && (
             <Card className="border-slate-200 shadow-none">
               <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <CardTitle className="text-base">온열질환 민감군</CardTitle>
+                <CardTitle className="text-base">고령자 관리</CardTitle>
 
                 <Button
                   variant="outline"
                   onClick={() =>
                     handleDownloadCaptureImage(
                       heatSensitiveCaptureRef,
-                      `온열질환민감군-${selectedDate}`
+                      `고령자관리-${selectedDate}`
                     )
                   }
                 >
@@ -8674,7 +8672,7 @@ const checked = imageChecked || excelChecked;
                   선택 날짜: {formatMonthDay(selectedDate)}
                 </div>
 
-                <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
+                <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_auto]">
                   <select
                     value={heatSensitiveInput.building}
                     onChange={(e) =>
@@ -8717,35 +8715,6 @@ const checked = imageChecked || excelChecked;
     placeholder="작업 내용 입력"
   />
 
-  <div className="ml-auto w-1/2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-  <div className="font-semibold text-amber-900">민감군 작성 기준</div>
-
-  <div className="mt-1">
-    <span className="font-semibold">건설업신규자</span>
-    {" : "}
-    2주내 건설현장 근무이력 X
-  </div>
-
-  <div>
-    <span className="font-semibold">유질환자</span>
-    {" : "}
-    고혈압 등 개인지병 유질환자, 특정(정신질환)약물 복용자, 과거 온열질환 병력자
-  </div>
-</div>
-</div>
-
-<select
-  value={heatSensitiveInput.elderly}
-                    onChange={(e) =>
-                      setHeatSensitiveInput({ ...heatSensitiveInput, elderly: e.target.value })
-                    }
-                    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
-                  >
-                    <option value="유질환자">유질환자</option>
-<option value="고령자">고령자</option>
-<option value="건설업신규자">건설업신규자</option>
-                  </select>
-
                   <Button onClick={handleAddHeatSensitive} disabled={!canEditDabs} className="w-full xl:w-auto">
                     추가
                   </Button>
@@ -8762,7 +8731,7 @@ const checked = imageChecked || excelChecked;
                     />
                   </div>
                   <div className="text-xs text-slate-500">
-                    민감군 o는 강조 표시되며, 업체별 색상이 자동 적용됩니다.
+                    업체별 색상이 자동 적용됩니다.
                   </div>
                 </div>
 
@@ -8772,7 +8741,7 @@ const checked = imageChecked || excelChecked;
                   <div className="space-y-3 lg:hidden">
                     {heatSensitiveList.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
-                        조건에 맞는 온열질환 민감군이 없습니다.
+                        조건에 맞는 고령자 관리이 없습니다.
                       </div>
                     ) : (
                       heatSensitiveList.map((item) => {
@@ -8842,19 +8811,7 @@ const checked = imageChecked || excelChecked;
                                 <span className="text-slate-900">{item.content}</span>
                               </div>
 
-                              <div>
-                                <span className="mr-2 font-medium text-slate-500">민감군</span>
-                                <span
-                                  className={cn(
-                                    "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
-                                    item.elderly
-  ? "bg-amber-100 text-amber-700"
-  : "bg-slate-100 text-slate-600"
-                                  )}
-                                >
-                                  {item.elderly}
-                                </span>
-                              </div>
+                              
                             </div>
                           </div>
                         );
@@ -8870,14 +8827,14 @@ const checked = imageChecked || excelChecked;
                           <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
                           <th className="border border-black px-3 py-2 text-left w-[16%]">성명</th>
                           <th className="border border-black px-3 py-2 text-left">작업 내용</th>
-                          <th className="border border-black px-3 py-2 text-left w-[10%]">민감군</th>
+                          
                         </tr>
                       </thead>
 
                       <tbody>
                         {heatSensitiveList.length === 0 ? (
                           <tr>
-                            <td className="border border-black px-3 py-2 text-center text-slate-300" colSpan={5}>
+                            <td className="border border-black px-3 py-2 text-center text-slate-300" colSpan={4}>
                               입력 없음
                             </td>
                           </tr>
@@ -8885,10 +8842,7 @@ const checked = imageChecked || excelChecked;
                           Object.entries(heatSensitiveGrouped).map(([company, list]) =>
                             list.map((item, index) => {
                               const color = getCompanyColorByList(company, heatSensitiveCompanyColorList);
-                              const sensitiveHighlight =
-  item.elderly
-    ? "bg-amber-50 text-amber-700 font-semibold"
-    : "text-slate-600";
+                              
 
                               return (
                                 <tr key={`${item.building}-${item.id}`}>
@@ -8958,9 +8912,7 @@ const checked = imageChecked || excelChecked;
                                     </div>
                                   </td>
 
-                                  <td className={cn("border border-black px-3 py-2 align-top", sensitiveHighlight)}>
-                                    {item.elderly}
-                                  </td>
+                                  
                                 </tr>
                               );
                             })
