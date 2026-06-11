@@ -8646,10 +8646,9 @@ const checked = imageChecked || excelChecked;
                     </table>
                   </div>
                 </CardContent>
-              </Card>
-                        </>
+                            </Card>
 
-          {true && (
+          {heatwaveTab === "heatSensitive" && (
             <Card className="border-slate-200 shadow-none">
               <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <CardTitle className="text-base">고령자 관리</CardTitle>
