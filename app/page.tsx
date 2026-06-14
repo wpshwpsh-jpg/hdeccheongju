@@ -8565,6 +8565,33 @@ const myComplete =
                 </CardContent>
               </Card>
 
+                                {isHeatwaveAdmin && (
+                  <Card className="border-slate-200 shadow-none">
+                    <CardHeader>
+                      <CardTitle className="text-base">전체 업체 업로드 파일</CardTitle>
+                    </CardHeader>
+
+                    <CardContent className="space-y-3">
+                      <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+                        조회 날짜: {formatMonthDay(heatwaveViewDateKey)}
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {Array.from(new Set([...heatwaveImageSelectedCompanies, ...heatwaveExcelSelectedCompanies]))
+                          .sort((a, b) => a.localeCompare(b, "ko"))
+                          .map((companyName) => (
+                            <div key={companyName} className="rounded-2xl border border-slate-200 bg-white p-4">
+                              <div className="mb-3 text-sm font-semibold text-slate-900">
+                                {companyName}
+                              </div>
+                              {renderHeatwaveUploadFileList(companyName)}
+                            </div>
+                          ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {canManageHeatwaveCompanies && (
   <Card className="border-slate-200 shadow-none">
     <CardHeader>
