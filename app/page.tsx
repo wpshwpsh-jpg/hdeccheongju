@@ -8569,7 +8569,7 @@ const checked = imageChecked || excelChecked;
                   onClick={() =>
                     handleDownloadCaptureImage(
                       heatSensitiveCaptureRef,
-                      `고령자관리-${heatwaveDateKey}`
+                      `고령자관리-${selectedDate}`
                     )
                   }
                 >
@@ -8579,7 +8579,7 @@ const checked = imageChecked || excelChecked;
 
               <CardContent className="space-y-4">
                 <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-                  선택 날짜: {formatMonthDay(heatwaveDateKey)}
+                  선택 날짜: {formatMonthDay(selectedDate)}
                 </div>
 
                 <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_auto]">
