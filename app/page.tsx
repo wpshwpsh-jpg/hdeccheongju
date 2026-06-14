@@ -8835,10 +8835,7 @@ const checked = imageChecked || excelChecked;
               </CardContent>
             </Card>
           )}
-                </CardContent>
-      </Card>
-
-      <div className="bg-white">
+                      <div className="bg-white">
         {renderBottomCalendar()}
       </div>
     </div>
