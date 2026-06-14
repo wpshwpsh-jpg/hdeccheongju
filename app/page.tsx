@@ -8555,10 +8555,6 @@ const checked = imageChecked || excelChecked;
 </Card>
 )}
 
-              <Card className="border-slate-200 shadow-none">
-                <CardHeader>
-                  
-
           {heatwaveTab === "heatSensitive" && (
             <Card className="border-slate-200 shadow-none">
               <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
