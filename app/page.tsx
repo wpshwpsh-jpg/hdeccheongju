@@ -3446,6 +3446,27 @@ const soloCompanyColorList = useMemo(
   [soloRows]
 );
 
+const heatSensitiveList = useMemo(
+  () => getSoloWorkerRowsByCompany(heatSensitiveRows, heatSensitiveCompanyFilter),
+  [heatSensitiveRows, heatSensitiveCompanyFilter]
+);
+
+const heatSensitiveGrouped = useMemo(
+  () =>
+    heatSensitiveList.reduce<Record<string, typeof heatSensitiveList>>((acc, item) => {
+      const key = item.company || "-";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    }, {}),
+  [heatSensitiveList]
+);
+
+const heatSensitiveCompanyColorList = useMemo(
+  () => getUniqueCompaniesFromRows(heatSensitiveRows),
+  [heatSensitiveRows]
+);
+
 useEffect(() => {
   if (portfolioSlideIndex >= portfolioSlides.length) {
     setPortfolioSlideIndex(0);
