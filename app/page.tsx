@@ -952,9 +952,11 @@ const [heatwaveExcelSelectedCompanies, setHeatwaveExcelSelectedCompanies] = useS
 const [heatwaveUploads, setHeatwaveUploads] = useState<Record<string, HeatwaveDateValue>>({});
 const [heatwaveMessage, setHeatwaveMessage] = useState("");
 const [heatwaveStatusPopupOpen, setHeatwaveStatusPopupOpen] = useState(false);
+const [heatwaveActiveTab, setHeatwaveActiveTab] = useState<"upload" | "sensitive">("upload");
 const [heatwaveSharedFiles, setHeatwaveSharedFiles] = useState<Record<string, HeatwaveSharedDateValue>>({});
   const [selectedDate, setSelectedDate] = useState(() => getDefaultSelectedDateKey());
 const heatwaveDateKey = getTodayKey();
+const [heatwaveViewDateKey, setHeatwaveViewDateKey] = useState(() => getTodayKey());
 const [manualSelectedDate, setManualSelectedDate] = useState("");
 const [manualSelectedDateSavedToday, setManualSelectedDateSavedToday] = useState("");
   const [selectedTime, setSelectedTime] = useState("09:00");
@@ -1730,15 +1732,24 @@ const unsubscribeSupplementWeekend = onSnapshot(
   setHeatwaveExcelSelectedCompanies(excelCompanies);
 });
 
-const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", heatwaveDateKey), (snap) => {
-  if (!snap.exists()) return;
+const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", heatwaveViewDateKey), (snap) => {
+  if (!snap.exists()) {
+    setHeatwaveUploads((prev) => ({
+      ...prev,
+      [heatwaveViewDateKey]: {
+        date: heatwaveViewDateKey,
+        uploads: {},
+      },
+    }));
+    return;
+  }
 
   const data = snap.data() as HeatwaveDateValue;
 
   setHeatwaveUploads((prev) => ({
     ...prev,
-    [heatwaveDateKey]: {
-      date: heatwaveDateKey,
+    [heatwaveViewDateKey]: {
+      date: heatwaveViewDateKey,
       uploads: data.uploads || {},
     },
   }));
@@ -1768,7 +1779,7 @@ unsubscribeSupplementWeekend();
     unsubscribeUploads();
     unsubscribeSharedFiles();
   };
-}, [db, isDemoMode, currentUser, heatwaveDateKey, selectedDate, supplementWeekendDateKey]);
+}, [db, isDemoMode, currentUser, heatwaveDateKey, heatwaveViewDateKey, selectedDate, supplementWeekendDateKey]);
 
 const handleToggleHeatwaveCompany = async (
   companyName: string,
@@ -1806,11 +1817,11 @@ updatedByName: currentUser.name || "",
     { merge: true }
   );
 };
-const getHeatwaveCompanyUploads = (companyName: string) =>
-  heatwaveUploads[heatwaveDateKey]?.uploads?.[companyName] || [];
+const getHeatwaveCompanyUploads = (companyName: string, dateKey = heatwaveViewDateKey) =>
+  heatwaveUploads[dateKey]?.uploads?.[companyName] || [];
 
-const getHeatwaveCompanyStatus = (companyName: string) => {
-  const uploads = getHeatwaveCompanyUploads(companyName);
+const getHeatwaveCompanyStatus = (companyName: string, dateKey = heatwaveViewDateKey) => {
+  const uploads = getHeatwaveCompanyUploads(companyName, dateKey);
 
   const thermoPhotoCount = uploads.filter(
     (item) => item.fileType === "thermoPhoto" || item.fileType === "image"
@@ -1907,7 +1918,7 @@ const handleHeatwaveUpload = async (
     return;
   }
 
-  const currentUploads = getHeatwaveCompanyUploads(companyName);
+  const currentUploads = getHeatwaveCompanyUploads(companyName, heatwaveDateKey);
 
   const thermoPhotoCount = currentUploads.filter(
     (item) => item.fileType === "thermoPhoto" || item.fileType === "image"
@@ -2053,7 +2064,7 @@ const handleDeleteHeatwaveUpload = async (companyName: string, uploadId: string)
     return;
   }
 
-  const currentUploads = getHeatwaveCompanyUploads(companyName);
+  const currentUploads = getHeatwaveCompanyUploads(companyName, heatwaveViewDateKey);
   const targetFile = currentUploads.find((item) => item.id === uploadId);
 
   if (!targetFile) {
@@ -2075,23 +2086,23 @@ const handleDeleteHeatwaveUpload = async (companyName: string, uploadId: string)
       }
     }
 
-    const nextUploads = {
-      ...(heatwaveUploads[heatwaveDateKey]?.uploads || {}),
+        const nextUploads = {
+      ...(heatwaveUploads[heatwaveViewDateKey]?.uploads || {}),
       [companyName]: currentUploads.filter((item) => item.id !== uploadId),
     };
 
     setHeatwaveUploads((prev) => ({
       ...prev,
-      [heatwaveDateKey]: {
-        date: heatwaveDateKey,
+      [heatwaveViewDateKey]: {
+        date: heatwaveViewDateKey,
         uploads: nextUploads,
       },
     }));
 
     await setDoc(
-      doc(db, "heatwaveUploads", heatwaveDateKey),
+      doc(db, "heatwaveUploads", heatwaveViewDateKey),
       {
-        date: heatwaveDateKey,
+        date: heatwaveViewDateKey,
         uploads: nextUploads,
         updatedAt: serverTimestamp(),
       },
@@ -3299,7 +3310,7 @@ const handleDownloadSupplementWeekendExcel = () => {
   { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
   { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
   { key: "soloWorker", title: "단독작업자", description: "단독작업자 관리 페이지로 이동", icon: Users },
-  { key: "heatwave", title: "혹서기", description: "혹서기 온습도계·휴게시간 관리대장 업로드 현황 관리", icon: CalendarDays },
+{ key: "heatwave", title: "혹서기", description: "혹서기 온습도계·휴게시간 관리대장 업로드 현황 관리", icon: CalendarDays },
 { key: "supplementWork", title: "보충작업", description: "금일야간/명일조출, 명일·주말 보충작업 관리", icon: CalendarDays },
   ...(canManageApprovals
     ? [{ key: "approval", title: "회원 승인 관리", description: "가입 신청 승인/반려 관리", icon: UserPlus }]
@@ -8277,7 +8288,7 @@ const renderPortfolioPage = () => {
 };
 const renderHeatwavePage = () => {
   const myCompanyName = String(currentUser?.companyName || "").trim();
-  const myStatus = myCompanyName ? getHeatwaveCompanyStatus(myCompanyName) : null;
+  const myStatus = myCompanyName ? getHeatwaveCompanyStatus(myCompanyName, heatwaveDateKey) : null;
 const myImageTarget = myCompanyName ? heatwaveImageSelectedCompanies.includes(myCompanyName) : false;
 const myExcelTarget = myCompanyName ? heatwaveExcelSelectedCompanies.includes(myCompanyName) : false;
 const myComplete =
@@ -8300,7 +8311,7 @@ const myComplete =
             혹서기 업로드 현황
           </div>
           <div className="mt-1 text-xs text-slate-500">
-            기준일: {formatMonthDay(heatwaveDateKey)}
+            조회 기준일: {formatMonthDay(heatwaveViewDateKey)}
           </div>
         </div>
 
@@ -8422,11 +8433,44 @@ const myComplete =
 </div>
         </CardHeader>
 
-        <CardContent className="space-y-5">
-          
-        
+                <CardContent className="space-y-5">
+          <div className="flex flex-wrap gap-2">
+            {[
+              { key: "upload", label: "혹서기 업로드" },
+              { key: "sensitive", label: "고령자 관리" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setHeatwaveActiveTab(tab.key as typeof heatwaveActiveTab)}
+                className={cn(
+                  "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                  heatwaveActiveTab === tab.key
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {heatwaveActiveTab === "upload" && (
+            <>
               <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-                선택 날짜: {formatMonthDay(heatwaveDateKey)} · 온습도계 사진 4개, 온습도계 관리대장 1개, 휴게시간 관리대장 1개 업로드
+                조회 날짜: {formatMonthDay(heatwaveViewDateKey)} · 오늘 업로드 기준일: {formatMonthDay(heatwaveDateKey)} · 온습도계 사진 4개, 온습도계 관리대장 1개, 휴게시간 관리대장 1개 업로드
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="mb-2 text-xs font-semibold text-slate-600">
+                  혹서기 업로드 조회 날짜
+                </div>
+                <Input
+                  type="date"
+                  value={heatwaveViewDateKey}
+                  onChange={(e) => setHeatwaveViewDateKey(e.target.value || getTodayKey())}
+                  className="max-w-xs"
+                />
               </div>
 
               <Card className="border-slate-200 shadow-none">
@@ -8576,7 +8620,11 @@ const checked = imageChecked || excelChecked;
 </Card>
 )}
 
-          <Card className="border-slate-200 shadow-none">
+                    </>
+          )}
+
+          {heatwaveActiveTab === "sensitive" && (
+            <Card className="border-slate-200 shadow-none">
               <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <CardTitle className="text-base">고령자 관리</CardTitle>
 
@@ -8848,8 +8896,9 @@ const checked = imageChecked || excelChecked;
                     </table>
                   </div>
                 </div>
-              </CardContent>
+                            </CardContent>
             </Card>
+          )}
         </CardContent>
       </Card>
 
