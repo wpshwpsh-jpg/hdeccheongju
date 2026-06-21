@@ -1757,6 +1757,8 @@ const handleHeatwaveDeleteAll = async () => {
 
   setHeatwaveDeleteAllLoading(false);
 };
+
+useEffect(() => {
   if (isDemoMode || !db || !currentUser) {
     setActivityLogs([]);
     return;
@@ -1767,7 +1769,7 @@ const handleHeatwaveDeleteAll = async () => {
     return;
   }
 
-  // 일주일치 전부 표시: limit 제거, 최대 2000건 (실제로는 일주일치 모두)
+  // 일주일치 전부 표시: limit 2000건 + 7일 필터
   const logsQuery = query(
     collection(db, "activityLogs"),
     orderBy("createdAt", "desc"),
