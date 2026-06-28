@@ -33,6 +33,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -957,6 +958,11 @@ const [heatwaveUploads, setHeatwaveUploads] = useState<Record<string, HeatwaveDa
 const [heatwaveMessage, setHeatwaveMessage] = useState("");
 const [heatwaveStatusPopupOpen, setHeatwaveStatusPopupOpen] = useState(false);
 const [heatwaveActiveTab, setHeatwaveActiveTab] = useState<"upload" | "sensitive">("upload");
+const [heatwaveDownloadStartDate, setHeatwaveDownloadStartDate] = useState(() => getTodayKey());
+const [heatwaveDownloadEndDate, setHeatwaveDownloadEndDate] = useState(() => getTodayKey());
+const [heatwaveDownloadTypes, setHeatwaveDownloadTypes] = useState({ thermoPhoto: true, thermoLedger: true, breakTimeLedger: true });
+const [heatwaveDownloadLoading, setHeatwaveDownloadLoading] = useState(false);
+const [heatwaveDeleteAllLoading, setHeatwaveDeleteAllLoading] = useState(false);
 const [heatwaveSharedFiles, setHeatwaveSharedFiles] = useState<Record<string, HeatwaveSharedDateValue>>({});
   const [selectedDate, setSelectedDate] = useState(() => getDefaultSelectedDateKey());
 const heatwaveDateKey = getTodayKey();
@@ -1083,7 +1089,7 @@ const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
 const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "" });
 
-const [supplementTab, setSupplementTab] = useState<"nightMorning" | "tomorrow" | "weekend">("nightMorning");
+const [supplementTab, setSupplementTab] = useState<"nightMorning" | "tomorrow">("nightMorning");
 const [supplementNoticeText, setSupplementNoticeText] = useState("");
 const [supplementNoticeImage, setSupplementNoticeImage] = useState("");
 const [supplementNightText, setSupplementNightText] = useState("");
@@ -1594,7 +1600,89 @@ const writeActivityLog = async ({
     createdAt: serverTimestamp(),
   });
 };  
-  
+
+// 혹서기 기간별 다운로드 (마스터/관리자)
+const handleHeatwaveDownload = async () => {
+  const isAdmin = currentUser?.role === "master" || currentUser?.role === "admin";
+  if (!isAdmin || !db) { setHeatwaveMessage("마스터 또는 관리자만 다운로드할 수 있습니다."); return; }
+  if (!heatwaveDownloadTypes.thermoPhoto && !heatwaveDownloadTypes.thermoLedger && !heatwaveDownloadTypes.breakTimeLedger) { setHeatwaveMessage("다운로드할 파일 종류를 하나 이상 선택하세요."); return; }
+  if (!heatwaveDownloadStartDate || !heatwaveDownloadEndDate) { setHeatwaveMessage("다운로드 기간을 설정해주세요."); return; }
+  if (heatwaveDownloadStartDate > heatwaveDownloadEndDate) { setHeatwaveMessage("시작 날짜가 종료 날짜보다 클 수 없습니다."); return; }
+  setHeatwaveDownloadLoading(true);
+  setHeatwaveMessage("");
+  try {
+    const dates: string[] = [];
+    const start = new Date(heatwaveDownloadStartDate);
+    const end = new Date(heatwaveDownloadEndDate);
+    const cur = new Date(start);
+    while (cur <= end) { dates.push(formatDateKey(cur)); cur.setDate(cur.getDate() + 1); }
+    const allFiles: Array<{ url: string; name: string; type: string; date: string; company: string }> = [];
+    for (const dateKey of dates) {
+      const snap = await getDoc(doc(db, "heatwaveUploads", dateKey));
+      if (!snap.exists()) continue;
+      const data = snap.data() as HeatwaveDateValue;
+      const uploads = data.uploads || {};
+      for (const [companyName, fileList] of Object.entries(uploads)) {
+        for (const file of (fileList as HeatwaveUploadItem[])) {
+          const isThermo = file.fileType === "thermoPhoto" || file.fileType === "image";
+          const isLedger = file.fileType === "thermoLedger";
+          const isBreak = file.fileType === "breakTimeLedger" || file.fileType === "excel";
+          if (isThermo && heatwaveDownloadTypes.thermoPhoto) allFiles.push({ url: file.fileUrl, name: file.fileName, type: "온습도계사진", date: dateKey, company: companyName });
+          else if (isLedger && heatwaveDownloadTypes.thermoLedger) allFiles.push({ url: file.fileUrl, name: file.fileName, type: "온습도계관리대장", date: dateKey, company: companyName });
+          else if (isBreak && heatwaveDownloadTypes.breakTimeLedger) allFiles.push({ url: file.fileUrl, name: file.fileName, type: "휴게시간관리대장", date: dateKey, company: companyName });
+        }
+      }
+    }
+    if (allFiles.length === 0) { setHeatwaveMessage("선택한 기간/종류에 해당하는 파일이 없습니다."); setHeatwaveDownloadLoading(false); return; }
+    for (const file of allFiles) {
+      try {
+        const response = await fetch(file.url);
+        const blob = await response.blob();
+        const safeName = `${file.date}_${file.company}_${file.type}_${file.name}`.replace(/[\\/:*?"<>|]/g, "_");
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url; link.download = safeName;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      } catch { console.log("파일 다운로드 실패:", file.name); }
+    }
+    setHeatwaveMessage(`${allFiles.length}개 파일 다운로드를 시작했습니다.`);
+    await writeActivityLog({ action: "다운로드", page: "혹서기", target: "기간별 파일 다운로드", detail: `${heatwaveDownloadStartDate} ~ ${heatwaveDownloadEndDate} / ${allFiles.length}건` });
+  } catch (error) { console.log("HEATWAVE DOWNLOAD ERROR:", error); setHeatwaveMessage("다운로드 중 오류가 발생했습니다."); }
+  setHeatwaveDownloadLoading(false);
+};
+
+// 혹서기 전체 파일 일괄 삭제 (마스터만)
+const handleHeatwaveDeleteAll = async () => {
+  if (currentUser?.role !== "master" || !db || !storage) { setHeatwaveMessage("마스터만 전체 삭제를 할 수 있습니다."); return; }
+  const confirmed = window.confirm("모든 혹서기 업로드 파일을 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?");
+  if (!confirmed) return;
+  setHeatwaveDeleteAllLoading(true);
+  setHeatwaveMessage("");
+  try {
+    const snapshot = await getDocs(collection(db, "heatwaveUploads"));
+    let deletedCount = 0;
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data() as HeatwaveDateValue;
+      const uploads = data.uploads || {};
+      for (const fileList of Object.values(uploads)) {
+        for (const file of (fileList as HeatwaveUploadItem[])) {
+          if (file.storagePath) {
+            try { await deleteObject(storageRef(storage, file.storagePath)); } catch { console.log("스토리지 파일 삭제 실패:", file.storagePath); }
+          }
+          deletedCount++;
+        }
+      }
+      await deleteDoc(docSnap.ref);
+    }
+    setHeatwaveUploads({});
+    await writeActivityLog({ action: "일괄삭제", page: "혹서기", target: "전체 업로드 파일", detail: `총 ${deletedCount}개 파일 전체 삭제` });
+    setHeatwaveMessage(`혹서기 업로드 파일 ${deletedCount}개가 모두 삭제되었습니다.`);
+  } catch (error) { console.log("HEATWAVE DELETE ALL ERROR:", error); setHeatwaveMessage("전체 삭제 중 오류가 발생했습니다."); }
+  setHeatwaveDeleteAllLoading(false);
+};
+
 useEffect(() => {
   if (isDemoMode || !db || !currentUser) {
     setActivityLogs([]);
@@ -1609,15 +1697,28 @@ useEffect(() => {
   const logsQuery = query(
     collection(db, "activityLogs"),
     orderBy("createdAt", "desc"),
-    limit(200)
+    limit(2000)
   );
 
   const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    oneWeekAgo.setHours(0, 0, 0, 0);
+
     setActivityLogs(
-      snapshot.docs.map((item) => ({
-        id: item.id,
-        ...(item.data() as Omit<ActivityLogItem, "id">),
-      }))
+      snapshot.docs
+        .map((item) => ({
+          id: item.id,
+          ...(item.data() as Omit<ActivityLogItem, "id">),
+        }))
+        .filter((log) => {
+          if (!log.createdAt) return true;
+          const date =
+            typeof log.createdAt?.toDate === "function"
+              ? log.createdAt.toDate()
+              : new Date(log.createdAt);
+          return date >= oneWeekAgo;
+        })
     );
   });
 
@@ -8595,6 +8696,64 @@ const myComplete =
                 />
               </div>
 
+              {/* 마스터/관리자 전용: 기간별 다운로드 */}
+              {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+                <Card className="border-slate-200 shadow-none">
+                  <CardHeader>
+                    <CardTitle className="text-base">기간별 파일 다운로드 (관리자·마스터)</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">시작 날짜</label>
+                        <Input type="date" value={heatwaveDownloadStartDate} onChange={(e) => setHeatwaveDownloadStartDate(e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">종료 날짜</label>
+                        <Input type="date" value={heatwaveDownloadEndDate} onChange={(e) => setHeatwaveDownloadEndDate(e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-slate-600">파일 종류 선택</div>
+                      <div className="flex flex-wrap gap-4">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={heatwaveDownloadTypes.thermoPhoto} onChange={(e) => setHeatwaveDownloadTypes((prev) => ({ ...prev, thermoPhoto: e.target.checked }))} className="h-4 w-4" />
+                          온습도계 사진
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={heatwaveDownloadTypes.thermoLedger} onChange={(e) => setHeatwaveDownloadTypes((prev) => ({ ...prev, thermoLedger: e.target.checked }))} className="h-4 w-4" />
+                          온습도계 관리대장
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={heatwaveDownloadTypes.breakTimeLedger} onChange={(e) => setHeatwaveDownloadTypes((prev) => ({ ...prev, breakTimeLedger: e.target.checked }))} className="h-4 w-4" />
+                          휴게시간 관리대장
+                        </label>
+                      </div>
+                    </div>
+                    <Button onClick={handleHeatwaveDownload} disabled={heatwaveDownloadLoading} className="w-full md:w-auto">
+                      {heatwaveDownloadLoading ? "다운로드 중..." : "선택 파일 다운로드"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 마스터 전용: 전체 파일 일괄 삭제 */}
+              {currentUser?.role === "master" && (
+                <Card className="border-red-200 shadow-none">
+                  <CardHeader>
+                    <CardTitle className="text-base text-red-700">전체 파일 일괄 삭제 (마스터 전용)</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="rounded-2xl bg-red-50 p-3 text-xs text-red-700">
+                      업로드된 모든 혹서기 파일을 Firebase Storage에서도 완전히 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+                    </div>
+                    <Button variant="outline" onClick={handleHeatwaveDeleteAll} disabled={heatwaveDeleteAllLoading} className="border-red-300 text-red-700 hover:bg-red-50 w-full md:w-auto">
+                      {heatwaveDeleteAllLoading ? "삭제 중..." : "전체 파일 일괄 삭제"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
               <Card className="border-slate-200 shadow-none">
                 <CardHeader>
                   <CardTitle className="text-base">내 업체 업로드</CardTitle>
@@ -9051,9 +9210,26 @@ const checked = imageChecked || excelChecked;
         </CardContent>
       </Card>
 
-      <div className="bg-white">
-        {renderBottomCalendar()}
-      </div>
+      <Card className="border-slate-200 shadow-none">
+        <CardHeader>
+          <CardTitle className="text-base">하단 달력</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between mb-3">
+            <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="text-sm font-semibold">{monthLabel}</div>
+            <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="grid grid-cols-7 gap-1 text-xs">
+            {weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}
+            {monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
@@ -9604,7 +9780,6 @@ const renderSupplementWorkPage = () => (
           {[
             { key: "nightMorning", label: "금일야간/명일조출" },
             { key: "tomorrow", label: "명일 보충작업" },
-            { key: "weekend", label: "주말 보충작업" },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -9870,6 +10045,7 @@ const renderSupplementWorkPage = () => (
           <option value="조출">조출</option>
           <option value="점심">점심</option>
           <option value="야간">야간</option>
+          <option value="주말">주말</option>
         </select>
 
         <Input
@@ -10008,223 +10184,86 @@ const renderSupplementWorkPage = () => (
   </Card>
 )}
 
-        {supplementTab === "weekend" && (
-  <Card className="border-slate-200 shadow-none">
-    <CardHeader>
-      <CardTitle className="text-base">주말 보충작업</CardTitle>
-    </CardHeader>
-
-    <CardContent className="space-y-5">
-      <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-        이 탭의 기준일: {formatMonthDay(supplementWeekendDateKey)}
-        {manualSupplementWeekendDate && manualSupplementWeekendDateSavedToday === getTodayKey()
-  ? " · 주말 보충작업 탭 임시 날짜 적용 중"
-  : ` · 선택 날짜(${formatMonthDay(selectedDate)})가 속한 주의 토요일`}
-      </div>
-
-      {canAdminEditDabsItem && (
-        <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_auto] md:items-center">
-          <Input
-            type="date"
-            value={supplementWeekendDateKey}
-            onChange={(e) => handleSupplementWeekendDateChange(e.target.value)}
-            className="h-9 bg-white"
-          />
-
-          <Button variant="outline" size="sm" onClick={handleResetSupplementWeekendDate}>
-            토요일 기본값으로 복귀
-          </Button>
-
-          <div className="text-[11px] text-slate-500 md:col-span-2">
-            이 날짜 변경은 주말 보충작업 탭에만 적용됩니다. 다음날 접속 시 자동으로 이번 주 토요일 기준으로 돌아갑니다.
-          </div>
-        </div>
-      )}
-
-      {canManageSupplementNotice && (
-        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <div className="text-sm font-semibold text-slate-900">
-            관리자 공지 입력
-          </div>
-
-          <TextArea
-            value={supplementWeekendNoticeText}
-            onChange={(e) => setSupplementWeekendNoticeText(e.target.value)}
-            placeholder="주말 보충작업 공지 내용을 입력하세요."
-          />
-
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={handleSupplementWeekendNoticeImageUpload}
-            className="h-auto py-2"
-          />
-
-          <Button onClick={handleSaveSupplementWeekendNotice}>
-            공지 저장
-          </Button>
-        </div>
-      )}
-
-      {(supplementWeekendNoticeText || supplementWeekendNoticeImage) && (
-        <div className="space-y-3 rounded-2xl border border-black bg-white p-4">
-          <div className="text-sm font-semibold text-slate-900">
-            공지
-          </div>
-
-          {supplementWeekendNoticeText && (
-            <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
-              {supplementWeekendNoticeText}
+        {/* 불러오기 기능 */}
+        <Card className="border-slate-200 shadow-none">
+          <CardContent className="p-4 space-y-3">
+            <div className="text-sm font-semibold text-slate-900">이전 날짜 데이터 불러오기</div>
+            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-600">불러올 날짜 선택</label>
+                <Input
+                  type="date"
+                  value={loadSourceDate}
+                  onChange={(e) => setLoadSourceDate(e.target.value)}
+                  className="h-9 bg-white"
+                />
+              </div>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  if (!currentUser?.companyName) return;
+                  if (!loadSourceDate || loadSourceDate === selectedDate) {
+                    setSupplementMessage("불러올 날짜를 확인하세요.");
+                    return;
+                  }
+                  if (!db) {
+                    setSupplementMessage("Firebase 연결이 없습니다.");
+                    return;
+                  }
+                  try {
+                    const sourceSnap = await getDoc(doc(db, "supplementWorks", loadSourceDate));
+                    if (!sourceSnap.exists()) {
+                      setSupplementMessage("해당 날짜의 데이터가 없습니다.");
+                      return;
+                    }
+                    const sourceData = sourceSnap.data();
+                    const companyName = String(currentUser.companyName || "").trim();
+                    if (supplementTab === "nightMorning") {
+                      const rows = Array.isArray(sourceData.nightMorningRows) ? sourceData.nightMorningRows : [];
+                      const myRows = rows.filter((r: any) => r.company === companyName);
+                      if (myRows.length === 0) { setSupplementMessage("해당 날짜에 내 업체 데이터가 없습니다."); return; }
+                      const nextRows = [...supplementNightMorningRows, ...myRows.map((r: any) => ({ ...r, id: createLocalId("supplement-night-morning"), createdByUid: currentUser.uid, createdByName: currentUser.name }))];
+                      await saveSupplementNightMorningRows(nextRows, "불러오기", companyName, `${formatMonthDay(loadSourceDate)} 금일야간/명일조출 불러오기`);
+                    } else {
+                      const rows = Array.isArray(sourceData.tomorrowRows) ? sourceData.tomorrowRows : [];
+                      const myRows = rows.filter((r: any) => r.company === companyName);
+                      if (myRows.length === 0) { setSupplementMessage("해당 날짜에 내 업체 데이터가 없습니다."); return; }
+                      const nextRows = [...supplementTomorrowRows, ...myRows.map((r: any) => ({ ...r, id: createLocalId("supplement-tomorrow"), createdByUid: currentUser.uid, createdByName: currentUser.name }))];
+                      await saveSupplementTomorrowRows(nextRows, "불러오기", companyName, `${formatMonthDay(loadSourceDate)} 명일보충작업 불러오기`);
+                    }
+                    setSupplementMessage(`${formatMonthDay(loadSourceDate)} 데이터를 불러왔습니다.`);
+                  } catch {
+                    setSupplementMessage("데이터 불러오기 중 오류가 발생했습니다.");
+                  }
+                }}
+              >
+                내 업체 데이터 불러오기
+              </Button>
             </div>
-          )}
+          </CardContent>
+        </Card>
 
-          {supplementWeekendNoticeImage && (
-            <img
-              src={supplementWeekendNoticeImage}
-              alt="주말 보충작업 공지 이미지"
-              className="max-h-80 rounded-2xl border border-slate-200 object-contain"
-            />
-          )}
-        </div>
-      )}
-
-      <div className="grid gap-2 xl:grid-cols-[110px_1fr_100px_110px_1fr_1fr_auto_auto]">
-        <Input value="주말" disabled />
-
-        <Input
-          value={supplementWeekendInput.location}
-          onChange={(e) =>
-            setSupplementWeekendInput((prev) => ({ ...prev, location: e.target.value }))
-          }
-          placeholder="작업위치"
-        />
-
-        <Input
-          type="number"
-          min="0"
-          value={supplementWeekendInput.workerCount}
-          onChange={(e) =>
-            setSupplementWeekendInput((prev) => ({ ...prev, workerCount: e.target.value }))
-          }
-          placeholder="작업인원"
-        />
-
-        <Input
-          type="number"
-          min="0"
-          value={supplementWeekendInput.supervisorCount}
-          onChange={(e) =>
-            setSupplementWeekendInput((prev) => ({ ...prev, supervisorCount: e.target.value }))
-          }
-          placeholder="관리감독자"
-        />
-
-        <Input
-          value={supplementWeekendInput.content}
-          onChange={(e) =>
-            setSupplementWeekendInput((prev) => ({ ...prev, content: e.target.value }))
-          }
-          placeholder="작업내용"
-        />
-
-        <Input
-          value={supplementWeekendInput.safetyAction}
-          onChange={(e) =>
-            setSupplementWeekendInput((prev) => ({ ...prev, safetyAction: e.target.value }))
-          }
-          placeholder="안전대책, 조치사항"
-        />
-
-        <Button onClick={handleAddSupplementWeekendRow}>
-          입력
-        </Button>
-
-        <Button variant="outline" onClick={handleDownloadSupplementWeekendExcel}>
-          엑셀 다운로드
-        </Button>
-      </div>
-
-      {supplementMessage && (
-        <div className="text-sm text-slate-600">
-          {supplementMessage}
-        </div>
-      )}
-
-      <div className="overflow-x-auto rounded-2xl border border-black">
-        <table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
-          <thead>
-            <tr className="bg-slate-100 text-slate-700">
-              <th className="w-[90px] border border-black px-2 py-2 text-left">작업구분</th>
-              <th className="w-[140px] border border-black px-2 py-2 text-left">업체명</th>
-              <th className="w-[150px] border border-black px-2 py-2 text-left">작업위치</th>
-              <th className="w-[90px] border border-black px-2 py-2 text-left">작업인원</th>
-              <th className="w-[100px] border border-black px-2 py-2 text-left">관리감독자</th>
-              <th className="border border-black px-2 py-2 text-left">작업내용</th>
-              <th className="border border-black px-2 py-2 text-left">안전대책, 조치사항</th>
-              <th className="w-[100px] border border-black px-2 py-2 text-left">관리</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {supplementWeekendRows.length === 0 ? (
-              <tr>
-                <td className="border border-black px-3 py-3 text-center text-slate-400" colSpan={8}>
-                  입력 없음
-                </td>
-              </tr>
-            ) : (
-              supplementWeekendRows.map((row) => (
-                <tr key={row.id}>
-                  <td className="border border-black px-2 py-2 align-top">{row.workType}</td>
-                  <td className="border border-black px-2 py-2 align-top">{row.company}</td>
-                  <td className="border border-black px-2 py-2 align-top">{row.location}</td>
-                  <td className="border border-black px-2 py-2 align-top">{row.workerCount}</td>
-                  <td className="border border-black px-2 py-2 align-top">{row.supervisorCount}</td>
-                  <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.content}</td>
-                  <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.safetyAction}</td>
-                  <td className="border border-black px-2 py-2 align-top">
-                    <div className="flex flex-wrap gap-1">
-                      {canAdminEditDabsItem && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditSupplementWeekendPopup({
-                              open: true,
-                              id: row.id,
-                              company: row.company || "",
-                              location: row.location || "",
-                              workerCount: row.workerCount || "",
-                              supervisorCount: row.supervisorCount || "",
-                              content: row.content || "",
-                              safetyAction: row.safetyAction || "",
-                            })
-                          }
-                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-                        >
-                          수정
-                        </button>
-                      )}
-
-                      {canDeleteOwnItem(row) && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteSupplementWeekendRow(row.id)}
-                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-                        >
-                          삭제
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </CardContent>
-  </Card>
-)}
+        {/* 하단 달력 - DAB's 회의와 동일 */}
+        <Card className="border-slate-200 shadow-none">
+          <CardHeader>
+            <CardTitle className="text-base">하단 달력</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between mb-3">
+              <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="text-sm font-semibold">{monthLabel}</div>
+              <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-xs">
+              {weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}
+              {monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}
+            </div>
+          </CardContent>
+        </Card>
       </CardContent>
     </Card>
   </div>
