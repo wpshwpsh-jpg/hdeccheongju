@@ -414,6 +414,8 @@ type DabsRowItem = {
   location?: string;
   manager?: string;
   phone?: string;
+  workerOnCargo?: boolean;
+  cargoHeight1m?: boolean;
   time?: string;
 };
 
@@ -1036,7 +1038,7 @@ const [editSectionPopup, setEditSectionPopup] = useState<{
 });
 
 const [editSectionTextSelection, setEditSectionTextSelection] = useState({ start: 0, end: 0 });
-  const [materialsInput, setMaterialsInput] = useState({ gate: "1", company: "", material: "", vehicle: "", location: "", manager: "", phone: "", time: "06" });
+  const [materialsInput, setMaterialsInput] = useState({ gate: "1", company: "", material: "", vehicle: "", location: "", manager: "", phone: "", workerOnCargo: false, cargoHeight1m: false, time: "06" });
   const [imagePopup, setImagePopup] = useState({
   open: false,
   x: 0,
@@ -1218,6 +1220,8 @@ const [editMaterialPopup, setEditMaterialPopup] = useState({
   location: "",
   manager: "",
   phone: "",
+  workerOnCargo: false,
+  cargoHeight1m: false,
 });
   const [loadSourceDate, setLoadSourceDate] = useState(() => {
   const d = new Date();
@@ -4350,7 +4354,7 @@ const cancelApprovalUser = async (uid: string) => {
 };
 
   const handleAddMaterial = async () => {
-  const { gate, material, vehicle, location, manager, phone, time } = materialsInput;
+  const { gate, material, vehicle, location, manager, phone, workerOnCargo, cargoHeight1m, time } = materialsInput;
   if (!canEditDabs || !material.trim() || !vehicle.trim() || !location.trim()) return;
 
   const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
@@ -4379,6 +4383,8 @@ const cancelApprovalUser = async (uid: string) => {
       location: location.trim(),
       manager: manager.trim(),
       phone: phone.trim(),
+      workerOnCargo,
+      cargoHeight1m: workerOnCargo ? cargoHeight1m : false,
       time,
       company: companyName,
       createdByUid: currentUser?.uid,
@@ -4405,7 +4411,7 @@ const cancelApprovalUser = async (uid: string) => {
     detail: `${activeDabsTab.label} / ${time}시 / ${gate}게이트 / ${material.trim()} / ${vehicle.trim()} / ${location.trim()} / 담당자: ${manager.trim()} / 연락처: ${phone.trim()}`,
   });
 
-  setMaterialsInput({ gate: "1", company: "", material: "", vehicle: "", location: "", manager: "", phone: "", time: "06" });
+  setMaterialsInput({ gate: "1", company: "", material: "", vehicle: "", location: "", manager: "", phone: "", workerOnCargo: false, cargoHeight1m: false, time: "06" });
   setDabsMessage("저장되었습니다.");
 };
 
@@ -4445,6 +4451,8 @@ const handleUpdateMaterial = async () => {
           location: editMaterialPopup.location.trim(),
           manager: editMaterialPopup.manager.trim(),
           phone: editMaterialPopup.phone.trim(),
+          workerOnCargo: editMaterialPopup.workerOnCargo,
+          cargoHeight1m: editMaterialPopup.workerOnCargo ? editMaterialPopup.cargoHeight1m : false,
         }
       : item
   );
@@ -4479,6 +4487,8 @@ const handleUpdateMaterial = async () => {
     location: "",
     manager: "",
     phone: "",
+    workerOnCargo: false,
+    cargoHeight1m: false,
   });
 
   setDabsMessage("수정되었습니다.");
@@ -6367,18 +6377,18 @@ const renderSectionMobileCards = (
       const row = list.filter((item) => item.time === time);
       const gate1 = row.filter((item) => item.gate === "1");
       const gate7 = row.filter((item) => item.gate === "7");
+      const isYellow = (item: DabsRowItem) => item.workerOnCargo && item.cargoHeight1m;
 
       return (
         <MobileListCard key={time} title={`${time}시`}>
           <div className="space-y-4">
             <div>
               <div className="mb-2 text-xs font-semibold text-slate-500">1게이트</div>
-
               {gate1.length === 0 ? (
                 <div className="text-slate-400">입력 없음</div>
               ) : (
                 gate1.map((item) => (
-                  <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3">
+                  <div key={item.id} className={cn("mb-2 rounded-xl p-3", isYellow(item) ? "bg-yellow-100 border border-yellow-300" : "bg-slate-50")}>
                     <div className="text-xs font-medium text-slate-500">{item.company}</div>
                     <div className="mt-1 text-sm">자재명: {item.material}</div>
                     <div className="text-sm">차종: {item.vehicle}</div>
@@ -6390,40 +6400,13 @@ const renderSectionMobileCards = (
                         {item.phone && `연락처: ${item.phone}`}
                       </div>
                     )}
-
                     {!isCapturingImage && (
                       <div className="mt-2 flex shrink-0 gap-1">
                         {canAdminEditDabsItem && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditMaterialPopup({
-                                open: true,
-                                itemId: item.id,
-                                gate: item.gate || "",
-                                time: item.time || "",
-                                company: item.company || "",
-                                material: item.material || "",
-                                vehicle: item.vehicle || "",
-                                location: item.location || "",
-                                manager: item.manager || "",
-                                phone: item.phone || "",
-                              })
-                            }
-                            className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
-                          >
-                            수정
-                          </button>
+                          <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "", workerOnCargo: item.workerOnCargo || false, cargoHeight1m: item.cargoHeight1m || false })} className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100">수정</button>
                         )}
-
                         {canDeleteOwnItem(item) && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteDabsItem(item.id)}
-                            className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
+                          <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>
                         )}
                       </div>
                     )}
@@ -6431,15 +6414,13 @@ const renderSectionMobileCards = (
                 ))
               )}
             </div>
-
             <div>
               <div className="mb-2 text-xs font-semibold text-slate-500">7게이트</div>
-
               {gate7.length === 0 ? (
                 <div className="text-slate-400">입력 없음</div>
               ) : (
                 gate7.map((item) => (
-                  <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3">
+                  <div key={item.id} className={cn("mb-2 rounded-xl p-3", isYellow(item) ? "bg-yellow-100 border border-yellow-300" : "bg-slate-50")}>
                     <div className="text-xs font-medium text-slate-500">{item.company}</div>
                     <div className="mt-1 text-sm">자재명: {item.material}</div>
                     <div className="text-sm">차종: {item.vehicle}</div>
@@ -6451,40 +6432,13 @@ const renderSectionMobileCards = (
                         {item.phone && `연락처: ${item.phone}`}
                       </div>
                     )}
-
                     {!isCapturingImage && (
                       <div className="mt-2 flex shrink-0 gap-1">
                         {canAdminEditDabsItem && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditMaterialPopup({
-                                open: true,
-                                itemId: item.id,
-                                gate: item.gate || "",
-                                time: item.time || "",
-                                company: item.company || "",
-                                material: item.material || "",
-                                vehicle: item.vehicle || "",
-                                location: item.location || "",
-                                manager: item.manager || "",
-                                phone: item.phone || "",
-                              })
-                            }
-                            className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
-                          >
-                            수정
-                          </button>
+                          <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "", workerOnCargo: item.workerOnCargo || false, cargoHeight1m: item.cargoHeight1m || false })} className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100">수정</button>
                         )}
-
                         {canDeleteOwnItem(item) && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteDabsItem(item.id)}
-                            className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
+                          <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>
                         )}
                       </div>
                     )}
@@ -6949,6 +6903,39 @@ const renderEditPopups = () => (
             />
           </div>
 
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">안전 체크</label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editMaterialPopup.workerOnCargo}
+                  onChange={(e) =>
+                    setEditMaterialPopup((prev) => ({
+                      ...prev,
+                      workerOnCargo: e.target.checked,
+                      cargoHeight1m: e.target.checked ? prev.cargoHeight1m : false,
+                    }))
+                  }
+                  className="h-4 w-4"
+                />
+                화물칸에 근로자가 올라감
+              </label>
+              <label className={cn("flex items-center gap-2 text-sm cursor-pointer", editMaterialPopup.workerOnCargo ? "text-slate-700" : "text-slate-300 cursor-not-allowed")}>
+                <input
+                  type="checkbox"
+                  checked={editMaterialPopup.cargoHeight1m}
+                  disabled={!editMaterialPopup.workerOnCargo}
+                  onChange={(e) =>
+                    setEditMaterialPopup((prev) => ({ ...prev, cargoHeight1m: e.target.checked }))
+                  }
+                  className="h-4 w-4"
+                />
+                화물칸 높이 1m 이상
+              </label>
+            </div>
+          </div>
+
           <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
             <Button
               variant="outline"
@@ -6965,6 +6952,8 @@ const renderEditPopups = () => (
                   location: "",
                   manager: "",
                   phone: "",
+                  workerOnCargo: false,
+                  cargoHeight1m: false,
                 })
               }
             >
@@ -7549,69 +7538,100 @@ return (
     </table>
   </div>
 </div></>}
-                {isMaterialTab && <><div className="grid gap-3 md:grid-cols-8">
-  <select
-    value={materialsInput.gate}
-    onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })}
-    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
-  >
-    <option value="1">1게이트</option>
-    <option value="7">7게이트</option>
-  </select>
+                {isMaterialTab && <><div className="space-y-3">
+  <div className="grid gap-2 md:grid-cols-[120px_100px_160px_1fr_1fr_1fr_1fr_1fr]">
+    <select
+      value={materialsInput.gate}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })}
+      className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+    >
+      <option value="1">1게이트</option>
+      <option value="7">7게이트</option>
+    </select>
 
-  <select
-    value={materialsInput.time}
-    onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })}
-    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
-  >
-    {MATERIAL_TIMES.map((time) => (
-      <option key={time} value={time}>
-        {time}시
-      </option>
-    ))}
-  </select>
+    <select
+      value={materialsInput.time}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })}
+      className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+    >
+      {MATERIAL_TIMES.map((time) => (
+        <option key={time} value={time}>{time}시</option>
+      ))}
+    </select>
 
-  {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+    {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+      <Input
+        value={materialsInput.company}
+        onChange={(e) => setMaterialsInput({ ...materialsInput, company: e.target.value })}
+        placeholder="업체명"
+      />
+    )}
+
     <Input
-      value={materialsInput.company}
-      onChange={(e) => setMaterialsInput({ ...materialsInput, company: e.target.value })}
-      placeholder="업체명"
+      value={materialsInput.material}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })}
+      placeholder="자재명"
     />
-  )}
 
-  <Input
-    value={materialsInput.material}
-    onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })}
-    placeholder="자재명"
-  />
+    <Input
+      value={materialsInput.vehicle}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })}
+      placeholder="차종"
+    />
 
-  <Input
-    value={materialsInput.vehicle}
-    onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })}
-    placeholder="차종"
-  />
+    <Input
+      value={materialsInput.location}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })}
+      placeholder="하역장소"
+    />
 
-  <Input
-    value={materialsInput.location}
-    onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })}
-    placeholder="하역장소"
-  />
+    <Input
+      value={materialsInput.manager}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, manager: e.target.value })}
+      placeholder="담당자"
+    />
 
-  <Input
-    value={materialsInput.manager}
-    onChange={(e) => setMaterialsInput({ ...materialsInput, manager: e.target.value })}
-    placeholder="담당자"
-  />
+    <Input
+      value={materialsInput.phone}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, phone: e.target.value })}
+      placeholder="연락처"
+    />
+  </div>
 
-  <Input
-    value={materialsInput.phone}
-    onChange={(e) => setMaterialsInput({ ...materialsInput, phone: e.target.value })}
-    placeholder="연락처"
-  />
+  <div className="flex flex-wrap items-center gap-4">
+    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={materialsInput.workerOnCargo}
+        onChange={(e) =>
+          setMaterialsInput({
+            ...materialsInput,
+            workerOnCargo: e.target.checked,
+            cargoHeight1m: e.target.checked ? materialsInput.cargoHeight1m : false,
+          })
+        }
+        className="h-4 w-4"
+      />
+      화물칸에 근로자가 올라감
+    </label>
 
-  <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="w-full md:w-auto md:col-start-8">
-    추가
-  </Button>
+    <label className={cn("flex items-center gap-2 text-sm select-none", materialsInput.workerOnCargo ? "text-slate-700 cursor-pointer" : "text-slate-300 cursor-not-allowed")}>
+      <input
+        type="checkbox"
+        checked={materialsInput.cargoHeight1m}
+        disabled={!materialsInput.workerOnCargo}
+        onChange={(e) =>
+          setMaterialsInput({ ...materialsInput, cargoHeight1m: e.target.checked })
+        }
+        className="h-4 w-4"
+      />
+      화물칸 높이 1m 이상
+    </label>
+
+    <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="ml-auto">
+      추가
+    </Button>
+  </div>
 </div><div ref={dabsCaptureRef} className="bg-white">
   {renderMaterialsMobileCards(materialList)}
   <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block">
@@ -7619,12 +7639,12 @@ return (
       <colgroup>
         <col style={{ width: "6%" }} />
         <col style={{ width: "7%" }} />
+        <col style={{ width: "13%" }} />
+        <col style={{ width: "10%" }} />
         <col style={{ width: "14%" }} />
-        <col style={{ width: "11%" }} />
-        <col style={{ width: "16%" }} />
         <col style={{ width: "12%" }} />
-        <col style={{ width: "17%" }} />
-        <col style={{ width: "17%" }} />
+        <col style={{ width: "10%" }} />
+        <col style={{ width: "28%" }} />
       </colgroup>
       <thead>
         <tr className="bg-slate-100 text-slate-700">
@@ -7644,196 +7664,93 @@ return (
           const gate1 = row.filter((item) => item.gate === "1");
           const gate7 = row.filter((item) => item.gate === "7");
 
-          // 한 게이트 내에서 모든 행은 동일 행에 표시 (줄바꿈 없이 같이 가도록)
-          const renderGateRows = (items: DabsRowItem[], gateLabel: string) => {
-            if (items.length === 0) return null;
-            return items.map((item, idx) => (
-              <tr key={item.id}>
-                {idx === 0 && (
-                  <td
-                    rowSpan={items.length}
-                    className="border border-black px-2 py-2 align-middle font-medium text-slate-600 bg-slate-50 text-center text-xs"
-                  >
-                    {gateLabel}
-                  </td>
-                )}
-                <td className="border border-black px-2 py-2 align-top">{item.company}</td>
-                <td className="border border-black px-2 py-2 align-top">{item.material}</td>
-                <td className="border border-black px-2 py-2 align-top">{item.vehicle}</td>
-                <td className="border border-black px-2 py-2 align-top">{item.location}</td>
-                <td className="border border-black px-2 py-2 align-top">{item.manager || ""}</td>
-                <td className="border border-black px-2 py-2 align-top">
-                  <div className="flex items-start justify-between gap-1">
-                    <span>{item.phone || ""}</span>
-                    {!isCapturingImage && (
-                      <div className="flex shrink-0 gap-1">
-                        {canAdminEditDabsItem && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditMaterialPopup({
-                                open: true,
-                                itemId: item.id,
-                                gate: item.gate || "",
-                                time: item.time || "",
-                                company: item.company || "",
-                                material: item.material || "",
-                                vehicle: item.vehicle || "",
-                                location: item.location || "",
-                                manager: item.manager || "",
-                                phone: item.phone || "",
-                              })
-                            }
-                            className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-                          >
-                            수정
-                          </button>
-                        )}
-                        {canDeleteOwnItem(item) && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteDabsItem(item.id)}
-                            className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ));
-          };
+          const isYellow = (item: DabsRowItem) => item.workerOnCargo && item.cargoHeight1m;
 
-          const hasAny = gate1.length > 0 || gate7.length > 0;
-          const totalRows = Math.max(1, gate1.length) + Math.max(1, gate7.length);
-
-          if (!hasAny) {
-            return (
-              <tr key={time}>
-                <td rowSpan={2} className="border border-black px-2 py-2 font-semibold align-middle text-center">
-                  {time}시
-                </td>
-                <td className="border border-black px-2 py-2 text-slate-300 text-center bg-slate-50 text-xs">
-                  1게이트
-                </td>
-                <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">
-                  입력 없음
-                </td>
-              </tr>
-            );
-          }
-
-          return (
-            <>
-              <tr key={`${time}-label`}>
-                <td
-                  rowSpan={gate1.length + gate7.length + (gate1.length === 0 ? 1 : 0) + (gate7.length === 0 ? 1 : 0)}
-                  className="border border-black px-2 py-2 font-semibold align-middle text-center"
-                >
-                  {time}시
-                </td>
-                {gate1.length === 0 ? (
-                  <>
-                    <td className="border border-black px-2 py-2 align-middle text-xs bg-slate-50 text-slate-600 text-center font-medium">
-                      1게이트
-                    </td>
-                    <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">
-                      입력 없음
-                    </td>
-                  </>
-                ) : (
-                  (() => {
-                    const first = gate1[0];
-                    return (
-                      <>
-                        <td rowSpan={gate1.length} className="border border-black px-2 py-2 align-middle text-xs bg-slate-50 text-slate-600 text-center font-medium">
-                          1게이트
-                        </td>
-                        <td className="border border-black px-2 py-2 align-top">{first.company}</td>
-                        <td className="border border-black px-2 py-2 align-top">{first.material}</td>
-                        <td className="border border-black px-2 py-2 align-top">{first.vehicle}</td>
-                        <td className="border border-black px-2 py-2 align-top">{first.location}</td>
-                        <td className="border border-black px-2 py-2 align-top">{first.manager || ""}</td>
-                        <td className="border border-black px-2 py-2 align-top">
-                          <div className="flex items-start justify-between gap-1">
-                            <span>{first.phone || ""}</span>
-                            {!isCapturingImage && (
-                              <div className="flex shrink-0 gap-1">
-                                {canAdminEditDabsItem && (
-                                  <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: first.id, gate: first.gate || "", time: first.time || "", company: first.company || "", material: first.material || "", vehicle: first.vehicle || "", location: first.location || "", manager: first.manager || "", phone: first.phone || "" })} className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100">수정</button>
-                                )}
-                                {canDeleteOwnItem(first) && (
-                                  <button type="button" onClick={() => handleDeleteDabsItem(first.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      </>
-                    );
-                  })()
-                )}
-              </tr>
-              {gate1.slice(1).map((item) => (
-                <tr key={item.id}>
-                  <td className="border border-black px-2 py-2 align-top">{item.company}</td>
-                  <td className="border border-black px-2 py-2 align-top">{item.material}</td>
-                  <td className="border border-black px-2 py-2 align-top">{item.vehicle}</td>
-                  <td className="border border-black px-2 py-2 align-top">{item.location}</td>
-                  <td className="border border-black px-2 py-2 align-top">{item.manager || ""}</td>
-                  <td className="border border-black px-2 py-2 align-top">
-                    <div className="flex items-start justify-between gap-1">
-                      <span>{item.phone || ""}</span>
-                      {!isCapturingImage && (
-                        <div className="flex shrink-0 gap-1">
-                          {canAdminEditDabsItem && <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "" })} className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100">수정</button>}
-                          {canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {gate7.length === 0 ? (
-                <tr key={`${time}-gate7-empty`}>
-                  <td className="border border-black px-2 py-2 align-middle text-xs bg-slate-50 text-slate-600 text-center font-medium">
-                    7게이트
-                  </td>
-                  <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">
-                    입력 없음
-                  </td>
-                </tr>
-              ) : (
-                gate7.map((item, idx) => (
-                  <tr key={item.id}>
-                    {idx === 0 && (
-                      <td rowSpan={gate7.length} className="border border-black px-2 py-2 align-middle text-xs bg-slate-50 text-slate-600 text-center font-medium">
-                        7게이트
-                      </td>
-                    )}
-                    <td className="border border-black px-2 py-2 align-top">{item.company}</td>
-                    <td className="border border-black px-2 py-2 align-top">{item.material}</td>
-                    <td className="border border-black px-2 py-2 align-top">{item.vehicle}</td>
-                    <td className="border border-black px-2 py-2 align-top">{item.location}</td>
-                    <td className="border border-black px-2 py-2 align-top">{item.manager || ""}</td>
-                    <td className="border border-black px-2 py-2 align-top">
-                      <div className="flex items-start justify-between gap-1">
-                        <span>{item.phone || ""}</span>
-                        {!isCapturingImage && (
-                          <div className="flex shrink-0 gap-1">
-                            {canAdminEditDabsItem && <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "" })} className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100">수정</button>}
-                            {canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+          const actionBtns = (item: DabsRowItem) => !isCapturingImage ? (
+            <div className="flex shrink-0 gap-1">
+              {canAdminEditDabsItem && (
+                <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "", workerOnCargo: item.workerOnCargo || false, cargoHeight1m: item.cargoHeight1m || false })} className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100">수정</button>
               )}
+              {canDeleteOwnItem(item) && (
+                <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>
+              )}
+            </div>
+          ) : null;
+
+          // 시간별로 표시할 총 행 수 계산 (각 게이트 최소 1행씩)
+          const gate1Rows = Math.max(gate1.length, 1);
+          const gate7Rows = Math.max(gate7.length, 1);
+          const totalRows = gate1Rows + gate7Rows;
+
+          const renderDataRow = (item: DabsRowItem) => (
+            <>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.company}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.material}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicle}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.location}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.manager || ""}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>
+                <div className="flex items-start justify-between gap-1">
+                  <span>{item.phone || ""}</span>
+                  {actionBtns(item)}
+                </div>
+              </td>
             </>
           );
+
+          const emptyDataCells = (
+            <>
+              <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>
+            </>
+          );
+
+          // 각 게이트의 행들을 생성
+          const gate1RowEls: React.ReactNode[] = gate1.length === 0
+            ? [<React.Fragment key="g1-empty">{emptyDataCells}</React.Fragment>]
+            : gate1.map((item) => <React.Fragment key={item.id}>{renderDataRow(item)}</React.Fragment>);
+
+          const gate7RowEls: React.ReactNode[] = gate7.length === 0
+            ? [<React.Fragment key="g7-empty">{emptyDataCells}</React.Fragment>]
+            : gate7.map((item) => <React.Fragment key={item.id}>{renderDataRow(item)}</React.Fragment>);
+
+          const rows: React.ReactNode[] = [];
+
+          // 1게이트 행들
+          gate1RowEls.forEach((cells, idx) => {
+            const item = gate1[idx];
+            rows.push(
+              <tr key={`${time}-g1-${idx}`} className={item && isYellow(item) ? "bg-yellow-100" : ""}>
+                {idx === 0 && (
+                  <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">
+                    {time}시
+                  </td>
+                )}
+                {idx === 0 && (
+                  <td rowSpan={gate1Rows} className="border border-black px-2 py-2 align-middle text-center text-xs font-medium text-slate-600 bg-slate-50">
+                    1게이트
+                  </td>
+                )}
+                {cells}
+              </tr>
+            );
+          });
+
+          // 7게이트 행들
+          gate7RowEls.forEach((cells, idx) => {
+            const item = gate7[idx];
+            rows.push(
+              <tr key={`${time}-g7-${idx}`} className={item && isYellow(item) ? "bg-yellow-100" : ""}>
+                {idx === 0 && (
+                  <td rowSpan={gate7Rows} className="border border-black px-2 py-2 align-middle text-center text-xs font-medium text-slate-600 bg-slate-50">
+                    7게이트
+                  </td>
+                )}
+                {cells}
+              </tr>
+            );
+          });
+
+          return <React.Fragment key={time}>{rows}</React.Fragment>;
         })}
       </tbody>
     </table>
@@ -7952,91 +7869,35 @@ const renderPortfolioInputPanel = () => {
       )}
 
       {isMaterialTab && (
-        <div className="grid gap-2 md:grid-cols-[100px_100px_140px_1fr_1fr_1fr_1fr_1fr_auto]">
-          <select
-            value={materialsInput.gate}
-            onChange={(e) =>
-              setMaterialsInput({ ...materialsInput, gate: e.target.value })
-            }
-            className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm"
-          >
-            <option value="1">1게이트</option>
-            <option value="7">7게이트</option>
-          </select>
-
-          <select
-            value={materialsInput.time}
-            onChange={(e) =>
-              setMaterialsInput({ ...materialsInput, time: e.target.value })
-            }
-            className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm"
-          >
-            {MATERIAL_TIMES.map((time) => (
-              <option key={time} value={time}>
-                {time}시
-              </option>
-            ))}
-          </select>
-
-          {(currentUser?.role === "master" || currentUser?.role === "admin") && (
-            <Input
-              value={materialsInput.company}
-              onChange={(e) =>
-                setMaterialsInput({ ...materialsInput, company: e.target.value })
-              }
-              placeholder="업체명"
-              className="h-9"
-            />
-          )}
-
-          <Input
-            value={materialsInput.material}
-            onChange={(e) =>
-              setMaterialsInput({ ...materialsInput, material: e.target.value })
-            }
-            placeholder="자재명"
-            className="h-9"
-          />
-
-          <Input
-            value={materialsInput.vehicle}
-            onChange={(e) =>
-              setMaterialsInput({ ...materialsInput, vehicle: e.target.value })
-            }
-            placeholder="차종"
-            className="h-9"
-          />
-
-          <Input
-            value={materialsInput.location}
-            onChange={(e) =>
-              setMaterialsInput({ ...materialsInput, location: e.target.value })
-            }
-            placeholder="하역장소"
-            className="h-9"
-          />
-
-          <Input
-            value={materialsInput.manager}
-            onChange={(e) =>
-              setMaterialsInput({ ...materialsInput, manager: e.target.value })
-            }
-            placeholder="담당자"
-            className="h-9"
-          />
-
-          <Input
-            value={materialsInput.phone}
-            onChange={(e) =>
-              setMaterialsInput({ ...materialsInput, phone: e.target.value })
-            }
-            placeholder="연락처"
-            className="h-9"
-          />
-
-          <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="h-9">
-            추가
-          </Button>
+        <div className="space-y-2">
+          <div className="grid gap-2 md:grid-cols-[100px_100px_140px_1fr_1fr_1fr_1fr_1fr]">
+            <select value={materialsInput.gate} onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })} className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm">
+              <option value="1">1게이트</option>
+              <option value="7">7게이트</option>
+            </select>
+            <select value={materialsInput.time} onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })} className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm">
+              {MATERIAL_TIMES.map((time) => (<option key={time} value={time}>{time}시</option>))}
+            </select>
+            {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+              <Input value={materialsInput.company} onChange={(e) => setMaterialsInput({ ...materialsInput, company: e.target.value })} placeholder="업체명" className="h-9" />
+            )}
+            <Input value={materialsInput.material} onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })} placeholder="자재명" className="h-9" />
+            <Input value={materialsInput.vehicle} onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })} placeholder="차종" className="h-9" />
+            <Input value={materialsInput.location} onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })} placeholder="하역장소" className="h-9" />
+            <Input value={materialsInput.manager} onChange={(e) => setMaterialsInput({ ...materialsInput, manager: e.target.value })} placeholder="담당자" className="h-9" />
+            <Input value={materialsInput.phone} onChange={(e) => setMaterialsInput({ ...materialsInput, phone: e.target.value })} placeholder="연락처" className="h-9" />
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+              <input type="checkbox" checked={materialsInput.workerOnCargo} onChange={(e) => setMaterialsInput({ ...materialsInput, workerOnCargo: e.target.checked, cargoHeight1m: e.target.checked ? materialsInput.cargoHeight1m : false })} className="h-3.5 w-3.5" />
+              화물칸에 근로자가 올라감
+            </label>
+            <label className={cn("flex items-center gap-2 text-xs select-none", materialsInput.workerOnCargo ? "text-slate-700 cursor-pointer" : "text-slate-300 cursor-not-allowed")}>
+              <input type="checkbox" checked={materialsInput.cargoHeight1m} disabled={!materialsInput.workerOnCargo} onChange={(e) => setMaterialsInput({ ...materialsInput, cargoHeight1m: e.target.checked })} className="h-3.5 w-3.5" />
+              화물칸 높이 1m 이상
+            </label>
+            <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="h-9 ml-auto">추가</Button>
+          </div>
         </div>
       )}
 
@@ -8209,6 +8070,8 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
       ? tabValue.list || []
       : [];
 
+  const isYellow = (item: DabsRowItem) => item.workerOnCargo && item.cargoHeight1m;
+
   return (
     <div className="flex h-full w-full items-start justify-center overflow-auto p-4">
       <table className="w-[96vw] table-fixed border-collapse bg-white text-[26px] xl:text-[27px]">
@@ -8218,12 +8081,12 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
         <colgroup>
           <col style={{ width: "5%" }} />
           <col style={{ width: "6%" }} />
-          <col style={{ width: "14%" }} />
-          <col style={{ width: "11%" }} />
-          <col style={{ width: "15%" }} />
           <col style={{ width: "13%" }} />
-          <col style={{ width: "18%" }} />
-          <col style={{ width: "18%" }} />
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "14%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "30%" }} />
         </colgroup>
         <thead>
           <tr className="bg-slate-100 text-slate-800">
@@ -8242,90 +8105,77 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
             const row = list.filter((item) => item.time === time);
             const gate1 = row.filter((item) => item.gate === "1");
             const gate7 = row.filter((item) => item.gate === "7");
-            const hasAny = gate1.length > 0 || gate7.length > 0;
+
+            const gate1Rows = Math.max(gate1.length, 1);
+            const gate7Rows = Math.max(gate7.length, 1);
+            const totalRows = gate1Rows + gate7Rows;
 
             const renderActionBtns = (item: DabsRowItem) =>
               renderPortfolioActionButtons(
                 item,
-                () => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "" }),
+                () => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "", workerOnCargo: item.workerOnCargo || false, cargoHeight1m: item.cargoHeight1m || false }),
                 () => handleDeleteDabsItem(item.id)
               );
 
-            if (!hasAny) {
-              return (
-                <tr key={time}>
-                  <td rowSpan={2} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>
-                  <td className="border border-black px-2 py-2 text-xs text-slate-500 bg-slate-50 text-center">1게이트</td>
-                  <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>
-                </tr>
-              );
-            }
+            const renderDataCells = (item: DabsRowItem) => (
+              <>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.company}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.material}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicle}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.location}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.manager || ""}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>
+                  <div className="flex items-start justify-between gap-1">
+                    <span>{item.phone || ""}</span>
+                    {renderActionBtns(item)}
+                  </div>
+                </td>
+              </>
+            );
 
-            const gate1RowCount = gate1.length > 0 ? gate1.length : 1;
-            const gate7RowCount = gate7.length > 0 ? gate7.length : 1;
-            const totalRowSpan = gate1RowCount + gate7RowCount;
+            const emptyDataCells = <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>;
 
             const rows: React.ReactNode[] = [];
 
-            // 1게이트
+            // 1게이트 행들
             if (gate1.length === 0) {
               rows.push(
-                <tr key={`${time}-gate1-empty`}>
-                  <td rowSpan={totalRowSpan} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>
-                  <td className="border border-black px-2 py-2 text-xs text-slate-500 bg-slate-50 text-center font-medium">1게이트</td>
-                  <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>
+                <tr key={`${time}-g1-empty`}>
+                  <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>
+                  <td className="border border-black px-2 py-2 align-middle text-center text-xs font-medium text-slate-600 bg-slate-50">1게이트</td>
+                  {emptyDataCells}
                 </tr>
               );
-              gate7.forEach((item, idx) => {
-                rows.push(
-                  <tr key={item.id}>
-                    {idx === 0 && <td rowSpan={gate7.length} className="border border-black px-2 py-2 text-xs text-slate-500 bg-slate-50 text-center font-medium">7게이트</td>}
-                    <td className="border border-black px-2 py-2 align-top">{item.company}</td>
-                    <td className="border border-black px-2 py-2 align-top">{item.material}</td>
-                    <td className="border border-black px-2 py-2 align-top">{item.vehicle}</td>
-                    <td className="border border-black px-2 py-2 align-top">{item.location}</td>
-                    <td className="border border-black px-2 py-2 align-top">{item.manager || ""}</td>
-                    <td className="border border-black px-2 py-2 align-top"><div className="flex items-start justify-between gap-1"><span>{item.phone || ""}</span>{renderActionBtns(item)}</div></td>
-                  </tr>
-                );
-              });
             } else {
               gate1.forEach((item, idx) => {
                 rows.push(
-                  <tr key={item.id}>
-                    {idx === 0 && <td rowSpan={totalRowSpan} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>}
-                    {idx === 0 && <td rowSpan={gate1.length} className="border border-black px-2 py-2 text-xs text-slate-500 bg-slate-50 text-center font-medium">1게이트</td>}
-                    <td className="border border-black px-2 py-2 align-top">{item.company}</td>
-                    <td className="border border-black px-2 py-2 align-top">{item.material}</td>
-                    <td className="border border-black px-2 py-2 align-top">{item.vehicle}</td>
-                    <td className="border border-black px-2 py-2 align-top">{item.location}</td>
-                    <td className="border border-black px-2 py-2 align-top">{item.manager || ""}</td>
-                    <td className="border border-black px-2 py-2 align-top"><div className="flex items-start justify-between gap-1"><span>{item.phone || ""}</span>{renderActionBtns(item)}</div></td>
+                  <tr key={item.id} className={isYellow(item) ? "bg-yellow-100" : ""}>
+                    {idx === 0 && <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>}
+                    {idx === 0 && <td rowSpan={gate1.length} className="border border-black px-2 py-2 align-middle text-center text-xs font-medium text-slate-600 bg-slate-50">1게이트</td>}
+                    {renderDataCells(item)}
                   </tr>
                 );
               });
-              if (gate7.length === 0) {
+            }
+
+            // 7게이트 행들
+            if (gate7.length === 0) {
+              rows.push(
+                <tr key={`${time}-g7-empty`}>
+                  {gate1.length === 0 && <>{/* 시간 셀은 위에서 rowspan으로 이미 처리 */}</>}
+                  <td className="border border-black px-2 py-2 align-middle text-center text-xs font-medium text-slate-600 bg-slate-50">7게이트</td>
+                  {emptyDataCells}
+                </tr>
+              );
+            } else {
+              gate7.forEach((item, idx) => {
                 rows.push(
-                  <tr key={`${time}-gate7-empty`}>
-                    <td className="border border-black px-2 py-2 text-xs text-slate-500 bg-slate-50 text-center font-medium">7게이트</td>
-                    <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>
+                  <tr key={item.id} className={isYellow(item) ? "bg-yellow-100" : ""}>
+                    {idx === 0 && <td rowSpan={gate7.length} className="border border-black px-2 py-2 align-middle text-center text-xs font-medium text-slate-600 bg-slate-50">7게이트</td>}
+                    {renderDataCells(item)}
                   </tr>
                 );
-              } else {
-                gate7.forEach((item, idx) => {
-                  rows.push(
-                    <tr key={item.id}>
-                      {idx === 0 && <td rowSpan={gate7.length} className="border border-black px-2 py-2 text-xs text-slate-500 bg-slate-50 text-center font-medium">7게이트</td>}
-                      <td className="border border-black px-2 py-2 align-top">{item.company}</td>
-                      <td className="border border-black px-2 py-2 align-top">{item.material}</td>
-                      <td className="border border-black px-2 py-2 align-top">{item.vehicle}</td>
-                      <td className="border border-black px-2 py-2 align-top">{item.location}</td>
-                      <td className="border border-black px-2 py-2 align-top">{item.manager || ""}</td>
-                      <td className="border border-black px-2 py-2 align-top"><div className="flex items-start justify-between gap-1"><span>{item.phone || ""}</span>{renderActionBtns(item)}</div></td>
-                    </tr>
-                  );
-                });
-              }
+              });
             }
 
             return <React.Fragment key={time}>{rows}</React.Fragment>;
