@@ -372,7 +372,7 @@ type HeatwaveUploadItem = {
   id: string;
   fileName: string;
   fileUrl: string;
-  fileType: "image" | "excel" | "thermoPhoto" | "thermoLedger" | "breakTimeLedger";
+  fileType: "image" | "thermoPhoto" | "thermoLedger";
   storagePath?: string;
   companyName?: string;
   uploadedByUid?: string;
@@ -397,7 +397,6 @@ type HeatwaveSharedFileItem = {
 type HeatwaveSharedDateValue = {
   date?: string;
   thermoHygrometerImage?: HeatwaveSharedFileItem | null;
-  breakTimeExcel?: HeatwaveSharedFileItem | null;
 };
 
 type DabsRowItem = {
@@ -960,7 +959,7 @@ const [heatwaveStatusPopupOpen, setHeatwaveStatusPopupOpen] = useState(false);
 const [heatwaveActiveTab, setHeatwaveActiveTab] = useState<"upload" | "sensitive">("upload");
 const [heatwaveDownloadStartDate, setHeatwaveDownloadStartDate] = useState(() => getTodayKey());
 const [heatwaveDownloadEndDate, setHeatwaveDownloadEndDate] = useState(() => getTodayKey());
-const [heatwaveDownloadTypes, setHeatwaveDownloadTypes] = useState({ thermoPhoto: true, thermoLedger: true, breakTimeLedger: true });
+const [heatwaveDownloadTypes, setHeatwaveDownloadTypes] = useState({ thermoPhoto: true, thermoLedger: true });
 const [heatwaveDownloadLoading, setHeatwaveDownloadLoading] = useState(false);
 const [heatwaveDeleteAllLoading, setHeatwaveDeleteAllLoading] = useState(false);
 const [heatwaveSharedFiles, setHeatwaveSharedFiles] = useState<Record<string, HeatwaveSharedDateValue>>({});
@@ -1605,7 +1604,7 @@ const writeActivityLog = async ({
 const handleHeatwaveDownload = async () => {
   const isAdmin = currentUser?.role === "master" || currentUser?.role === "admin";
   if (!isAdmin || !db) { setHeatwaveMessage("마스터 또는 관리자만 다운로드할 수 있습니다."); return; }
-  if (!heatwaveDownloadTypes.thermoPhoto && !heatwaveDownloadTypes.thermoLedger && !heatwaveDownloadTypes.breakTimeLedger) { setHeatwaveMessage("다운로드할 파일 종류를 하나 이상 선택하세요."); return; }
+  if (!heatwaveDownloadTypes.thermoPhoto && !heatwaveDownloadTypes.thermoLedger) { setHeatwaveMessage("다운로드할 파일 종류를 하나 이상 선택하세요."); return; }
   if (!heatwaveDownloadStartDate || !heatwaveDownloadEndDate) { setHeatwaveMessage("다운로드 기간을 설정해주세요."); return; }
   if (heatwaveDownloadStartDate > heatwaveDownloadEndDate) { setHeatwaveMessage("시작 날짜가 종료 날짜보다 클 수 없습니다."); return; }
   setHeatwaveDownloadLoading(true);
@@ -1626,10 +1625,8 @@ const handleHeatwaveDownload = async () => {
         for (const file of (fileList as HeatwaveUploadItem[])) {
           const isThermo = file.fileType === "thermoPhoto" || file.fileType === "image";
           const isLedger = file.fileType === "thermoLedger";
-          const isBreak = file.fileType === "breakTimeLedger" || file.fileType === "excel";
           if (isThermo && heatwaveDownloadTypes.thermoPhoto) allFiles.push({ url: file.fileUrl, name: file.fileName, type: "온습도계사진", date: dateKey, company: companyName });
           else if (isLedger && heatwaveDownloadTypes.thermoLedger) allFiles.push({ url: file.fileUrl, name: file.fileName, type: "온습도계관리대장", date: dateKey, company: companyName });
-          else if (isBreak && heatwaveDownloadTypes.breakTimeLedger) allFiles.push({ url: file.fileUrl, name: file.fileName, type: "휴게시간관리대장", date: dateKey, company: companyName });
         }
       }
     }
@@ -1833,12 +1830,8 @@ const unsubscribeSupplementWeekend = onSnapshot(
     ? data.selectedImageCompanies.map(String)
     : oldCompanies;
 
-  const excelCompanies = Array.isArray(data.selectedExcelCompanies)
-    ? data.selectedExcelCompanies.map(String)
-    : oldCompanies;
-
   setHeatwaveImageSelectedCompanies(imageCompanies);
-  setHeatwaveExcelSelectedCompanies(excelCompanies);
+  setHeatwaveExcelSelectedCompanies([]);
 });
 
 const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", heatwaveViewDateKey), (snap) => {
@@ -1874,7 +1867,6 @@ const unsubscribeSharedFiles = onSnapshot(doc(db, "heatwaveSharedFiles", heatwav
     [heatwaveDateKey]: {
       date: heatwaveDateKey,
       thermoHygrometerImage: data.thermoHygrometerImage || null,
-      breakTimeExcel: data.breakTimeExcel || null,
     },
   }));
 });
@@ -1892,36 +1884,23 @@ unsubscribeSupplementWeekend();
 
 const handleToggleHeatwaveCompany = async (
   companyName: string,
-  fileType: "image" | "excel"
+  fileType: "image"
 ) => {
   if (!canManageHeatwaveCompanies || !db || !currentUser) return;
 
-  const currentList =
-    fileType === "image"
-      ? heatwaveImageSelectedCompanies
-      : heatwaveExcelSelectedCompanies;
+  const nextList = heatwaveImageSelectedCompanies.includes(companyName)
+    ? heatwaveImageSelectedCompanies.filter((item) => item !== companyName)
+    : [...heatwaveImageSelectedCompanies, companyName].sort((a, b) => a.localeCompare(b, "ko"));
 
-  const nextList = currentList.includes(companyName)
-    ? currentList.filter((item) => item !== companyName)
-    : [...currentList, companyName].sort((a, b) => a.localeCompare(b, "ko"));
-
-  const nextImageCompanies =
-    fileType === "image" ? nextList : heatwaveImageSelectedCompanies;
-
-  const nextExcelCompanies =
-    fileType === "excel" ? nextList : heatwaveExcelSelectedCompanies;
-
-  setHeatwaveImageSelectedCompanies(nextImageCompanies);
-  setHeatwaveExcelSelectedCompanies(nextExcelCompanies);
+  setHeatwaveImageSelectedCompanies(nextList);
 
   await setDoc(
     doc(db, "heatwaveSettings", "companies"),
     {
-      selectedImageCompanies: nextImageCompanies,
-      selectedExcelCompanies: nextExcelCompanies,
+      selectedImageCompanies: nextList,
       updatedAt: serverTimestamp(),
       updatedByUid: currentUser.uid || "",
-updatedByName: currentUser.name || "",
+      updatedByName: currentUser.name || "",
     },
     { merge: true }
   );
@@ -1940,43 +1919,34 @@ const getHeatwaveCompanyStatus = (companyName: string, dateKey = heatwaveViewDat
     (item) => item.fileType === "thermoLedger"
   ).length;
 
-  const breakTimeLedgerCount = uploads.filter(
-    (item) => item.fileType === "breakTimeLedger" || item.fileType === "excel"
-  ).length;
-
   return {
     uploads,
     imageCount: thermoPhotoCount,
-    excelCount: breakTimeLedgerCount,
+    excelCount: 0,
     thermoPhotoCount,
     thermoLedgerCount,
-    breakTimeLedgerCount,
-    isComplete:
-  thermoPhotoCount >= 4 &&
-  thermoLedgerCount >= 1 &&
-  breakTimeLedgerCount >= 1,
+    breakTimeLedgerCount: 0,
+    isComplete: thermoPhotoCount >= 4 && thermoLedgerCount >= 1,
   };
 };
 
 const getHeatwaveFileTypeLabel = (
-  fileType: "image" | "excel" | "thermoPhoto" | "thermoLedger" | "breakTimeLedger"
+  fileType: "image" | "thermoPhoto" | "thermoLedger"
 ) => {
   if (fileType === "thermoPhoto" || fileType === "image") return "온습도계 사진";
   if (fileType === "thermoLedger") return "온습도계 관리대장";
-  if (fileType === "breakTimeLedger" || fileType === "excel") return "휴게시간 관리대장";
   return "파일";
 };
 
 const getHeatwaveSharedFileKindLabel = (
-  fileKind: "thermoHygrometerImage" | "breakTimeExcel"
+  fileKind: "thermoHygrometerImage"
 ) => {
-  if (fileKind === "thermoHygrometerImage") return "온습도계 이미지";
-  return "휴게시간 엑셀파일";
+  return "온습도계 이미지";
 };
 
 const handleHeatwaveUpload = async (
   event: React.ChangeEvent<HTMLInputElement>,
-  fileType: "thermoPhoto" | "thermoLedger" | "breakTimeLedger"
+  fileType: "thermoPhoto" | "thermoLedger"
 ) => {
   setHeatwaveMessage("");
 
@@ -1991,17 +1961,10 @@ const handleHeatwaveUpload = async (
     return;
   }
 
-  const isTargetCompany =
-    fileType === "thermoPhoto" || fileType === "thermoLedger"
-      ? heatwaveImageSelectedCompanies.includes(companyName)
-      : heatwaveExcelSelectedCompanies.includes(companyName);
+  const isTargetCompany = heatwaveImageSelectedCompanies.includes(companyName);
 
   if (!isTargetCompany) {
-    setHeatwaveMessage(
-      fileType === "thermoPhoto" || fileType === "thermoLedger"
-        ? "온습도계 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다."
-        : "휴게시간 관리대장 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다."
-    );
+    setHeatwaveMessage("온습도계 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
@@ -2012,16 +1975,13 @@ const handleHeatwaveUpload = async (
     return;
   }
 
-  const maxSize =
-    fileType === "thermoPhoto"
-      ? MAX_HEATWAVE_IMAGE_FILE_SIZE
-      : MAX_HEATWAVE_EXCEL_FILE_SIZE;
+  const maxSize = MAX_HEATWAVE_IMAGE_FILE_SIZE;
 
   if (file.size > maxSize) {
     setHeatwaveMessage(
       fileType === "thermoPhoto"
         ? "온습도계 사진은 5MB 이하만 업로드할 수 있습니다."
-        : "관리대장은 10MB 이하만 업로드할 수 있습니다."
+        : "관리대장은 5MB 이하만 업로드할 수 있습니다."
     );
     event.target.value = "";
     return;
@@ -2037,24 +1997,14 @@ const handleHeatwaveUpload = async (
     (item) => item.fileType === "thermoLedger"
   ).length;
 
-  const breakTimeLedgerCount = currentUploads.filter(
-    (item) => item.fileType === "breakTimeLedger" || item.fileType === "excel"
-  ).length;
-
   if (fileType === "thermoPhoto" && thermoPhotoCount >= 4) {
-  setHeatwaveMessage("온습도계 사진은 하루 4개까지만 업로드할 수 있습니다.");
-  event.target.value = "";
-  return;
-}
-
-  if (fileType === "thermoLedger" && thermoLedgerCount >= 1) {
-    setHeatwaveMessage("온습도계 관리대장은 하루 1개까지만 업로드할 수 있습니다.");
+    setHeatwaveMessage("온습도계 사진은 하루 4개까지만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
 
-  if (fileType === "breakTimeLedger" && breakTimeLedgerCount >= 1) {
-    setHeatwaveMessage("휴게시간 관리대장은 하루 1개까지만 업로드할 수 있습니다.");
+  if (fileType === "thermoLedger" && thermoLedgerCount >= 1) {
+    setHeatwaveMessage("온습도계 관리대장은 하루 1개까지만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
@@ -2251,9 +2201,7 @@ const renderHeatwaveUploadFileList = (companyName: string) => {
             <div className="font-semibold text-slate-800">
               {file.fileType === "thermoPhoto" || file.fileType === "image"
   ? "온습도계 사진"
-  : file.fileType === "thermoLedger"
-    ? "온습도계 관리대장"
-    : "휴게시간 관리대장"} · {file.fileName}
+  : "온습도계 관리대장"} · {file.fileName}
             </div>
 
             {(file.fileType === "thermoPhoto" || file.fileType === "image") && (
@@ -2287,7 +2235,7 @@ const renderHeatwaveUploadFileList = (companyName: string) => {
 };
 
 const handleDeleteHeatwaveSharedFile = async (
-  fileKind: "thermoHygrometerImage" | "breakTimeExcel"
+  fileKind: "thermoHygrometerImage"
 ) => {
   setHeatwaveMessage("");
 
@@ -2353,7 +2301,7 @@ setHeatwaveMessage("공통 파일이 삭제되었습니다.");
 
 const renderHeatwaveSharedFileBox = (
   title: string,
-  fileKind: "thermoHygrometerImage" | "breakTimeExcel"
+  fileKind: "thermoHygrometerImage"
 ) => {
   const file = heatwaveSharedFiles[heatwaveDateKey]?.[fileKind];
 
@@ -2398,7 +2346,7 @@ const renderHeatwaveSharedFileBox = (
 
 const handleHeatwaveSharedFileUpload = async (
   event: React.ChangeEvent<HTMLInputElement>,
-  fileKind: "thermoHygrometerImage" | "breakTimeExcel"
+  fileKind: "thermoHygrometerImage"
 ) => {
   setHeatwaveMessage("");
 
@@ -2406,28 +2354,21 @@ const handleHeatwaveSharedFileUpload = async (
   if (!file) return;
 
   if (!canManageHeatwaveCompanies) {
-    setHeatwaveMessage("온습도계와 휴게시간 파일은 마스터, 관리자만 업로드할 수 있습니다.");
+    setHeatwaveMessage("온습도계 파일은 마스터, 관리자만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
 
-    if (!db || !storage) {
+  if (!db || !storage) {
     setHeatwaveMessage("Firebase 연결 오류");
     event.target.value = "";
     return;
   }
 
-    const maxSize =
-    fileKind === "thermoHygrometerImage"
-      ? MAX_HEATWAVE_IMAGE_FILE_SIZE
-      : MAX_HEATWAVE_EXCEL_FILE_SIZE;
+  const maxSize = MAX_HEATWAVE_IMAGE_FILE_SIZE;
 
   if (file.size > maxSize) {
-    setHeatwaveMessage(
-      fileKind === "thermoHygrometerImage"
-        ? "온습도계 이미지는 5MB 이하만 업로드할 수 있습니다."
-        : "휴게시간 엑셀파일은 10MB 이하만 업로드할 수 있습니다."
-    );
+    setHeatwaveMessage("온습도계 이미지는 5MB 이하만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
@@ -2476,11 +2417,7 @@ createdAt: new Date().toISOString(),
   detail: `${getHeatwaveSharedFileKindLabel(fileKind)} 업로드 / ${file.name}`,
 });
 
-setHeatwaveMessage(
-  fileKind === "thermoHygrometerImage"
-    ? "온습도계 이미지가 업로드되었습니다."
-    : "휴게시간 엑셀파일이 업로드되었습니다."
-);
+setHeatwaveMessage("온습도계 이미지가 업로드되었습니다.");
   } catch (error) {
     console.log("HEATWAVE SHARED FILE UPLOAD ERROR:", error);
 
@@ -3419,7 +3356,7 @@ const handleDownloadSupplementWeekendExcel = () => {
   { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
   { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
   { key: "soloWorker", title: "단독작업자", description: "단독작업자 관리 페이지로 이동", icon: Users },
-{ key: "heatwave", title: "혹서기", description: "혹서기 온습도계·휴게시간 관리대장 업로드 현황 관리", icon: CalendarDays },
+{ key: "heatwave", title: "혹서기", description: "혹서기 온습도계 업로드 현황 관리", icon: CalendarDays },
 { key: "supplementWork", title: "보충작업", description: "금일야간/명일조출, 명일·주말 보충작업 관리", icon: CalendarDays },
   ...(canManageApprovals
     ? [{ key: "approval", title: "회원 승인 관리", description: "가입 신청 승인/반려 관리", icon: UserPlus }]
@@ -8513,12 +8450,9 @@ const renderHeatwavePage = () => {
   const myCompanyName = String(currentUser?.companyName || "").trim();
   const myStatus = myCompanyName ? getHeatwaveCompanyStatus(myCompanyName, heatwaveDateKey) : null;
 const myImageTarget = myCompanyName ? heatwaveImageSelectedCompanies.includes(myCompanyName) : false;
-const myExcelTarget = myCompanyName ? heatwaveExcelSelectedCompanies.includes(myCompanyName) : false;
-const myComplete =
-  (!myImageTarget ||
-    ((myStatus?.thermoPhotoCount || 0) >= 4 &&
-      (myStatus?.thermoLedgerCount || 0) >= 1)) &&
-  (!myExcelTarget || (myStatus?.breakTimeLedgerCount || 0) >= 1);
+const myComplete = myImageTarget &&
+  (myStatus?.thermoPhotoCount || 0) >= 4 &&
+  (myStatus?.thermoLedgerCount || 0) >= 1;
 
     return (
     <div className="space-y-4 sm:space-y-6">
@@ -8551,26 +8485,21 @@ const myComplete =
         <table className="w-full table-fixed border-collapse text-sm">
           <thead>
             <tr className="bg-slate-100 text-slate-700">
-              <th className="w-[22%] border border-black px-3 py-2 text-left">업체명</th>
-<th className="w-[18%] border border-black px-3 py-2 text-left">온습도계 사진</th>
-<th className="w-[20%] border border-black px-3 py-2 text-left">온습도계 관리대장</th>
-<th className="w-[20%] border border-black px-3 py-2 text-left">휴게시간 관리대장</th>
-<th className="border border-black px-3 py-2 text-left">상태</th>
+              <th className="w-[30%] border border-black px-3 py-2 text-left">업체명</th>
+              <th className="w-[25%] border border-black px-3 py-2 text-left">온습도계 사진</th>
+              <th className="w-[25%] border border-black px-3 py-2 text-left">온습도계 관리대장</th>
+              <th className="border border-black px-3 py-2 text-left">상태</th>
             </tr>
           </thead>
 
           <tbody>
-            {Array.from(new Set([...heatwaveImageSelectedCompanies, ...heatwaveExcelSelectedCompanies]))
+            {heatwaveImageSelectedCompanies
   .filter((companyName) => isHeatwaveAdmin || companyName === myCompanyName)
   .sort((a, b) => a.localeCompare(b, "ko"))
   .map((companyName) => {
                 const status = getHeatwaveCompanyStatus(companyName);
                 const imageTarget = heatwaveImageSelectedCompanies.includes(companyName);
-                const excelTarget = heatwaveExcelSelectedCompanies.includes(companyName);
-
-                const complete =
-  (!imageTarget || (status.thermoPhotoCount >= 4 && status.thermoLedgerCount >= 1)) &&
-  (!excelTarget || status.breakTimeLedgerCount >= 1);
+                const complete = imageTarget && status.thermoPhotoCount >= 4 && status.thermoLedgerCount >= 1;
 
                 return (
                   <tr key={companyName}>
@@ -8578,44 +8507,13 @@ const myComplete =
                       {companyName}
                     </td>
 
-                    <td
-  className={cn(
-    "border border-black px-3 py-2 font-semibold",
-    imageTarget && status.thermoPhotoCount >= 4
-      ? "bg-green-100 text-green-700"
-      : imageTarget
-      ? "bg-red-50 text-red-700"
-      : ""
-  )}
->
-  {imageTarget ? `${Math.min(status.thermoPhotoCount, 4)}/4` : "대상 아님"}
-</td>
+                    <td className={cn("border border-black px-3 py-2 font-semibold", imageTarget && status.thermoPhotoCount >= 4 ? "bg-green-100 text-green-700" : imageTarget ? "bg-red-50 text-red-700" : "")}>
+                      {imageTarget ? `${Math.min(status.thermoPhotoCount, 4)}/4` : "대상 아님"}
+                    </td>
 
-<td
-  className={cn(
-    "border border-black px-3 py-2 font-semibold",
-    imageTarget && status.thermoLedgerCount >= 1
-      ? "bg-green-100 text-green-700"
-      : imageTarget
-      ? "bg-red-50 text-red-700"
-      : ""
-  )}
->
-  {imageTarget ? `${Math.min(status.thermoLedgerCount, 1)}/1` : "대상 아님"}
-</td>
-
-<td
-  className={cn(
-    "border border-black px-3 py-2 font-semibold",
-    excelTarget && status.breakTimeLedgerCount >= 1
-      ? "bg-green-100 text-green-700"
-      : excelTarget
-      ? "bg-red-50 text-red-700"
-      : ""
-  )}
->
-  {excelTarget ? `${Math.min(status.breakTimeLedgerCount, 1)}/1` : "대상 아님"}
-</td>
+                    <td className={cn("border border-black px-3 py-2 font-semibold", imageTarget && status.thermoLedgerCount >= 1 ? "bg-green-100 text-green-700" : imageTarget ? "bg-red-50 text-red-700" : "")}>
+                      {imageTarget ? `${Math.min(status.thermoLedgerCount, 1)}/1` : "대상 아님"}
+                    </td>
 
                     <td className="border border-black px-3 py-2 font-semibold">
                       {complete ? "완료" : "미완료"}
@@ -8681,7 +8579,7 @@ const myComplete =
           {heatwaveActiveTab === "upload" && (
             <>
               <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-                조회 날짜: {formatMonthDay(heatwaveViewDateKey)} · 오늘 업로드 기준일: {formatMonthDay(heatwaveDateKey)} · 온습도계 사진 4개, 온습도계 관리대장 1개, 휴게시간 관리대장 1개 업로드
+                조회 날짜: {formatMonthDay(heatwaveViewDateKey)} · 오늘 업로드 기준일: {formatMonthDay(heatwaveDateKey)} · 온습도계 사진 4개, 온습도계 관리대장 1개 업로드
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-3">
@@ -8724,10 +8622,6 @@ const myComplete =
                           <input type="checkbox" checked={heatwaveDownloadTypes.thermoLedger} onChange={(e) => setHeatwaveDownloadTypes((prev) => ({ ...prev, thermoLedger: e.target.checked }))} className="h-4 w-4" />
                           온습도계 관리대장
                         </label>
-                        <label className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input type="checkbox" checked={heatwaveDownloadTypes.breakTimeLedger} onChange={(e) => setHeatwaveDownloadTypes((prev) => ({ ...prev, breakTimeLedger: e.target.checked }))} className="h-4 w-4" />
-                          휴게시간 관리대장
-                        </label>
                       </div>
                     </div>
                     <Button onClick={handleHeatwaveDownload} disabled={heatwaveDownloadLoading} className="w-full md:w-auto">
@@ -8762,18 +8656,13 @@ const myComplete =
                 <CardContent className="space-y-4">
                   {!myCompanyName ? (
                     <div className="text-sm text-slate-500">업체 정보가 없습니다.</div>
-                  ) : !myImageTarget && !myExcelTarget ? (
+                  ) : !myImageTarget ? (
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                      현재 업체는 온습도계/휴게시간 관리대장 업로드 대상 업체로 체크되어 있지 않습니다.
+                      현재 업체는 온습도계 업로드 대상 업체로 체크되어 있지 않습니다.
                     </div>
                   ) : (
                     <>
-  <div
-  className={cn(
-    "grid gap-3",
-    myImageTarget && myExcelTarget ? "md:grid-cols-2" : "md:grid-cols-1"
-  )}
->
+  <div className="grid gap-3 md:grid-cols-1">
   {myImageTarget && (
     <div className="grid gap-3">
       <div className="rounded-2xl border border-slate-200 p-4">
@@ -8803,22 +8692,6 @@ const myComplete =
           disabled={(myStatus?.thermoLedgerCount || 0) >= 1}
         />
       </div>
-    </div>
-  )}
-
-  {myExcelTarget && (
-    <div className="rounded-2xl border border-slate-200 p-4">
-      <div className="text-sm font-semibold text-slate-900">휴게시간 관리대장 업로드</div>
-      <div className="mt-1 text-xs text-slate-500">
-        현재 {myStatus?.breakTimeLedgerCount || 0}/1개
-      </div>
-      <Input
-        type="file"
-        accept=".xls,.xlsx,.pdf,image/*"
-        onChange={(event) => handleHeatwaveUpload(event, "breakTimeLedger")}
-        className="mt-3 h-auto py-2"
-        disabled={(myStatus?.breakTimeLedgerCount || 0) >= 1}
-      />
     </div>
   )}
 </div>
@@ -8858,7 +8731,8 @@ const myComplete =
                       </div>
 
                       <div className="grid gap-3 md:grid-cols-2">
-                        {Array.from(new Set([...heatwaveImageSelectedCompanies, ...heatwaveExcelSelectedCompanies]))
+                        {heatwaveImageSelectedCompanies
+                          .slice()
                           .sort((a, b) => a.localeCompare(b, "ko"))
                           .map((companyName) => (
                             <div key={companyName} className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -8883,43 +8757,22 @@ const myComplete =
                     <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
                       {approvedCompanyNames.map((companyName) => {
                         const imageChecked = heatwaveImageSelectedCompanies.includes(companyName);
-const excelChecked = heatwaveExcelSelectedCompanies.includes(companyName);
-const checked = imageChecked || excelChecked;
 
                         return (
                           <label
                             key={companyName}
                             className={cn(
                               "flex cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3 text-sm transition",
-                              checked ? "border-slate-900 bg-white" : "border-slate-200 bg-slate-50",
-                              checked && "border-slate-900 bg-white"
+                              imageChecked ? "border-slate-900 bg-white" : "border-slate-200 bg-slate-50"
                             )}
                           >
-                            <span className="flex min-w-0 items-center gap-2">
-                              <span className="truncate font-semibold">{companyName}</span>
-
-<label className="ml-auto flex items-center gap-1 text-xs">
-  <input
-    type="checkbox"
-    checked={imageChecked}
-    onChange={() => handleToggleHeatwaveCompany(companyName, "image")}
-    className="h-4 w-4"
-  />
-  온습도계
-</label>
-
-<label className="flex items-center gap-1 text-xs">
-  <input
-    type="checkbox"
-    checked={excelChecked}
-    onChange={() => handleToggleHeatwaveCompany(companyName, "excel")}
-    className="h-4 w-4"
-  />
-  휴게시간 관리대장
-</label>
-                            </span>
-
-                            
+                            <span className="truncate font-semibold">{companyName}</span>
+                            <input
+                              type="checkbox"
+                              checked={imageChecked}
+                              onChange={() => handleToggleHeatwaveCompany(companyName, "image")}
+                              className="h-4 w-4 shrink-0"
+                            />
                           </label>
                         );
                       })}
