@@ -33,7 +33,6 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -414,6 +413,7 @@ type DabsRowItem = {
   vehicle?: string;
   location?: string;
   manager?: string;
+  phone?: string;
   time?: string;
 };
 
@@ -955,11 +955,6 @@ const [heatwaveUploads, setHeatwaveUploads] = useState<Record<string, HeatwaveDa
 const [heatwaveMessage, setHeatwaveMessage] = useState("");
 const [heatwaveStatusPopupOpen, setHeatwaveStatusPopupOpen] = useState(false);
 const [heatwaveActiveTab, setHeatwaveActiveTab] = useState<"upload" | "sensitive">("upload");
-const [heatwaveDownloadStartDate, setHeatwaveDownloadStartDate] = useState(() => getTodayKey());
-const [heatwaveDownloadEndDate, setHeatwaveDownloadEndDate] = useState(() => getTodayKey());
-const [heatwaveDownloadTypes, setHeatwaveDownloadTypes] = useState({ thermoPhoto: true, thermoLedger: true, breakTimeLedger: true });
-const [heatwaveDownloadLoading, setHeatwaveDownloadLoading] = useState(false);
-const [heatwaveDeleteAllLoading, setHeatwaveDeleteAllLoading] = useState(false);
 const [heatwaveSharedFiles, setHeatwaveSharedFiles] = useState<Record<string, HeatwaveSharedDateValue>>({});
   const [selectedDate, setSelectedDate] = useState(() => getDefaultSelectedDateKey());
 const heatwaveDateKey = getTodayKey();
@@ -1041,7 +1036,7 @@ const [editSectionPopup, setEditSectionPopup] = useState<{
 });
 
 const [editSectionTextSelection, setEditSectionTextSelection] = useState({ start: 0, end: 0 });
-  const [materialsInput, setMaterialsInput] = useState({ gate: "1", company: "", material: "", vehicle: "", location: "", manager: "", time: "06" });
+  const [materialsInput, setMaterialsInput] = useState({ gate: "1", company: "", material: "", vehicle: "", location: "", manager: "", phone: "", time: "06" });
   const [imagePopup, setImagePopup] = useState({
   open: false,
   x: 0,
@@ -1086,7 +1081,7 @@ const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
 const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "" });
 
-const [supplementTab, setSupplementTab] = useState<"nightMorning" | "tomorrow">("nightMorning");
+const [supplementTab, setSupplementTab] = useState<"nightMorning" | "tomorrow" | "weekend">("nightMorning");
 const [supplementNoticeText, setSupplementNoticeText] = useState("");
 const [supplementNoticeImage, setSupplementNoticeImage] = useState("");
 const [supplementNightText, setSupplementNightText] = useState("");
@@ -1222,6 +1217,7 @@ const [editMaterialPopup, setEditMaterialPopup] = useState({
   vehicle: "",
   location: "",
   manager: "",
+  phone: "",
 });
   const [loadSourceDate, setLoadSourceDate] = useState(() => {
   const d = new Date();
@@ -1595,169 +1591,6 @@ const writeActivityLog = async ({
   });
 };  
   
-// 혹서기 기간별 다운로드 (마스터/관리자)
-const handleHeatwaveDownload = async () => {
-  const isAdmin = currentUser?.role === "master" || currentUser?.role === "admin";
-  if (!isAdmin || !db) {
-    setHeatwaveMessage("마스터 또는 관리자만 다운로드할 수 있습니다.");
-    return;
-  }
-  if (!heatwaveDownloadTypes.thermoPhoto && !heatwaveDownloadTypes.thermoLedger && !heatwaveDownloadTypes.breakTimeLedger) {
-    setHeatwaveMessage("다운로드할 파일 종류를 하나 이상 선택하세요.");
-    return;
-  }
-  if (!heatwaveDownloadStartDate || !heatwaveDownloadEndDate) {
-    setHeatwaveMessage("다운로드 기간을 설정해주세요.");
-    return;
-  }
-  if (heatwaveDownloadStartDate > heatwaveDownloadEndDate) {
-    setHeatwaveMessage("시작 날짜가 종료 날짜보다 클 수 없습니다.");
-    return;
-  }
-
-  setHeatwaveDownloadLoading(true);
-  setHeatwaveMessage("");
-
-  try {
-    // 기간 내 모든 날짜 생성
-    const dates: string[] = [];
-    const start = new Date(heatwaveDownloadStartDate);
-    const end = new Date(heatwaveDownloadEndDate);
-    const cur = new Date(start);
-    while (cur <= end) {
-      dates.push(formatDateKey(cur));
-      cur.setDate(cur.getDate() + 1);
-    }
-
-    // 각 날짜별 업로드 데이터 수집
-    const allFiles: Array<{ url: string; name: string; type: string; date: string; company: string }> = [];
-
-    for (const dateKey of dates) {
-      const snap = await getDoc(doc(db, "heatwaveUploads", dateKey));
-      if (!snap.exists()) continue;
-      const data = snap.data() as HeatwaveDateValue;
-      const uploads = data.uploads || {};
-
-      for (const [companyName, fileList] of Object.entries(uploads)) {
-        for (const file of (fileList as HeatwaveUploadItem[])) {
-          const isThermo = file.fileType === "thermoPhoto" || file.fileType === "image";
-          const isLedger = file.fileType === "thermoLedger";
-          const isBreak = file.fileType === "breakTimeLedger" || file.fileType === "excel";
-
-          if (isThermo && heatwaveDownloadTypes.thermoPhoto) {
-            allFiles.push({ url: file.fileUrl, name: file.fileName, type: "온습도계사진", date: dateKey, company: companyName });
-          } else if (isLedger && heatwaveDownloadTypes.thermoLedger) {
-            allFiles.push({ url: file.fileUrl, name: file.fileName, type: "온습도계관리대장", date: dateKey, company: companyName });
-          } else if (isBreak && heatwaveDownloadTypes.breakTimeLedger) {
-            allFiles.push({ url: file.fileUrl, name: file.fileName, type: "휴게시간관리대장", date: dateKey, company: companyName });
-          }
-        }
-      }
-    }
-
-    if (allFiles.length === 0) {
-      setHeatwaveMessage("선택한 기간/종류에 해당하는 파일이 없습니다.");
-      setHeatwaveDownloadLoading(false);
-      return;
-    }
-
-    // 파일 순차 다운로드
-    for (const file of allFiles) {
-      try {
-        const response = await fetch(file.url);
-        const blob = await response.blob();
-        const ext = file.name.split(".").pop() || "";
-        const safeName = `${file.date}_${file.company}_${file.type}_${file.name}`.replace(/[\\/:*?"<>|]/g, "_");
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = safeName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        // 짧은 딜레이
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      } catch {
-        console.log("파일 다운로드 실패:", file.name);
-      }
-    }
-
-    setHeatwaveMessage(`${allFiles.length}개 파일 다운로드를 시작했습니다.`);
-
-    await writeActivityLog({
-      action: "다운로드",
-      page: "혹서기",
-      target: "기간별 파일 다운로드",
-      detail: `${heatwaveDownloadStartDate} ~ ${heatwaveDownloadEndDate} / ${Object.entries(heatwaveDownloadTypes).filter(([,v])=>v).map(([k])=>k).join(",")} / ${allFiles.length}건`,
-    });
-  } catch (error) {
-    console.log("HEATWAVE DOWNLOAD ERROR:", error);
-    setHeatwaveMessage("다운로드 중 오류가 발생했습니다.");
-  }
-
-  setHeatwaveDownloadLoading(false);
-};
-
-// 혹서기 전체 파일 일괄 삭제 (마스터만)
-const handleHeatwaveDeleteAll = async () => {
-  if (currentUser?.role !== "master" || !db || !storage) {
-    setHeatwaveMessage("마스터만 전체 삭제를 할 수 있습니다.");
-    return;
-  }
-
-  const confirmed = window.confirm("모든 혹서기 업로드 파일을 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?");
-  if (!confirmed) return;
-
-  setHeatwaveDeleteAllLoading(true);
-  setHeatwaveMessage("");
-
-  try {
-    // Firestore에서 모든 heatwaveUploads 문서 조회
-    const snapshot = await getDocs(collection(db, "heatwaveUploads"));
-    let deletedCount = 0;
-
-    for (const docSnap of snapshot.docs) {
-      const data = docSnap.data() as HeatwaveDateValue;
-      const uploads = data.uploads || {};
-
-      // Firebase Storage 파일 삭제
-      for (const fileList of Object.values(uploads)) {
-        for (const file of (fileList as HeatwaveUploadItem[])) {
-          if (file.storagePath) {
-            try {
-              await deleteObject(storageRef(storage, file.storagePath));
-            } catch {
-              console.log("스토리지 파일 삭제 실패:", file.storagePath);
-            }
-          }
-          deletedCount++;
-        }
-      }
-
-      // Firestore 문서 삭제
-      await deleteDoc(docSnap.ref);
-    }
-
-    // 로컬 state 초기화
-    setHeatwaveUploads({});
-
-    await writeActivityLog({
-      action: "일괄삭제",
-      page: "혹서기",
-      target: "전체 업로드 파일",
-      detail: `총 ${deletedCount}개 파일 전체 삭제`,
-    });
-
-    setHeatwaveMessage(`혹서기 업로드 파일 ${deletedCount}개가 모두 삭제되었습니다.`);
-  } catch (error) {
-    console.log("HEATWAVE DELETE ALL ERROR:", error);
-    setHeatwaveMessage("전체 삭제 중 오류가 발생했습니다.");
-  }
-
-  setHeatwaveDeleteAllLoading(false);
-};
-
 useEffect(() => {
   if (isDemoMode || !db || !currentUser) {
     setActivityLogs([]);
@@ -1769,32 +1602,18 @@ useEffect(() => {
     return;
   }
 
-  // 일주일치 전부 표시: limit 2000건 + 7일 필터
   const logsQuery = query(
     collection(db, "activityLogs"),
     orderBy("createdAt", "desc"),
-    limit(2000)
+    limit(200)
   );
 
   const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    oneWeekAgo.setHours(0, 0, 0, 0);
-
     setActivityLogs(
-      snapshot.docs
-        .map((item) => ({
-          id: item.id,
-          ...(item.data() as Omit<ActivityLogItem, "id">),
-        }))
-        .filter((log) => {
-          if (!log.createdAt) return true;
-          const date =
-            typeof log.createdAt?.toDate === "function"
-              ? log.createdAt.toDate()
-              : new Date(log.createdAt);
-          return date >= oneWeekAgo;
-        })
+      snapshot.docs.map((item) => ({
+        id: item.id,
+        ...(item.data() as Omit<ActivityLogItem, "id">),
+      }))
     );
   });
 
@@ -4531,7 +4350,7 @@ const cancelApprovalUser = async (uid: string) => {
 };
 
   const handleAddMaterial = async () => {
-  const { gate, material, vehicle, location, manager, time } = materialsInput;
+  const { gate, material, vehicle, location, manager, phone, time } = materialsInput;
   if (!canEditDabs || !material.trim() || !vehicle.trim() || !location.trim()) return;
 
   const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
@@ -4559,6 +4378,7 @@ const cancelApprovalUser = async (uid: string) => {
       vehicle: vehicle.trim(),
       location: location.trim(),
       manager: manager.trim(),
+      phone: phone.trim(),
       time,
       company: companyName,
       createdByUid: currentUser?.uid,
@@ -4582,10 +4402,10 @@ const cancelApprovalUser = async (uid: string) => {
     action: "입력",
     page: "DAB's회의",
     target: companyName,
-    detail: `${activeDabsTab.label} / ${time}시 / ${gate}게이트 / ${material.trim()} / ${vehicle.trim()} / ${location.trim()} / 담당자: ${manager.trim()}`,
+    detail: `${activeDabsTab.label} / ${time}시 / ${gate}게이트 / ${material.trim()} / ${vehicle.trim()} / ${location.trim()} / 담당자: ${manager.trim()} / 연락처: ${phone.trim()}`,
   });
 
-  setMaterialsInput({ gate: "1", company: "", material: "", vehicle: "", location: "", manager: "", time: "06" });
+  setMaterialsInput({ gate: "1", company: "", material: "", vehicle: "", location: "", manager: "", phone: "", time: "06" });
   setDabsMessage("저장되었습니다.");
 };
 
@@ -4624,6 +4444,7 @@ const handleUpdateMaterial = async () => {
           vehicle: editMaterialPopup.vehicle.trim(),
           location: editMaterialPopup.location.trim(),
           manager: editMaterialPopup.manager.trim(),
+          phone: editMaterialPopup.phone.trim(),
         }
       : item
   );
@@ -4657,6 +4478,7 @@ const handleUpdateMaterial = async () => {
     vehicle: "",
     location: "",
     manager: "",
+    phone: "",
   });
 
   setDabsMessage("수정되었습니다.");
@@ -4839,7 +4661,7 @@ const nextData = {
     action: "삭제",
     page: "DAB's회의",
     target: targetItem?.company || "",
-    detail: `${activeDabsTab.label} / ${targetItem?.time || ""}시 / ${targetItem?.gate || ""}게이트 / ${targetItem?.material || ""} / ${targetItem?.vehicle || ""} / ${targetItem?.location || ""} / 담당자: ${targetItem?.manager || ""}`,
+    detail: `${activeDabsTab.label} / ${targetItem?.time || ""}시 / ${targetItem?.gate || ""}게이트 / ${targetItem?.material || ""} / ${targetItem?.vehicle || ""} / ${targetItem?.location || ""} / 담당자: ${targetItem?.manager || ""} / 연락처: ${targetItem?.phone || ""}`,
   });
 };
 
@@ -6548,7 +6370,7 @@ const renderSectionMobileCards = (
 
       return (
         <MobileListCard key={time} title={`${time}시`}>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-4">
             <div>
               <div className="mb-2 text-xs font-semibold text-slate-500">1게이트</div>
 
@@ -6560,47 +6382,51 @@ const renderSectionMobileCards = (
                     <div className="text-xs font-medium text-slate-500">{item.company}</div>
                     <div className="mt-1 text-sm">자재명: {item.material}</div>
                     <div className="text-sm">차종: {item.vehicle}</div>
-                    <div className="text-sm">담당자: {item.manager || "-"}</div>
+                    <div className="text-sm">하역장소: {item.location}</div>
+                    {(item.manager || item.phone) && (
+                      <div className="text-sm">
+                        {item.manager && `담당자: ${item.manager}`}
+                        {item.manager && item.phone && " / "}
+                        {item.phone && `연락처: ${item.phone}`}
+                      </div>
+                    )}
 
-                    <div className="mt-1 flex items-start justify-between gap-2 text-sm">
-                      <span>하역장소: {item.location}</span>
+                    {!isCapturingImage && (
+                      <div className="mt-2 flex shrink-0 gap-1">
+                        {canAdminEditDabsItem && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditMaterialPopup({
+                                open: true,
+                                itemId: item.id,
+                                gate: item.gate || "",
+                                time: item.time || "",
+                                company: item.company || "",
+                                material: item.material || "",
+                                vehicle: item.vehicle || "",
+                                location: item.location || "",
+                                manager: item.manager || "",
+                                phone: item.phone || "",
+                              })
+                            }
+                            className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
+                          >
+                            수정
+                          </button>
+                        )}
 
-                      {!isCapturingImage && (
-                        <div className="flex shrink-0 gap-1">
-                          {canAdminEditDabsItem && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setEditMaterialPopup({
-                                  open: true,
-                                  itemId: item.id,
-                                  gate: item.gate || "",
-                                  time: item.time || "",
-                                  company: item.company || "",
-                                  material: item.material || "",
-                                  vehicle: item.vehicle || "",
-                                  location: item.location || "",
-                                  manager: item.manager || "",
-                                })
-                              }
-                              className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
-                            >
-                              수정
-                            </button>
-                          )}
-
-                          {canDeleteOwnItem(item) && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteDabsItem(item.id)}
-                              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                        {canDeleteOwnItem(item) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDabsItem(item.id)}
+                            className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -6617,47 +6443,51 @@ const renderSectionMobileCards = (
                     <div className="text-xs font-medium text-slate-500">{item.company}</div>
                     <div className="mt-1 text-sm">자재명: {item.material}</div>
                     <div className="text-sm">차종: {item.vehicle}</div>
-                    <div className="text-sm">담당자: {item.manager || "-"}</div>
+                    <div className="text-sm">하역장소: {item.location}</div>
+                    {(item.manager || item.phone) && (
+                      <div className="text-sm">
+                        {item.manager && `담당자: ${item.manager}`}
+                        {item.manager && item.phone && " / "}
+                        {item.phone && `연락처: ${item.phone}`}
+                      </div>
+                    )}
 
-                    <div className="mt-1 flex items-start justify-between gap-2 text-sm">
-                      <span>하역장소: {item.location}</span>
+                    {!isCapturingImage && (
+                      <div className="mt-2 flex shrink-0 gap-1">
+                        {canAdminEditDabsItem && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditMaterialPopup({
+                                open: true,
+                                itemId: item.id,
+                                gate: item.gate || "",
+                                time: item.time || "",
+                                company: item.company || "",
+                                material: item.material || "",
+                                vehicle: item.vehicle || "",
+                                location: item.location || "",
+                                manager: item.manager || "",
+                                phone: item.phone || "",
+                              })
+                            }
+                            className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
+                          >
+                            수정
+                          </button>
+                        )}
 
-                      {!isCapturingImage && (
-                        <div className="flex shrink-0 gap-1">
-                          {canAdminEditDabsItem && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setEditMaterialPopup({
-                                  open: true,
-                                  itemId: item.id,
-                                  gate: item.gate || "",
-                                  time: item.time || "",
-                                  company: item.company || "",
-                                  material: item.material || "",
-                                  vehicle: item.vehicle || "",
-                                  location: item.location || "",
-                                  manager: item.manager || "",
-                                })
-                              }
-                              className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
-                            >
-                              수정
-                            </button>
-                          )}
-
-                          {canDeleteOwnItem(item) && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteDabsItem(item.id)}
-                              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                        {canDeleteOwnItem(item) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDabsItem(item.id)}
+                            className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -7108,6 +6938,17 @@ const renderEditPopups = () => (
             />
           </div>
 
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">연락처</label>
+            <Input
+              value={editMaterialPopup.phone}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, phone: e.target.value }))
+              }
+              placeholder="연락처 입력"
+            />
+          </div>
+
           <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
             <Button
               variant="outline"
@@ -7123,6 +6964,7 @@ const renderEditPopups = () => (
                   vehicle: "",
                   location: "",
                   manager: "",
+                  phone: "",
                 })
               }
             >
@@ -7761,79 +7603,241 @@ return (
     placeholder="담당자"
   />
 
-  <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="w-full md:w-auto">
+  <Input
+    value={materialsInput.phone}
+    onChange={(e) => setMaterialsInput({ ...materialsInput, phone: e.target.value })}
+    placeholder="연락처"
+  />
+
+  <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="w-full md:w-auto md:col-start-8">
     추가
   </Button>
 </div><div ref={dabsCaptureRef} className="bg-white">
   {renderMaterialsMobileCards(materialList)}
-  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block"><table className={TABLE_BASE_CLASS}><thead>
-  <tr className="bg-slate-100 text-slate-700">
-    <th rowSpan={2} className="w-[8%] border border-black px-2 py-2 text-left">시간</th>
-    <th colSpan={5} className="border border-black px-2 py-2 text-center">1게이트</th>
-    <th colSpan={5} className="border border-black px-2 py-2 text-center">7게이트</th>
-  </tr>
-  <tr className="bg-slate-100 text-slate-700">
-    <th className="w-[9%] border border-black px-2 py-2 text-left">업체명</th>
-    <th className="w-[10%] border border-black px-2 py-2 text-left">자재명</th>
-    <th className="w-[8%] border border-black px-2 py-2 text-left">차종</th>
-    <th className="w-[10%] border border-black px-2 py-2 text-left">하역장소</th>
-    <th className="w-[8%] border border-black px-2 py-2 text-left">담당자</th>
-    <th className="w-[9%] border border-black px-2 py-2 text-left">업체명</th>
-    <th className="w-[10%] border border-black px-2 py-2 text-left">자재명</th>
-    <th className="w-[8%] border border-black px-2 py-2 text-left">차종</th>
-    <th className="w-[10%] border border-black px-2 py-2 text-left">하역장소</th>
-    <th className="w-[8%] border border-black px-2 py-2 text-left">담당자</th>
-  </tr>
-</thead><tbody>{MATERIAL_TIMES.map((time) => { const row = materialList.filter((item) => item.time === time); const gate1 = row.filter((item) => item.gate === "1"); const gate7 = row.filter((item) => item.gate === "7"); const renderCell = (items: DabsRowItem[], field: keyof DabsRowItem) =>
-  items.map((item, index) => (
-    <div
-      key={`${field}-${item.id}`}
-      className={cn(
-        "mb-2 flex items-center justify-between gap-1",
-        dottedRow(index)
-      )}
-    >
-      <span className="whitespace-pre-wrap break-all leading-relaxed">
-        {String(item[field] || "")}
-      </span>
+  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block">
+    <table className={TABLE_BASE_CLASS}>
+      <colgroup>
+        <col style={{ width: "6%" }} />
+        <col style={{ width: "7%" }} />
+        <col style={{ width: "14%" }} />
+        <col style={{ width: "11%" }} />
+        <col style={{ width: "16%" }} />
+        <col style={{ width: "12%" }} />
+        <col style={{ width: "17%" }} />
+        <col style={{ width: "17%" }} />
+      </colgroup>
+      <thead>
+        <tr className="bg-slate-100 text-slate-700">
+          <th className="border border-black px-2 py-2 text-left">시간</th>
+          <th className="border border-black px-2 py-2 text-left">게이트</th>
+          <th className="border border-black px-2 py-2 text-left">업체명</th>
+          <th className="border border-black px-2 py-2 text-left">자재명</th>
+          <th className="border border-black px-2 py-2 text-left">차종</th>
+          <th className="border border-black px-2 py-2 text-left">하역장소</th>
+          <th className="border border-black px-2 py-2 text-left">담당자</th>
+          <th className="border border-black px-2 py-2 text-left">연락처</th>
+        </tr>
+      </thead>
+      <tbody>
+        {MATERIAL_TIMES.map((time) => {
+          const row = materialList.filter((item) => item.time === time);
+          const gate1 = row.filter((item) => item.gate === "1");
+          const gate7 = row.filter((item) => item.gate === "7");
 
-      {field === "manager" && !isCapturingImage && (
-        <div className="flex shrink-0 gap-1">
-          {canAdminEditDabsItem && (
-            <button
-              type="button"
-              onClick={() =>
-                setEditMaterialPopup({
-                  open: true,
-                  itemId: item.id,
-                  gate: item.gate || "",
-                  time: item.time || "",
-                  company: item.company || "",
-                  material: item.material || "",
-                  vehicle: item.vehicle || "",
-                  location: item.location || "",
-                  manager: item.manager || "",
-                })
-              }
-              className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-            >
-              수정
-            </button>
-          )}
+          // 한 게이트 내에서 모든 행은 동일 행에 표시 (줄바꿈 없이 같이 가도록)
+          const renderGateRows = (items: DabsRowItem[], gateLabel: string) => {
+            if (items.length === 0) return null;
+            return items.map((item, idx) => (
+              <tr key={item.id}>
+                {idx === 0 && (
+                  <td
+                    rowSpan={items.length}
+                    className="border border-black px-2 py-2 align-middle font-medium text-slate-600 bg-slate-50 text-center text-xs"
+                  >
+                    {gateLabel}
+                  </td>
+                )}
+                <td className="border border-black px-2 py-2 align-top">{item.company}</td>
+                <td className="border border-black px-2 py-2 align-top">{item.material}</td>
+                <td className="border border-black px-2 py-2 align-top">{item.vehicle}</td>
+                <td className="border border-black px-2 py-2 align-top">{item.location}</td>
+                <td className="border border-black px-2 py-2 align-top">{item.manager || ""}</td>
+                <td className="border border-black px-2 py-2 align-top">
+                  <div className="flex items-start justify-between gap-1">
+                    <span>{item.phone || ""}</span>
+                    {!isCapturingImage && (
+                      <div className="flex shrink-0 gap-1">
+                        {canAdminEditDabsItem && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditMaterialPopup({
+                                open: true,
+                                itemId: item.id,
+                                gate: item.gate || "",
+                                time: item.time || "",
+                                company: item.company || "",
+                                material: item.material || "",
+                                vehicle: item.vehicle || "",
+                                location: item.location || "",
+                                manager: item.manager || "",
+                                phone: item.phone || "",
+                              })
+                            }
+                            className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                          >
+                            수정
+                          </button>
+                        )}
+                        {canDeleteOwnItem(item) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDabsItem(item.id)}
+                            className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ));
+          };
 
-          {canDeleteOwnItem(item) && (
-            <button
-              type="button"
-              onClick={() => handleDeleteDabsItem(item.id)}
-              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  )); return <tr key={time}><td className="border border-black px-3 py-2 font-medium">{time}시</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "company")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "material")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "vehicle")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "location")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "manager")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "company")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "material")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "vehicle")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "location")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "manager")}</td></tr>; })}</tbody></table></div>
+          const hasAny = gate1.length > 0 || gate7.length > 0;
+          const totalRows = Math.max(1, gate1.length) + Math.max(1, gate7.length);
+
+          if (!hasAny) {
+            return (
+              <tr key={time}>
+                <td rowSpan={2} className="border border-black px-2 py-2 font-semibold align-middle text-center">
+                  {time}시
+                </td>
+                <td className="border border-black px-2 py-2 text-slate-300 text-center bg-slate-50 text-xs">
+                  1게이트
+                </td>
+                <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">
+                  입력 없음
+                </td>
+              </tr>
+            );
+          }
+
+          return (
+            <>
+              <tr key={`${time}-label`}>
+                <td
+                  rowSpan={gate1.length + gate7.length + (gate1.length === 0 ? 1 : 0) + (gate7.length === 0 ? 1 : 0)}
+                  className="border border-black px-2 py-2 font-semibold align-middle text-center"
+                >
+                  {time}시
+                </td>
+                {gate1.length === 0 ? (
+                  <>
+                    <td className="border border-black px-2 py-2 align-middle text-xs bg-slate-50 text-slate-600 text-center font-medium">
+                      1게이트
+                    </td>
+                    <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">
+                      입력 없음
+                    </td>
+                  </>
+                ) : (
+                  (() => {
+                    const first = gate1[0];
+                    return (
+                      <>
+                        <td rowSpan={gate1.length} className="border border-black px-2 py-2 align-middle text-xs bg-slate-50 text-slate-600 text-center font-medium">
+                          1게이트
+                        </td>
+                        <td className="border border-black px-2 py-2 align-top">{first.company}</td>
+                        <td className="border border-black px-2 py-2 align-top">{first.material}</td>
+                        <td className="border border-black px-2 py-2 align-top">{first.vehicle}</td>
+                        <td className="border border-black px-2 py-2 align-top">{first.location}</td>
+                        <td className="border border-black px-2 py-2 align-top">{first.manager || ""}</td>
+                        <td className="border border-black px-2 py-2 align-top">
+                          <div className="flex items-start justify-between gap-1">
+                            <span>{first.phone || ""}</span>
+                            {!isCapturingImage && (
+                              <div className="flex shrink-0 gap-1">
+                                {canAdminEditDabsItem && (
+                                  <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: first.id, gate: first.gate || "", time: first.time || "", company: first.company || "", material: first.material || "", vehicle: first.vehicle || "", location: first.location || "", manager: first.manager || "", phone: first.phone || "" })} className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100">수정</button>
+                                )}
+                                {canDeleteOwnItem(first) && (
+                                  <button type="button" onClick={() => handleDeleteDabsItem(first.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </>
+                    );
+                  })()
+                )}
+              </tr>
+              {gate1.slice(1).map((item) => (
+                <tr key={item.id}>
+                  <td className="border border-black px-2 py-2 align-top">{item.company}</td>
+                  <td className="border border-black px-2 py-2 align-top">{item.material}</td>
+                  <td className="border border-black px-2 py-2 align-top">{item.vehicle}</td>
+                  <td className="border border-black px-2 py-2 align-top">{item.location}</td>
+                  <td className="border border-black px-2 py-2 align-top">{item.manager || ""}</td>
+                  <td className="border border-black px-2 py-2 align-top">
+                    <div className="flex items-start justify-between gap-1">
+                      <span>{item.phone || ""}</span>
+                      {!isCapturingImage && (
+                        <div className="flex shrink-0 gap-1">
+                          {canAdminEditDabsItem && <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "" })} className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100">수정</button>}
+                          {canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {gate7.length === 0 ? (
+                <tr key={`${time}-gate7-empty`}>
+                  <td className="border border-black px-2 py-2 align-middle text-xs bg-slate-50 text-slate-600 text-center font-medium">
+                    7게이트
+                  </td>
+                  <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">
+                    입력 없음
+                  </td>
+                </tr>
+              ) : (
+                gate7.map((item, idx) => (
+                  <tr key={item.id}>
+                    {idx === 0 && (
+                      <td rowSpan={gate7.length} className="border border-black px-2 py-2 align-middle text-xs bg-slate-50 text-slate-600 text-center font-medium">
+                        7게이트
+                      </td>
+                    )}
+                    <td className="border border-black px-2 py-2 align-top">{item.company}</td>
+                    <td className="border border-black px-2 py-2 align-top">{item.material}</td>
+                    <td className="border border-black px-2 py-2 align-top">{item.vehicle}</td>
+                    <td className="border border-black px-2 py-2 align-top">{item.location}</td>
+                    <td className="border border-black px-2 py-2 align-top">{item.manager || ""}</td>
+                    <td className="border border-black px-2 py-2 align-top">
+                      <div className="flex items-start justify-between gap-1">
+                        <span>{item.phone || ""}</span>
+                        {!isCapturingImage && (
+                          <div className="flex shrink-0 gap-1">
+                            {canAdminEditDabsItem && <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "" })} className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100">수정</button>}
+                            {canDeleteOwnItem(item) && <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
 </div></>}
                 {!isImageTab && !isSectionTab && !isMaterialTab && <><TextArea value={dabsDraft} onChange={(e) => setDabsDraft(e.target.value)} placeholder="회의 내용, 작업사항, 확인사항 등을 입력하세요." /><div className="flex justify-end"><Button onClick={handleSaveDabsText} disabled={!canEditDabs} className="w-full lg:w-auto">저장</Button></div></>}
                 {dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
@@ -7948,7 +7952,7 @@ const renderPortfolioInputPanel = () => {
       )}
 
       {isMaterialTab && (
-        <div className="grid gap-2 md:grid-cols-[100px_100px_140px_1fr_1fr_1fr_1fr_auto]">
+        <div className="grid gap-2 md:grid-cols-[100px_100px_140px_1fr_1fr_1fr_1fr_1fr_auto]">
           <select
             value={materialsInput.gate}
             onChange={(e) =>
@@ -8018,6 +8022,15 @@ const renderPortfolioInputPanel = () => {
               setMaterialsInput({ ...materialsInput, manager: e.target.value })
             }
             placeholder="담당자"
+            className="h-9"
+          />
+
+          <Input
+            value={materialsInput.phone}
+            onChange={(e) =>
+              setMaterialsInput({ ...materialsInput, phone: e.target.value })
+            }
+            placeholder="연락처"
             className="h-9"
           />
 
@@ -8197,93 +8210,125 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
       : [];
 
   return (
-    <div className="flex h-full w-full items-start justify-center overflow-auto p-6">
-      <table className="w-[88vw] table-fixed border-collapse bg-white text-[30px]">
-  <caption className="caption-top pb-1 text-left font-bold text-slate-900">
-    {title}
-  </caption>
+    <div className="flex h-full w-full items-start justify-center overflow-auto p-4">
+      <table className="w-[96vw] table-fixed border-collapse bg-white text-[26px] xl:text-[27px]">
+        <caption className="caption-top pb-1 text-left font-bold text-slate-900">
+          {title}
+        </caption>
+        <colgroup>
+          <col style={{ width: "5%" }} />
+          <col style={{ width: "6%" }} />
+          <col style={{ width: "14%" }} />
+          <col style={{ width: "11%" }} />
+          <col style={{ width: "15%" }} />
+          <col style={{ width: "13%" }} />
+          <col style={{ width: "18%" }} />
+          <col style={{ width: "18%" }} />
+        </colgroup>
         <thead>
           <tr className="bg-slate-100 text-slate-800">
-            <th rowSpan={2} className="w-[8%] border border-black px-3 py-3 text-left">
-              시간
-            </th>
-            <th colSpan={5} className="border border-black px-3 py-3 text-center">
-              1게이트
-            </th>
-            <th colSpan={5} className="border border-black px-3 py-3 text-center">
-              7게이트
-            </th>
-          </tr>
-          <tr className="bg-slate-100 text-slate-800">
-            <th className="border border-black px-3 py-3 text-left">업체명</th>
-            <th className="border border-black px-3 py-3 text-left">자재명</th>
-            <th className="border border-black px-3 py-3 text-left">차종</th>
-            <th className="border border-black px-3 py-3 text-left">하역장소</th>
-            <th className="border border-black px-3 py-3 text-left">담당자</th>
-            <th className="border border-black px-3 py-3 text-left">업체명</th>
-            <th className="border border-black px-3 py-3 text-left">자재명</th>
-            <th className="border border-black px-3 py-3 text-left">차종</th>
-            <th className="border border-black px-3 py-3 text-left">하역장소</th>
-            <th className="border border-black px-3 py-3 text-left">담당자</th>
+            <th className="border border-black px-2 py-2 text-left">시간</th>
+            <th className="border border-black px-2 py-2 text-left">게이트</th>
+            <th className="border border-black px-2 py-2 text-left">업체명</th>
+            <th className="border border-black px-2 py-2 text-left">자재명</th>
+            <th className="border border-black px-2 py-2 text-left">차종</th>
+            <th className="border border-black px-2 py-2 text-left">하역장소</th>
+            <th className="border border-black px-2 py-2 text-left">담당자</th>
+            <th className="border border-black px-2 py-2 text-left">연락처</th>
           </tr>
         </thead>
-
         <tbody>
           {MATERIAL_TIMES.map((time) => {
             const row = list.filter((item) => item.time === time);
             const gate1 = row.filter((item) => item.gate === "1");
             const gate7 = row.filter((item) => item.gate === "7");
+            const hasAny = gate1.length > 0 || gate7.length > 0;
 
-            const renderCell = (items: DabsRowItem[], field: keyof DabsRowItem) =>
-  items.length === 0
-    ? "-"
-    : items.map((item, index) => (
-        <div
-          key={`${field}-${item.id}`}
-          className={cn(
-            "whitespace-pre-wrap break-all leading-relaxed",
-            index > 0 && "mt-2 border-t border-dashed border-black pt-2"
-          )}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <span>{String(item[field] || "")}</span>
-
-            {field === "manager" &&
+            const renderActionBtns = (item: DabsRowItem) =>
               renderPortfolioActionButtons(
                 item,
-                () =>
-                  setEditMaterialPopup({
-                    open: true,
-                    itemId: item.id,
-                    gate: item.gate || "",
-                    time: item.time || "",
-                    company: item.company || "",
-                    material: item.material || "",
-                    vehicle: item.vehicle || "",
-                    location: item.location || "",
-                    manager: item.manager || "",
-                  }),
+                () => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "" }),
                 () => handleDeleteDabsItem(item.id)
-              )}
-          </div>
-        </div>
-      ));
+              );
 
-            return (
-              <tr key={time}>
-                <td className="border border-black px-3 py-3 font-semibold">{time}시</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "company")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "material")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "vehicle")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "location")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "manager")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "company")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "material")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "vehicle")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "location")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "manager")}</td>
-              </tr>
-            );
+            if (!hasAny) {
+              return (
+                <tr key={time}>
+                  <td rowSpan={2} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>
+                  <td className="border border-black px-2 py-2 text-xs text-slate-500 bg-slate-50 text-center">1게이트</td>
+                  <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>
+                </tr>
+              );
+            }
+
+            const gate1RowCount = gate1.length > 0 ? gate1.length : 1;
+            const gate7RowCount = gate7.length > 0 ? gate7.length : 1;
+            const totalRowSpan = gate1RowCount + gate7RowCount;
+
+            const rows: React.ReactNode[] = [];
+
+            // 1게이트
+            if (gate1.length === 0) {
+              rows.push(
+                <tr key={`${time}-gate1-empty`}>
+                  <td rowSpan={totalRowSpan} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>
+                  <td className="border border-black px-2 py-2 text-xs text-slate-500 bg-slate-50 text-center font-medium">1게이트</td>
+                  <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>
+                </tr>
+              );
+              gate7.forEach((item, idx) => {
+                rows.push(
+                  <tr key={item.id}>
+                    {idx === 0 && <td rowSpan={gate7.length} className="border border-black px-2 py-2 text-xs text-slate-500 bg-slate-50 text-center font-medium">7게이트</td>}
+                    <td className="border border-black px-2 py-2 align-top">{item.company}</td>
+                    <td className="border border-black px-2 py-2 align-top">{item.material}</td>
+                    <td className="border border-black px-2 py-2 align-top">{item.vehicle}</td>
+                    <td className="border border-black px-2 py-2 align-top">{item.location}</td>
+                    <td className="border border-black px-2 py-2 align-top">{item.manager || ""}</td>
+                    <td className="border border-black px-2 py-2 align-top"><div className="flex items-start justify-between gap-1"><span>{item.phone || ""}</span>{renderActionBtns(item)}</div></td>
+                  </tr>
+                );
+              });
+            } else {
+              gate1.forEach((item, idx) => {
+                rows.push(
+                  <tr key={item.id}>
+                    {idx === 0 && <td rowSpan={totalRowSpan} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>}
+                    {idx === 0 && <td rowSpan={gate1.length} className="border border-black px-2 py-2 text-xs text-slate-500 bg-slate-50 text-center font-medium">1게이트</td>}
+                    <td className="border border-black px-2 py-2 align-top">{item.company}</td>
+                    <td className="border border-black px-2 py-2 align-top">{item.material}</td>
+                    <td className="border border-black px-2 py-2 align-top">{item.vehicle}</td>
+                    <td className="border border-black px-2 py-2 align-top">{item.location}</td>
+                    <td className="border border-black px-2 py-2 align-top">{item.manager || ""}</td>
+                    <td className="border border-black px-2 py-2 align-top"><div className="flex items-start justify-between gap-1"><span>{item.phone || ""}</span>{renderActionBtns(item)}</div></td>
+                  </tr>
+                );
+              });
+              if (gate7.length === 0) {
+                rows.push(
+                  <tr key={`${time}-gate7-empty`}>
+                    <td className="border border-black px-2 py-2 text-xs text-slate-500 bg-slate-50 text-center font-medium">7게이트</td>
+                    <td colSpan={6} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>
+                  </tr>
+                );
+              } else {
+                gate7.forEach((item, idx) => {
+                  rows.push(
+                    <tr key={item.id}>
+                      {idx === 0 && <td rowSpan={gate7.length} className="border border-black px-2 py-2 text-xs text-slate-500 bg-slate-50 text-center font-medium">7게이트</td>}
+                      <td className="border border-black px-2 py-2 align-top">{item.company}</td>
+                      <td className="border border-black px-2 py-2 align-top">{item.material}</td>
+                      <td className="border border-black px-2 py-2 align-top">{item.vehicle}</td>
+                      <td className="border border-black px-2 py-2 align-top">{item.location}</td>
+                      <td className="border border-black px-2 py-2 align-top">{item.manager || ""}</td>
+                      <td className="border border-black px-2 py-2 align-top"><div className="flex items-start justify-between gap-1"><span>{item.phone || ""}</span>{renderActionBtns(item)}</div></td>
+                    </tr>
+                  );
+                });
+              }
+            }
+
+            return <React.Fragment key={time}>{rows}</React.Fragment>;
           })}
         </tbody>
       </table>
@@ -8699,98 +8744,6 @@ const myComplete =
                   className="max-w-xs"
                 />
               </div>
-
-              {/* 마스터/관리자 전용: 기간별 다운로드 */}
-              {isHeatwaveAdmin && (
-                <Card className="border-slate-200 shadow-none">
-                  <CardHeader>
-                    <CardTitle className="text-base">기간별 파일 다운로드 (관리자·마스터)</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-slate-600">시작 날짜</label>
-                        <Input
-                          type="date"
-                          value={heatwaveDownloadStartDate}
-                          onChange={(e) => setHeatwaveDownloadStartDate(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs font-medium text-slate-600">종료 날짜</label>
-                        <Input
-                          type="date"
-                          value={heatwaveDownloadEndDate}
-                          onChange={(e) => setHeatwaveDownloadEndDate(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="text-xs font-medium text-slate-600">파일 종류 선택</div>
-                      <div className="flex flex-wrap gap-4">
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={heatwaveDownloadTypes.thermoPhoto}
-                            onChange={(e) => setHeatwaveDownloadTypes((prev) => ({ ...prev, thermoPhoto: e.target.checked }))}
-                            className="h-4 w-4"
-                          />
-                          온습도계 사진
-                        </label>
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={heatwaveDownloadTypes.thermoLedger}
-                            onChange={(e) => setHeatwaveDownloadTypes((prev) => ({ ...prev, thermoLedger: e.target.checked }))}
-                            className="h-4 w-4"
-                          />
-                          온습도계 관리대장
-                        </label>
-                        <label className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={heatwaveDownloadTypes.breakTimeLedger}
-                            onChange={(e) => setHeatwaveDownloadTypes((prev) => ({ ...prev, breakTimeLedger: e.target.checked }))}
-                            className="h-4 w-4"
-                          />
-                          휴게시간 관리대장
-                        </label>
-                      </div>
-                    </div>
-
-                    <Button
-                      onClick={handleHeatwaveDownload}
-                      disabled={heatwaveDownloadLoading}
-                      className="w-full md:w-auto"
-                    >
-                      {heatwaveDownloadLoading ? "다운로드 중..." : "선택 파일 다운로드"}
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* 마스터 전용: 전체 파일 일괄 삭제 */}
-              {currentUser?.role === "master" && (
-                <Card className="border-red-200 shadow-none">
-                  <CardHeader>
-                    <CardTitle className="text-base text-red-700">전체 파일 일괄 삭제 (마스터 전용)</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="rounded-2xl bg-red-50 p-3 text-xs text-red-700">
-                      업로드된 모든 혹서기 파일을 Firebase Storage에서도 완전히 삭제합니다. 이 작업은 되돌릴 수 없습니다.
-                    </div>
-                    <Button
-                      variant="outline"
-                      onClick={handleHeatwaveDeleteAll}
-                      disabled={heatwaveDeleteAllLoading}
-                      className="border-red-300 text-red-700 hover:bg-red-50 w-full md:w-auto"
-                    >
-                      {heatwaveDeleteAllLoading ? "삭제 중..." : "전체 파일 일괄 삭제"}
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
 
               <Card className="border-slate-200 shadow-none">
                 <CardHeader>
@@ -9248,26 +9201,9 @@ const checked = imageChecked || excelChecked;
         </CardContent>
       </Card>
 
-      <Card className="border-slate-200 shadow-none">
-        <CardHeader>
-          <CardTitle className="text-base">하단 달력</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between mb-3">
-            <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="text-sm font-semibold">{monthLabel}</div>
-            <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="grid grid-cols-7 gap-1 text-xs">
-            {weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}
-            {monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="bg-white">
+        {renderBottomCalendar()}
+      </div>
     </div>
   );
 };
@@ -9801,108 +9737,6 @@ const renderSupplementWorkPage = () => (
   </div>
 )}
 
-{editSupplementTomorrowPopup.open && (
-  <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
-    <div className="w-full max-w-2xl rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
-      <div className="text-base font-semibold text-slate-900">명일 보충작업 수정</div>
-
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <select
-          value={editSupplementTomorrowPopup.workType}
-          onChange={(e) =>
-            setEditSupplementTomorrowPopup((prev) => ({ ...prev, workType: e.target.value }))
-          }
-          className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-        >
-          <option value="조출">조출</option>
-          <option value="점심">점심</option>
-          <option value="야간">야간</option>
-          <option value="주말">주말</option>
-        </select>
-
-        <Input
-          value={editSupplementTomorrowPopup.company}
-          onChange={(e) =>
-            setEditSupplementTomorrowPopup((prev) => ({ ...prev, company: e.target.value }))
-          }
-          placeholder="업체명"
-        />
-
-        <Input
-          value={editSupplementTomorrowPopup.location}
-          onChange={(e) =>
-            setEditSupplementTomorrowPopup((prev) => ({ ...prev, location: e.target.value }))
-          }
-          placeholder="작업위치"
-        />
-
-        <Input
-          type="number"
-          min="0"
-          value={editSupplementTomorrowPopup.workerCount}
-          onChange={(e) =>
-            setEditSupplementTomorrowPopup((prev) => ({ ...prev, workerCount: e.target.value }))
-          }
-          placeholder="작업인원"
-        />
-
-        <Input
-          type="number"
-          min="0"
-          value={editSupplementTomorrowPopup.supervisorCount}
-          onChange={(e) =>
-            setEditSupplementTomorrowPopup((prev) => ({ ...prev, supervisorCount: e.target.value }))
-          }
-          placeholder="관리감독자"
-        />
-
-        <Input
-          value={editSupplementTomorrowPopup.content}
-          onChange={(e) =>
-            setEditSupplementTomorrowPopup((prev) => ({ ...prev, content: e.target.value }))
-          }
-          placeholder="작업내용"
-        />
-
-        <Input
-          value={editSupplementTomorrowPopup.safetyAction}
-          onChange={(e) =>
-            setEditSupplementTomorrowPopup((prev) => ({ ...prev, safetyAction: e.target.value }))
-          }
-          placeholder="안전대책, 조치사항"
-          className="md:col-span-2"
-        />
-      </div>
-
-      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-        <Button
-          variant="outline"
-          className="w-full lg:w-auto"
-          onClick={() =>
-            setEditSupplementTomorrowPopup({
-              open: false,
-              id: "",
-              workType: "조출",
-              company: "",
-              location: "",
-              workerCount: "",
-              supervisorCount: "",
-              content: "",
-              safetyAction: "",
-            })
-          }
-        >
-          취소
-        </Button>
-
-        <Button className="w-full lg:w-auto" onClick={handleUpdateSupplementTomorrowRow}>
-          저장
-        </Button>
-      </div>
-    </div>
-  </div>
-)}
-
     <Card>
       <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <CardTitle className="flex items-center gap-2">
@@ -9920,6 +9754,7 @@ const renderSupplementWorkPage = () => (
           {[
             { key: "nightMorning", label: "금일야간/명일조출" },
             { key: "tomorrow", label: "명일 보충작업" },
+            { key: "weekend", label: "주말 보충작업" },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -10185,7 +10020,6 @@ const renderSupplementWorkPage = () => (
           <option value="조출">조출</option>
           <option value="점심">점심</option>
           <option value="야간">야간</option>
-          <option value="주말">주말</option>
         </select>
 
         <Input
@@ -10324,86 +10158,223 @@ const renderSupplementWorkPage = () => (
   </Card>
 )}
 
-        {/* 불러오기 기능 - DAB's 회의와 동일한 방식 */}
-        <Card className="border-slate-200 shadow-none">
-          <CardContent className="p-4 space-y-3">
-            <div className="text-sm font-semibold text-slate-900">이전 날짜 데이터 불러오기</div>
-            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-slate-600">불러올 날짜 선택</label>
-                <Input
-                  type="date"
-                  value={loadSourceDate}
-                  onChange={(e) => setLoadSourceDate(e.target.value)}
-                  className="h-9 bg-white"
-                />
-              </div>
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  if (!currentUser?.companyName) return;
-                  if (!loadSourceDate || loadSourceDate === selectedDate) {
-                    setSupplementMessage("불러올 날짜를 확인하세요.");
-                    return;
-                  }
-                  if (!db) {
-                    setSupplementMessage("Firebase 연결이 없습니다.");
-                    return;
-                  }
-                  try {
-                    const sourceSnap = await getDoc(doc(db, "supplementWorks", loadSourceDate));
-                    if (!sourceSnap.exists()) {
-                      setSupplementMessage("해당 날짜의 데이터가 없습니다.");
-                      return;
-                    }
-                    const sourceData = sourceSnap.data();
-                    const companyName = String(currentUser.companyName || "").trim();
-                    if (supplementTab === "nightMorning") {
-                      const rows = Array.isArray(sourceData.nightMorningRows) ? sourceData.nightMorningRows : [];
-                      const myRows = rows.filter((r: any) => r.company === companyName);
-                      if (myRows.length === 0) { setSupplementMessage("해당 날짜에 내 업체 데이터가 없습니다."); return; }
-                      const nextRows = [...supplementNightMorningRows, ...myRows.map((r: any) => ({ ...r, id: createLocalId("supplement-night-morning"), createdByUid: currentUser.uid, createdByName: currentUser.name }))];
-                      await saveSupplementNightMorningRows(nextRows, "불러오기", companyName, `${formatMonthDay(loadSourceDate)} 금일야간/명일조출 불러오기`);
-                    } else {
-                      const rows = Array.isArray(sourceData.tomorrowRows) ? sourceData.tomorrowRows : [];
-                      const myRows = rows.filter((r: any) => r.company === companyName);
-                      if (myRows.length === 0) { setSupplementMessage("해당 날짜에 내 업체 데이터가 없습니다."); return; }
-                      const nextRows = [...supplementTomorrowRows, ...myRows.map((r: any) => ({ ...r, id: createLocalId("supplement-tomorrow"), createdByUid: currentUser.uid, createdByName: currentUser.name }))];
-                      await saveSupplementTomorrowRows(nextRows, "불러오기", companyName, `${formatMonthDay(loadSourceDate)} 명일보충작업 불러오기`);
-                    }
-                    setSupplementMessage(`${formatMonthDay(loadSourceDate)} 데이터를 불러왔습니다.`);
-                  } catch {
-                    setSupplementMessage("데이터 불러오기 중 오류가 발생했습니다.");
-                  }
-                }}
-              >
-                내 업체 데이터 불러오기
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {supplementTab === "weekend" && (
+  <Card className="border-slate-200 shadow-none">
+    <CardHeader>
+      <CardTitle className="text-base">주말 보충작업</CardTitle>
+    </CardHeader>
 
-        {/* 하단 달력 - DAB's 회의와 동일 */}
-        <Card className="border-slate-200 shadow-none">
-          <CardHeader>
-            <CardTitle className="text-base">하단 달력</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between mb-3">
-              <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <div className="text-sm font-semibold">{monthLabel}</div>
-              <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+    <CardContent className="space-y-5">
+      <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+        이 탭의 기준일: {formatMonthDay(supplementWeekendDateKey)}
+        {manualSupplementWeekendDate && manualSupplementWeekendDateSavedToday === getTodayKey()
+  ? " · 주말 보충작업 탭 임시 날짜 적용 중"
+  : ` · 선택 날짜(${formatMonthDay(selectedDate)})가 속한 주의 토요일`}
+      </div>
+
+      {canAdminEditDabsItem && (
+        <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[1fr_auto] md:items-center">
+          <Input
+            type="date"
+            value={supplementWeekendDateKey}
+            onChange={(e) => handleSupplementWeekendDateChange(e.target.value)}
+            className="h-9 bg-white"
+          />
+
+          <Button variant="outline" size="sm" onClick={handleResetSupplementWeekendDate}>
+            토요일 기본값으로 복귀
+          </Button>
+
+          <div className="text-[11px] text-slate-500 md:col-span-2">
+            이 날짜 변경은 주말 보충작업 탭에만 적용됩니다. 다음날 접속 시 자동으로 이번 주 토요일 기준으로 돌아갑니다.
+          </div>
+        </div>
+      )}
+
+      {canManageSupplementNotice && (
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-sm font-semibold text-slate-900">
+            관리자 공지 입력
+          </div>
+
+          <TextArea
+            value={supplementWeekendNoticeText}
+            onChange={(e) => setSupplementWeekendNoticeText(e.target.value)}
+            placeholder="주말 보충작업 공지 내용을 입력하세요."
+          />
+
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={handleSupplementWeekendNoticeImageUpload}
+            className="h-auto py-2"
+          />
+
+          <Button onClick={handleSaveSupplementWeekendNotice}>
+            공지 저장
+          </Button>
+        </div>
+      )}
+
+      {(supplementWeekendNoticeText || supplementWeekendNoticeImage) && (
+        <div className="space-y-3 rounded-2xl border border-black bg-white p-4">
+          <div className="text-sm font-semibold text-slate-900">
+            공지
+          </div>
+
+          {supplementWeekendNoticeText && (
+            <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+              {supplementWeekendNoticeText}
             </div>
-            <div className="grid grid-cols-7 gap-1 text-xs">
-              {weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}
-              {monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}
-            </div>
-          </CardContent>
-        </Card>
+          )}
+
+          {supplementWeekendNoticeImage && (
+            <img
+              src={supplementWeekendNoticeImage}
+              alt="주말 보충작업 공지 이미지"
+              className="max-h-80 rounded-2xl border border-slate-200 object-contain"
+            />
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-2 xl:grid-cols-[110px_1fr_100px_110px_1fr_1fr_auto_auto]">
+        <Input value="주말" disabled />
+
+        <Input
+          value={supplementWeekendInput.location}
+          onChange={(e) =>
+            setSupplementWeekendInput((prev) => ({ ...prev, location: e.target.value }))
+          }
+          placeholder="작업위치"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={supplementWeekendInput.workerCount}
+          onChange={(e) =>
+            setSupplementWeekendInput((prev) => ({ ...prev, workerCount: e.target.value }))
+          }
+          placeholder="작업인원"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={supplementWeekendInput.supervisorCount}
+          onChange={(e) =>
+            setSupplementWeekendInput((prev) => ({ ...prev, supervisorCount: e.target.value }))
+          }
+          placeholder="관리감독자"
+        />
+
+        <Input
+          value={supplementWeekendInput.content}
+          onChange={(e) =>
+            setSupplementWeekendInput((prev) => ({ ...prev, content: e.target.value }))
+          }
+          placeholder="작업내용"
+        />
+
+        <Input
+          value={supplementWeekendInput.safetyAction}
+          onChange={(e) =>
+            setSupplementWeekendInput((prev) => ({ ...prev, safetyAction: e.target.value }))
+          }
+          placeholder="안전대책, 조치사항"
+        />
+
+        <Button onClick={handleAddSupplementWeekendRow}>
+          입력
+        </Button>
+
+        <Button variant="outline" onClick={handleDownloadSupplementWeekendExcel}>
+          엑셀 다운로드
+        </Button>
+      </div>
+
+      {supplementMessage && (
+        <div className="text-sm text-slate-600">
+          {supplementMessage}
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-2xl border border-black">
+        <table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
+          <thead>
+            <tr className="bg-slate-100 text-slate-700">
+              <th className="w-[90px] border border-black px-2 py-2 text-left">작업구분</th>
+              <th className="w-[140px] border border-black px-2 py-2 text-left">업체명</th>
+              <th className="w-[150px] border border-black px-2 py-2 text-left">작업위치</th>
+              <th className="w-[90px] border border-black px-2 py-2 text-left">작업인원</th>
+              <th className="w-[100px] border border-black px-2 py-2 text-left">관리감독자</th>
+              <th className="border border-black px-2 py-2 text-left">작업내용</th>
+              <th className="border border-black px-2 py-2 text-left">안전대책, 조치사항</th>
+              <th className="w-[100px] border border-black px-2 py-2 text-left">관리</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {supplementWeekendRows.length === 0 ? (
+              <tr>
+                <td className="border border-black px-3 py-3 text-center text-slate-400" colSpan={8}>
+                  입력 없음
+                </td>
+              </tr>
+            ) : (
+              supplementWeekendRows.map((row) => (
+                <tr key={row.id}>
+                  <td className="border border-black px-2 py-2 align-top">{row.workType}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.company}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.location}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.workerCount}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.supervisorCount}</td>
+                  <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.content}</td>
+                  <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.safetyAction}</td>
+                  <td className="border border-black px-2 py-2 align-top">
+                    <div className="flex flex-wrap gap-1">
+                      {canAdminEditDabsItem && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditSupplementWeekendPopup({
+                              open: true,
+                              id: row.id,
+                              company: row.company || "",
+                              location: row.location || "",
+                              workerCount: row.workerCount || "",
+                              supervisorCount: row.supervisorCount || "",
+                              content: row.content || "",
+                              safetyAction: row.safetyAction || "",
+                            })
+                          }
+                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                        >
+                          수정
+                        </button>
+                      )}
+
+                      {canDeleteOwnItem(row) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSupplementWeekendRow(row.id)}
+                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </CardContent>
+  </Card>
+)}
       </CardContent>
     </Card>
   </div>
