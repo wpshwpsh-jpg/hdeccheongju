@@ -440,6 +440,7 @@ type OverlayArrowItem = {
   startY: number;
   endX: number;
   endY: number;
+  points?: { x: number; y: number }[];
 };
 
 type OverlayPersonItem = {
@@ -1153,10 +1154,8 @@ const [moveOverlayTarget, setMoveOverlayTarget] = useState<{
   mode: "marker" | "arrow";
 } | null>(null);
 
-const [arrowStart, setArrowStart] = useState<{ x: number; y: number } | null>(null);
-const [arrowPreview, setArrowPreview] = useState<
-  { startX: number; startY: number; endX: number; endY: number } | null
->(null);
+const [arrowPoints, setArrowPoints] = useState<{ x: number; y: number }[]>([]);
+const [arrowPreviewPoint, setArrowPreviewPoint] = useState<{ x: number; y: number } | null>(null);
 
 const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   arrowId: string;
@@ -5773,8 +5772,8 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
     await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
   }
 
-  setArrowStart(null);
-  setArrowPreview(null);
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
   setPendingEquipmentMarker(null);
   setImagePopup({
     open: false,
@@ -5880,8 +5879,26 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
   });
 };
 
- const completeEquipmentArrow = async (endX: number, endY: number) => {
-  if (!arrowStart) return;
+ const handleAddEquipmentArrowPoint = (point: { x: number; y: number }) => {
+  setArrowPoints((prev) => [...prev, point]);
+  setArrowPreviewPoint(point);
+};
+
+const handleUndoLastEquipmentArrowPoint = () => {
+  setArrowPoints((prev) => prev.slice(0, -1));
+};
+
+const handleCancelEquipmentArrowDraw = () => {
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
+};
+
+const completeEquipmentArrow = async () => {
+  if (arrowPoints.length < 2) return;
+
+  const points = arrowPoints;
+  const start = points[0];
+  const end = points[points.length - 1];
 
   const currentValue = getOverlayBundle("equipmentFlow");
 
@@ -5893,10 +5910,11 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
     arrow.id === moveOverlayTarget.itemId
       ? {
           ...arrow,
-          startX: arrowStart.x,
-          startY: arrowStart.y,
-          endX,
-          endY,
+          startX: start.x,
+          startY: start.y,
+          endX: end.x,
+          endY: end.y,
+          points,
         }
       : arrow
   );
@@ -5916,18 +5934,19 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
   await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 
   setMoveOverlayTarget(null);
-  setArrowStart(null);
-  setArrowPreview(null);
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
   setDabsMessage("화살표가 수정되었습니다. 상자를 표시할 위치를 한 번 더 클릭하세요.");
   return;
 }
 
   const arrow = {
     id: createLocalId("arrow"),
-    startX: arrowStart.x,
-    startY: arrowStart.y,
-    endX,
-    endY,
+    startX: start.x,
+    startY: start.y,
+    endX: end.x,
+    endY: end.y,
+    points,
     createdByUid: currentUser?.uid,
     createdByName: currentUser?.name,
   };
@@ -5947,8 +5966,8 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
 
   await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 
-  setArrowStart(null);
-  setArrowPreview(null);
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
   setImagePopup({
     open: true,
     x: (arrow.startX + arrow.endX) / 2,
@@ -6088,25 +6107,14 @@ const handleDeletePersonMarker = async (itemId: string) => {
     return;
   }
 
-  if (!arrowStart) {
-    setArrowStart({ x: point.x, y: point.y });
-    setArrowPreview({
-      startX: point.x,
-      startY: point.y,
-      endX: point.x,
-      endY: point.y,
-    });
-    return;
-  }
-
-  completeEquipmentArrow(point.x, point.y);
+  handleAddEquipmentArrowPoint(point);
 };
 
   const handleEquipmentMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !arrowStart) return;
+    if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || arrowPoints.length === 0) return;
     const point = getRelativePoint(event.clientX, event.clientY);
     if (!point) return;
-    setArrowPreview({ startX: arrowStart.x, startY: arrowStart.y, endX: point.x, endY: point.y });
+    setArrowPreviewPoint(point);
   };
 
   const handleOverlayTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -6117,21 +6125,7 @@ const handleDeletePersonMarker = async (itemId: string) => {
       return;
     }
     if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !canEditDabs) return;
-    const point = getRelativePoint(touch.clientX, touch.clientY);
-    if (!point) return;
     lastTouchTimeRef.current = Date.now();
-    if (personPlacementMode) {
-      touchGestureRef.current = { moved: false, startX: touch.clientX, startY: touch.clientY };
-      return;
-    }
-    if (!arrowStart) {
-      setArrowStart({ x: point.x, y: point.y });
-      setArrowPreview({ startX: point.x, startY: point.y, endX: point.x, endY: point.y });
-      touchGestureRef.current = { moved: false, startX: touch.clientX, startY: touch.clientY };
-      vibrateBriefly();
-      return;
-    }
-    setArrowPreview({ startX: arrowStart.x, startY: arrowStart.y, endX: point.x, endY: point.y });
     touchGestureRef.current = { moved: false, startX: touch.clientX, startY: touch.clientY };
   };
 
@@ -6140,10 +6134,10 @@ const handleDeletePersonMarker = async (itemId: string) => {
     if (!touch) return;
     const gesture = touchGestureRef.current;
     if (Math.abs(touch.clientX - gesture.startX) > 6 || Math.abs(touch.clientY - gesture.startY) > 6) touchGestureRef.current.moved = true;
-    if (activeDabsKey !== "equipmentFlow" || !arrowStart) return;
+    if (activeDabsKey !== "equipmentFlow" || arrowPoints.length === 0) return;
     const point = getRelativePoint(touch.clientX, touch.clientY);
     if (!point) return;
-    setArrowPreview({ startX: arrowStart.x, startY: arrowStart.y, endX: point.x, endY: point.y });
+    setArrowPreviewPoint(point);
   };
 
   const handleOverlayTouchEnd = async (event: React.TouchEvent<HTMLDivElement>) => {
@@ -6207,17 +6201,9 @@ setDabsMessage("장비동선이 저장되었습니다.");
 return;
 }
 
-if (!arrowStart) return;
+if (touchGestureRef.current.moved) return;
 
-if (touchGestureRef.current.moved) {
-  completeEquipmentArrow(point.x, point.y);
-  return;
-}
-    if (arrowPreview && (Math.abs((arrowPreview.endX || point.x) - arrowStart.x) > 2 || Math.abs((arrowPreview.endY || point.y) - arrowStart.y) > 2)) {
-      completeEquipmentArrow(point.x, point.y);
-      return;
-    }
-    setArrowPreview({ startX: arrowStart.x, startY: arrowStart.y, endX: point.x, endY: point.y });
+handleAddEquipmentArrowPoint(point);
   };
 
   const renderTopBar = () => {
@@ -6308,9 +6294,37 @@ return (
               <defs>
                 <marker id="arrowhead" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" fill="#ef4444"><polygon points="0 0, 4 2, 0 4" /></marker>
               </defs>
-              {arrows.map((arrow) => <line key={arrow.id} x1={arrow.startX} y1={arrow.startY} x2={arrow.endX} y2={arrow.endY} stroke="#ef4444" strokeWidth="0.6" markerEnd="url(#arrowhead)" />)}
-              {activeDabsKey === "equipmentFlow" && arrowPreview && <line x1={arrowPreview.startX} y1={arrowPreview.startY} x2={arrowPreview.endX} y2={arrowPreview.endY} stroke="#f97316" strokeWidth="0.5" strokeDasharray="1.5 1.5" markerEnd="url(#arrowhead)" />}
-              {activeDabsKey === "equipmentFlow" && arrowStart && <circle cx={arrowStart.x} cy={arrowStart.y} r="1.3" fill="#f97316" />}
+              {arrows.map((arrow) => {
+                const pts = arrow.points && arrow.points.length >= 2
+                  ? arrow.points
+                  : [{ x: arrow.startX, y: arrow.startY }, { x: arrow.endX, y: arrow.endY }];
+                return (
+                  <polyline
+                    key={arrow.id}
+                    points={pts.map((p) => `${p.x},${p.y}`).join(" ")}
+                    fill="none"
+                    stroke="#ef4444"
+                    strokeWidth="0.6"
+                    markerEnd="url(#arrowhead)"
+                  />
+                );
+              })}
+              {activeDabsKey === "equipmentFlow" && arrowPoints.length > 0 && (
+                <polyline
+                  points={[...arrowPoints, ...(arrowPreviewPoint ? [arrowPreviewPoint] : [])]
+                    .map((p) => `${p.x},${p.y}`)
+                    .join(" ")}
+                  fill="none"
+                  stroke="#f97316"
+                  strokeWidth="0.5"
+                  strokeDasharray="1.5 1.5"
+                  markerEnd="url(#arrowhead)"
+                />
+              )}
+              {activeDabsKey === "equipmentFlow" &&
+                arrowPoints.map((p, index) => (
+                  <circle key={`arrow-point-${index}`} cx={p.x} cy={p.y} r="1.3" fill="#f97316" />
+                ))}
             </svg>
             {activeDabsKey === "equipmentFlow" && people.map((person) => (
               <div
@@ -6325,7 +6339,7 @@ return (
                 <div className="relative">
                   <svg
                     viewBox="0 0 24 24"
-                    className="h-4 w-4 drop-shadow lg:h-6 lg:w-6"
+                    className="h-12 w-12 drop-shadow lg:h-[4.5rem] lg:w-[4.5rem]"
                     fill={person.personType === "guide" ? "#eab308" : "#ef4444"}
                   >
                     <circle cx="12" cy="5" r="3" />
@@ -6343,9 +6357,9 @@ return (
                       onTouchStart={(e) => e.stopPropagation()}
                       onTouchEnd={(e) => e.stopPropagation()}
                       style={{ touchAction: "manipulation" }}
-                      className="absolute -top-3 -right-3 flex h-4 w-4 items-center justify-center rounded-full bg-white shadow lg:h-4 lg:w-4"
+                      className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow lg:-top-3 lg:-right-3 lg:h-7 lg:w-7"
                     >
-                      <X className="h-2.5 w-2.5" />
+                      <X className="h-4 w-4" />
                     </button>
                   )}
                 </div>
@@ -7811,7 +7825,7 @@ return (
 </div>
   {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날짜와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && (
   <div className="text-xs text-slate-500">
-    첫 번째 클릭은 시작점, 두 번째 클릭은 종료점입니다. 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요. 수정 시에도 화살표를 다시 지정한 뒤 상자 위치를 선택합니다.
+    클릭할 때마다 경로에 점이 추가되며 이어서 화살표를 그릴 수 있습니다. 다 그렸으면 아래 &quot;완료&quot; 버튼을 눌러주세요. 이후 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요. 수정 시에도 화살표를 다시 지정한 뒤 상자 위치를 선택합니다.
   </div>
 )}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}
 
@@ -7845,6 +7859,41 @@ return (
       <span className="text-xs text-slate-500">
         {personPlacementMode === "guide" ? "유도자" : "신호수"} 배치 모드입니다. 표시할 위치를 클릭하세요.
       </span>
+    )}
+
+    {arrowPoints.length > 0 && (
+      <>
+        <Button
+          type="button"
+          size="sm"
+          disabled={arrowPoints.length < 2}
+          onClick={completeEquipmentArrow}
+        >
+          완료
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleUndoLastEquipmentArrowPoint}
+        >
+          마지막 점 취소
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleCancelEquipmentArrowDraw}
+        >
+          다시 그리기
+        </Button>
+
+        <span className="text-xs text-slate-500">
+          화살표 그리는 중 (점 {arrowPoints.length}개)
+        </span>
+      </>
     )}
   </div>
 )}
