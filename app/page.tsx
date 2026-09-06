@@ -7764,7 +7764,7 @@ return (
                   </td>
                 )}
                 {idx === 0 && (
-                  <td rowSpan={gate1Rows} className="border border-black px-2 py-2 align-middle text-center text-xs font-medium text-slate-600 bg-slate-50">
+                  <td rowSpan={gate1Rows} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">
                     1게이트
                   </td>
                 )}
@@ -7779,7 +7779,7 @@ return (
             rows.push(
               <tr key={`${time}-g7-${idx}`} className={item && isYellow(item) ? "bg-yellow-100" : ""}>
                 {idx === 0 && (
-                  <td rowSpan={gate7Rows} className="border border-black px-2 py-2 align-middle text-center text-xs font-medium text-slate-600 bg-slate-50">
+                  <td rowSpan={gate7Rows} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">
                     7게이트
                   </td>
                 )}
@@ -8180,7 +8180,7 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
               rows.push(
                 <tr key={`${time}-g1-empty`}>
                   <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>
-                  <td className="border border-black px-2 py-2 align-middle text-center text-xs font-medium text-slate-600 bg-slate-50">1게이트</td>
+                  <td className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">1게이트</td>
                   {emptyDataCells}
                 </tr>
               );
@@ -8189,7 +8189,7 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
                 rows.push(
                   <tr key={item.id} className={isYellow(item) ? "bg-yellow-100" : ""}>
                     {idx === 0 && <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>}
-                    {idx === 0 && <td rowSpan={gate1.length} className="border border-black px-2 py-2 align-middle text-center text-xs font-medium text-slate-600 bg-slate-50">1게이트</td>}
+                    {idx === 0 && <td rowSpan={gate1.length} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">1게이트</td>}
                     {renderDataCells(item)}
                   </tr>
                 );
@@ -8201,7 +8201,7 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
               rows.push(
                 <tr key={`${time}-g7-empty`}>
                   {gate1.length === 0 && <>{/* 시간 셀은 위에서 rowspan으로 이미 처리 */}</>}
-                  <td className="border border-black px-2 py-2 align-middle text-center text-xs font-medium text-slate-600 bg-slate-50">7게이트</td>
+                  <td className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">7게이트</td>
                   {emptyDataCells}
                 </tr>
               );
@@ -8209,7 +8209,7 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
               gate7.forEach((item, idx) => {
                 rows.push(
                   <tr key={item.id} className={isYellow(item) ? "bg-yellow-100" : ""}>
-                    {idx === 0 && <td rowSpan={gate7.length} className="border border-black px-2 py-2 align-middle text-center text-xs font-medium text-slate-600 bg-slate-50">7게이트</td>}
+                    {idx === 0 && <td rowSpan={gate7.length} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">7게이트</td>}
                     {renderDataCells(item)}
                   </tr>
                 );
