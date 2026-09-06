@@ -6421,7 +6421,7 @@ const renderSectionMobileCards = (
         <MobileListCard key={time} title={`${time}시`}>
           <div className="space-y-4">
             <div>
-              <div className="mb-2 text-xs font-semibold text-slate-500">1게이트</div>
+              <div className="mb-2 text-2xl font-semibold text-slate-500">1게이트</div>
               {gate1.length === 0 ? (
                 <div className="text-slate-400">입력 없음</div>
               ) : (
@@ -6453,7 +6453,7 @@ const renderSectionMobileCards = (
               )}
             </div>
             <div>
-              <div className="mb-2 text-xs font-semibold text-slate-500">7게이트</div>
+              <div className="mb-2 text-2xl font-semibold text-slate-500">7게이트</div>
               {gate7.length === 0 ? (
                 <div className="text-slate-400">입력 없음</div>
               ) : (
