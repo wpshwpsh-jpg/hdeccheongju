@@ -442,6 +442,15 @@ type OverlayArrowItem = {
   endY: number;
 };
 
+type OverlayPersonItem = {
+  id: string;
+  createdByUid?: string;
+  createdByName?: string;
+  x: number;
+  y: number;
+  personType: "guide" | "signal";
+};
+
 type DabsTabValue =
   | string
   | {
@@ -1044,10 +1053,12 @@ const [isExportingPortfolioImages, setIsExportingPortfolioImages] = useState(fal
       {
         markers?: OverlayMarkerItem[];
         arrows?: OverlayArrowItem[];
+        people?: OverlayPersonItem[];
       }
     >
   >
 >({});
+  const [personPlacementMode, setPersonPlacementMode] = useState<"guide" | "signal" | null>(null);
   const [dabsDraft, setDabsDraft] = useState("");
   const [dabsMessage, setDabsMessage] = useState("");
   const [sectionInput, setSectionInput] = useState<{
@@ -5377,7 +5388,7 @@ const handleDeleteHeatSensitive = async (itemId: string, building: string) => {
   });
 };
 
-const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
+const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [], people: [] };
 
 const getCompanyListFromWorkTabs = () => {
   const workTabs = [
@@ -5947,12 +5958,86 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
   vibrateBriefly();
 };
 
+const handlePlacePersonMarker = async (point: { x: number; y: number }) => {
+  if (!personPlacementMode || !canEditDabs) return;
+
+  const placedType = personPlacementMode;
+  const currentValue = getOverlayBundle("equipmentFlow");
+
+  const marker: OverlayPersonItem = {
+    id: createLocalId("person"),
+    x: point.x,
+    y: point.y,
+    personType: placedType,
+    createdByUid: currentUser?.uid,
+    createdByName: currentUser?.name,
+  };
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      equipmentFlow: {
+        ...currentValue,
+        people: [...(currentValue.people || []), marker],
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "DAB's회의",
+    target: currentUser?.companyName || "",
+    detail: `장비동선 / ${placedType === "guide" ? "유도자" : "신호수"} 배치`,
+  });
+
+  setPersonPlacementMode(null);
+  setDabsMessage(`${placedType === "guide" ? "유도자" : "신호수"}가 배치되었습니다.`);
+};
+
+const handleDeletePersonMarker = async (itemId: string) => {
+  const currentValue = getOverlayBundle("equipmentFlow");
+  const targetItem = (currentValue.people || []).find((item) => item.id === itemId);
+  if (!canDeleteOwnItem(targetItem)) return;
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      equipmentFlow: {
+        ...currentValue,
+        people: (currentValue.people || []).filter((item) => item.id !== itemId),
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "DAB's회의",
+    target: targetItem?.createdByName || "",
+    detail: `장비동선 / ${targetItem?.personType === "guide" ? "유도자" : "신호수"} 삭제`,
+  });
+};
+
   const handleEquipmentClick = async (event: React.MouseEvent<HTMLDivElement>) => {
   if (Date.now() - lastTouchTimeRef.current < 500) return;
   if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !canEditDabs) return;
 
   const point = getRelativePoint(event.clientX, event.clientY);
   if (!point) return;
+
+  if (personPlacementMode) {
+    await handlePlacePersonMarker(point);
+    return;
+  }
 
   if (
     pendingEquipmentMarker &&
@@ -6031,6 +6116,10 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
     const point = getRelativePoint(touch.clientX, touch.clientY);
     if (!point) return;
     lastTouchTimeRef.current = Date.now();
+    if (personPlacementMode) {
+      touchGestureRef.current = { moved: false, startX: touch.clientX, startY: touch.clientY };
+      return;
+    }
     if (!arrowStart) {
       setArrowStart({ x: point.x, y: point.y });
       setArrowPreview({ startX: point.x, startY: point.y, endX: point.x, endY: point.y });
@@ -6064,6 +6153,11 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
       return;
     }
     if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !canEditDabs) return;
+
+if (personPlacementMode) {
+  if (!touchGestureRef.current.moved) await handlePlacePersonMarker(point);
+  return;
+}
 
 if (
   pendingEquipmentMarker &&
@@ -6179,30 +6273,41 @@ if (touchGestureRef.current.moved) {
   const overlayBundle = getOverlayBundle(targetKey);
     const markers = overlayBundle.markers || [];
 const arrows = overlayBundle.arrows || [];
+const people = overlayBundle.people || [];
 const overlayCompanyList = getUniqueCompaniesFromMarkers(markers);
+const showBackgroundImage = targetKey !== "equipmentFlow";
 
 return (
   <div
     ref={imageAreaRef}
-    className="relative h-[260px] overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:h-auto md:rounded-2xl"
+    className={cn(
+      "relative overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:rounded-2xl",
+      showBackgroundImage ? "h-[260px] md:h-auto" : "h-[260px] md:h-[480px]"
+    )}
     onClick={activeDabsKey === "highRisk" ? openMarkerPopup : activeDabsKey === "equipmentFlow" ? handleEquipmentClick : undefined}
         onMouseMove={activeDabsKey === "equipmentFlow" ? handleEquipmentMouseMove : undefined}
         onTouchStart={isImageTab ? handleOverlayTouchStart : undefined}
         onTouchMove={activeDabsKey === "equipmentFlow" ? handleOverlayTouchMove : undefined}
         onTouchEnd={isImageTab ? handleOverlayTouchEnd : undefined}
       >
-  {selectedImage ? (
-  <img
-  src={selectedImage}
-  alt={activeDabsTab.label}
-  crossOrigin="anonymous"
-  className="block h-full w-full object-cover md:h-auto"
-/>
-) : (
-  <div className="flex h-64 items-center justify-center text-sm text-slate-400">
-    등록된 사진이 없습니다.
-  </div>
-)}
+  {showBackgroundImage ? (
+    selectedImage ? (
+      <img
+      src={selectedImage}
+      alt={activeDabsTab.label}
+      crossOrigin="anonymous"
+      className="block h-full w-full object-cover md:h-auto"
+    />
+    ) : (
+      <div className="flex h-64 items-center justify-center text-sm text-slate-400">
+        등록된 사진이 없습니다.
+      </div>
+    )
+  ) : (
+    <div className="flex h-full w-full items-center justify-center px-4 text-center text-xs text-slate-300">
+      클릭하여 화살표, 장비, 유도자·신호수를 표시하세요.
+    </div>
+  )}
   {selectedImage && (
           <>
             <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -6213,6 +6318,45 @@ return (
               {activeDabsKey === "equipmentFlow" && arrowPreview && <line x1={arrowPreview.startX} y1={arrowPreview.startY} x2={arrowPreview.endX} y2={arrowPreview.endY} stroke="#f97316" strokeWidth="0.5" strokeDasharray="1.5 1.5" markerEnd="url(#arrowhead)" />}
               {activeDabsKey === "equipmentFlow" && arrowStart && <circle cx={arrowStart.x} cy={arrowStart.y} r="1.3" fill="#f97316" />}
             </svg>
+            {activeDabsKey === "equipmentFlow" && people.map((person) => (
+              <div
+                key={person.id}
+                className="absolute"
+                style={{
+                  left: `${person.x}%`,
+                  top: `${person.y}%`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <div className="relative">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4 drop-shadow lg:h-6 lg:w-6"
+                    fill={person.personType === "guide" ? "#eab308" : "#ef4444"}
+                  >
+                    <circle cx="12" cy="5" r="3" />
+                    <path d="M12 9c-3 0-5.5 2-5.5 5v6h3v-5h5v5h3v-6c0-3-2.5-5-5.5-5z" />
+                  </svg>
+
+                  {!isCapturingImage && canDeleteOwnItem(person) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        handleDeletePersonMarker(person.id);
+                      }}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      onTouchEnd={(e) => e.stopPropagation()}
+                      style={{ touchAction: "manipulation" }}
+                      className="absolute -top-3 -right-3 flex h-4 w-4 items-center justify-center rounded-full bg-white shadow lg:h-4 lg:w-4"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
             {markers.map((marker) => {
               const markerKey = `${targetKey}-${marker.id}`;
               const adjustedPosition = adjustedOverlayPositions[markerKey];
@@ -6236,7 +6380,7 @@ const posY = adjustedPosition?.y ?? marker.y;
 >
   <div
     className={cn(
-  "relative origin-center scale-100 rounded-lg border px-[4px] py-[2px] shadow-md backdrop-blur-[1px] lg:scale-[1.3] lg:rounded-2xl lg:px-2 lg:py-2",
+  "relative origin-center scale-50 rounded-lg border px-[4px] py-[2px] shadow-md backdrop-blur-[1px] lg:scale-[0.65] lg:rounded-2xl lg:px-2 lg:py-2",
   color.bg,
   color.text
 )}
@@ -7677,6 +7821,40 @@ return (
   </div>
 )}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}
 
+{activeDabsKey === "equipmentFlow" && (
+  <div className="flex flex-wrap items-center gap-2">
+    <Button
+      type="button"
+      variant={personPlacementMode === "guide" ? "default" : "outline"}
+      size="sm"
+      disabled={!canEditDabs}
+      onClick={() =>
+        setPersonPlacementMode((prev) => (prev === "guide" ? null : "guide"))
+      }
+    >
+      유도자
+    </Button>
+
+    <Button
+      type="button"
+      variant={personPlacementMode === "signal" ? "default" : "outline"}
+      size="sm"
+      disabled={!canEditDabs}
+      onClick={() =>
+        setPersonPlacementMode((prev) => (prev === "signal" ? null : "signal"))
+      }
+    >
+      신호수
+    </Button>
+
+    {personPlacementMode && (
+      <span className="text-xs text-slate-500">
+        {personPlacementMode === "guide" ? "유도자" : "신호수"} 배치 모드입니다. 표시할 위치를 클릭하세요.
+      </span>
+    )}
+  </div>
+)}
+
 {activeDabsKey === "highRisk" && (
   <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[140px_160px_1fr_1fr_auto] md:items-end">
     <div className="space-y-2">
@@ -7726,13 +7904,13 @@ return (
 <div ref={dabsCaptureRef} className="-mx-2 bg-white md:mx-0">
   {activeDabsKey === "highRisk" ? (
     <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-      <div className="lg:w-3/4">
+      <div className="lg:w-2/3">
         {renderOverlayImage(dabsImages?.highRisk, isImageTab)}
       </div>
 
-      <div className="lg:w-1/4">
+      <div className="lg:w-1/3">
         <div className="overflow-x-auto rounded-xl border border-black bg-white md:rounded-2xl">
-          <table className="w-full table-fixed border-collapse text-[11px] md:text-xs">
+          <table className="w-full table-fixed border-collapse text-[22px] md:text-2xl">
             <colgroup>
               <col style={{ width: "10%" }} />
               <col style={{ width: "10%" }} />
