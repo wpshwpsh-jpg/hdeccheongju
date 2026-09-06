@@ -406,6 +406,7 @@ type DabsRowItem = {
   createdByName?: string;
   content?: string;
   contentRedRanges?: TextColorRange[];
+  safety?: string;
   name?: string;
   elderly?: string;
   gate?: string;
@@ -654,6 +655,45 @@ function getDabsColumnsByTabKey(tabKey: string) {
   if (tabKey === "section2_arch" || tabKey === "section2_mep") return SECTION2_COLUMNS;
   if (tabKey === "fireWork") return FIRE_WORK_COLUMNS;
   return [];
+}
+
+const HIGH_RISK_TABLE_MIN_ROWS = 14;
+
+function getHighRiskTableRows(
+  rows: Record<string, DabsRowItem[]>
+): Array<DabsRowItem & { building: string }> {
+  const buildingOrder = HIGH_RISK_BUILDINGS.filter((building) => building !== ALL_BUILDING_LABEL);
+  const buildingIndex = (building: string) => {
+    const index = buildingOrder.indexOf(building);
+    return index === -1 ? buildingOrder.length : index;
+  };
+
+  const flat: Array<DabsRowItem & { building: string }> = [];
+  Object.entries(rows || {}).forEach(([building, items]) => {
+    (items || []).forEach((item) => flat.push({ ...item, building }));
+  });
+
+  const companyMap = new Map<string, Array<DabsRowItem & { building: string }>>();
+  flat.forEach((item) => {
+    const key = item.company || "-";
+    if (!companyMap.has(key)) companyMap.set(key, []);
+    companyMap.get(key)?.push(item);
+  });
+
+  const groups = Array.from(companyMap.entries()).map(([company, items]) => {
+    const sortedItems = [...items].sort(
+      (a, b) => buildingIndex(a.building) - buildingIndex(b.building)
+    );
+    const minIndex = Math.min(...sortedItems.map((item) => buildingIndex(item.building)));
+    return { company, items: sortedItems, minIndex };
+  });
+
+  groups.sort((a, b) => {
+    if (a.minIndex !== b.minIndex) return a.minIndex - b.minIndex;
+    return a.company.localeCompare(b.company, "ko");
+  });
+
+  return groups.flatMap((group) => group.items);
 }
 
 function groupSoloWorkersByCompany(list: DabsRowItem[]): Array<[string, DabsRowItem[]]> {
@@ -1043,6 +1083,37 @@ const [editSectionPopup, setEditSectionPopup] = useState<{
 });
 
 const [editSectionTextSelection, setEditSectionTextSelection] = useState({ start: 0, end: 0 });
+
+const [highRiskTableInput, setHighRiskTableInput] = useState<{
+  building: string;
+  company: string;
+  content: string;
+  safety: string;
+}>({
+  building: "",
+  company: "",
+  content: "",
+  safety: "",
+});
+
+const [editHighRiskTablePopup, setEditHighRiskTablePopup] = useState<{
+  open: boolean;
+  itemId: string;
+  oldBuilding: string;
+  building: string;
+  company: string;
+  content: string;
+  safety: string;
+}>({
+  open: false,
+  itemId: "",
+  oldBuilding: "",
+  building: "",
+  company: "",
+  content: "",
+  safety: "",
+});
+
   const [materialsInput, setMaterialsInput] = useState({ gate: "1", company: "", material: "", vehicle: "", location: "", manager: "", phone: "", workerOnCargo: false, cargoHeight1m: false, time: "06" });
   const [imagePopup, setImagePopup] = useState({
   open: false,
@@ -1456,6 +1527,11 @@ const canManageHeatwaveCompanies = currentUser?.role === "master" || currentUser
   if (!currentUser) return false;
   if (currentUser.role === "master" || currentUser.role === "admin") return true;
   return item?.createdByUid === currentUser.uid;
+};
+  const canManageHighRiskTableItem = (item?: { company?: string }) => {
+  if (!currentUser) return false;
+  if (currentUser.role === "master" || currentUser.role === "admin") return true;
+  return Boolean(currentUser.companyName) && item?.company === currentUser.companyName;
 };
 
 useEffect(() => {
@@ -4713,6 +4789,183 @@ const nextData = {
   });
 };
 
+const handleAddHighRiskTableItem = async () => {
+  if (!canEditDabs || !highRiskTableInput.building || !highRiskTableInput.content.trim()) return;
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? highRiskTableInput.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
+
+  const currentTabValue = dabsData[selectedDate]?.highRiskTable;
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const buildingRows = currentRows[highRiskTableInput.building] || [];
+
+  const nextBuildingRows = [
+    ...buildingRows,
+    {
+      id: createLocalId("highRiskTable"),
+      company: companyName,
+      content: highRiskTableInput.content.trim(),
+      safety: highRiskTableInput.safety.trim(),
+      createdByUid: currentUser?.uid,
+      createdByName: currentUser?.name,
+    },
+  ];
+
+  const nextRows = {
+    ...currentRows,
+    [highRiskTableInput.building]: nextBuildingRows,
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      highRiskTable: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "DAB's회의",
+    target: companyName,
+    detail: `고위험작업 표 / ${highRiskTableInput.building} / ${highRiskTableInput.content.trim()} / ${highRiskTableInput.safety.trim()}`,
+  });
+
+  setHighRiskTableInput({ building: "", company: "", content: "", safety: "" });
+  setDabsMessage("저장되었습니다.");
+};
+
+const handleUpdateHighRiskTableItem = async () => {
+  if (
+    !editHighRiskTablePopup.itemId ||
+    !editHighRiskTablePopup.building ||
+    !editHighRiskTablePopup.company.trim() ||
+    !editHighRiskTablePopup.content.trim()
+  ) {
+    return;
+  }
+
+  const oldBuilding = editHighRiskTablePopup.oldBuilding;
+  const newBuilding = editHighRiskTablePopup.building;
+
+  const currentTabValue = dabsData[selectedDate]?.highRiskTable;
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const targetItem = (currentRows[oldBuilding] || []).find(
+    (item) => item.id === editHighRiskTablePopup.itemId
+  );
+  if (!targetItem) return;
+  if (!canManageHighRiskTableItem(targetItem)) return;
+
+  const nextRowsAfterRemoval = {
+    ...currentRows,
+    [oldBuilding]: (currentRows[oldBuilding] || []).filter(
+      (item) => item.id !== editHighRiskTablePopup.itemId
+    ),
+  };
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const nextCompany = canManualCompany
+    ? editHighRiskTablePopup.company.trim()
+    : targetItem.company || "";
+
+  const updatedItem = {
+    ...targetItem,
+    company: nextCompany,
+    content: editHighRiskTablePopup.content.trim(),
+    safety: editHighRiskTablePopup.safety.trim(),
+  };
+
+  const nextRows = {
+    ...nextRowsAfterRemoval,
+    [newBuilding]: [...(nextRowsAfterRemoval[newBuilding] || []), updatedItem],
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      highRiskTable: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "수정",
+    page: "DAB's회의",
+    target: updatedItem.company || "",
+    detail: `고위험작업 표 / ${oldBuilding} / ${targetItem.content || ""} → ${newBuilding} / ${updatedItem.content}`,
+  });
+
+  setEditHighRiskTablePopup({
+    open: false,
+    itemId: "",
+    oldBuilding: "",
+    building: "",
+    company: "",
+    content: "",
+    safety: "",
+  });
+
+  setDabsMessage("수정되었습니다.");
+};
+
+const handleDeleteHighRiskTableItem = async (itemId: string, building: string) => {
+  const currentTabValue = dabsData[selectedDate]?.highRiskTable;
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const targetItem = (currentRows[building] || []).find((item) => item.id === itemId);
+  if (!canManageHighRiskTableItem(targetItem)) return;
+
+  const nextRows = {
+    ...currentRows,
+    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      highRiskTable: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "DAB's회의",
+    target: targetItem?.company || "",
+    detail: `고위험작업 표 / ${building} / ${targetItem?.content || ""}`,
+  });
+};
+
 const handleLoadPreviousCompanyData = async (targetKey: string) => {
   if (!currentUser?.companyName) return;
 
@@ -6839,6 +7092,93 @@ const renderEditPopups = () => (
       </div>
     )}
 
+    {editHighRiskTablePopup.open && (
+      <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+        <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+          <div className="text-base font-semibold text-slate-900">고위험작업 표 수정</div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">동 선택</label>
+            <select
+              value={editHighRiskTablePopup.building}
+              onChange={(e) =>
+                setEditHighRiskTablePopup((prev) => ({ ...prev, building: e.target.value }))
+              }
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="">동 선택</option>
+              {HIGH_RISK_BUILDINGS.filter((building) => building !== ALL_BUILDING_LABEL).map((building) => (
+                <option key={building} value={building}>
+                  {building}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">업체명</label>
+            {(currentUser?.role === "master" || currentUser?.role === "admin") ? (
+              <Input
+                value={editHighRiskTablePopup.company}
+                onChange={(e) =>
+                  setEditHighRiskTablePopup((prev) => ({ ...prev, company: e.target.value }))
+                }
+                placeholder="업체명 입력"
+              />
+            ) : (
+              <Input value={editHighRiskTablePopup.company} disabled />
+            )}
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">작업내용</label>
+            <Input
+              value={editHighRiskTablePopup.content}
+              onChange={(e) =>
+                setEditHighRiskTablePopup((prev) => ({ ...prev, content: e.target.value }))
+              }
+              placeholder="작업내용 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">안전대책</label>
+            <Input
+              value={editHighRiskTablePopup.safety}
+              onChange={(e) =>
+                setEditHighRiskTablePopup((prev) => ({ ...prev, safety: e.target.value }))
+              }
+              placeholder="안전대책 입력"
+            />
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              className="w-full lg:w-auto"
+              onClick={() =>
+                setEditHighRiskTablePopup({
+                  open: false,
+                  itemId: "",
+                  oldBuilding: "",
+                  building: "",
+                  company: "",
+                  content: "",
+                  safety: "",
+                })
+              }
+            >
+              취소
+            </Button>
+
+            <Button className="w-full lg:w-auto" onClick={handleUpdateHighRiskTableItem}>
+              저장
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+
     {editMaterialPopup.open && (
       <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
         <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
@@ -7115,6 +7455,13 @@ const isMaterialTab = activeDabsKey === "materialsAfter1" || activeDabsKey === "
 
 const activeColumns = getDabsColumnsByTabKey(activeDabsKey);
     const sectionRows = getMergedSectionRows(activeDabsKey);
+    const highRiskTableTabValue = dabsData[selectedDate]?.highRiskTable;
+    const highRiskTableStoredRows =
+      typeof highRiskTableTabValue === "object" && highRiskTableTabValue && "rows" in highRiskTableTabValue
+        ? highRiskTableTabValue.rows || {}
+        : {};
+    const highRiskTableRows = getHighRiskTableRows(highRiskTableStoredRows);
+    const highRiskTableEmptyRowCount = Math.max(0, HIGH_RISK_TABLE_MIN_ROWS - highRiskTableRows.length);
     const materialList =
   typeof selectedTabValue === "object" && selectedTabValue && "list" in selectedTabValue
     ? selectedTabValue.list || []
@@ -7328,10 +7675,143 @@ return (
   <div className="text-xs text-slate-500">
     첫 번째 클릭은 시작점, 두 번째 클릭은 종료점입니다. 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요. 수정 시에도 화살표를 다시 지정한 뒤 상자 위치를 선택합니다.
   </div>
-)}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}<div ref={dabsCaptureRef} className="-mx-2 bg-white md:mx-0">
-  {renderOverlayImage(
-    activeDabsKey === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow,
-    isImageTab
+)}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}
+
+{activeDabsKey === "highRisk" && (
+  <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[140px_160px_1fr_1fr_auto] md:items-end">
+    <div className="space-y-2">
+      <label className="text-xs font-medium text-slate-600 md:hidden">동 선택</label>
+      <select
+        value={highRiskTableInput.building}
+        onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, building: e.target.value })}
+        className="h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+      >
+        <option value="">동 선택</option>
+        {HIGH_RISK_BUILDINGS.filter((building) => building !== ALL_BUILDING_LABEL).map((building) => (
+          <option key={building} value={building}>
+            {building}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    {(currentUser?.role === "master" || currentUser?.role === "admin") ? (
+      <Input
+        value={highRiskTableInput.company}
+        onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, company: e.target.value })}
+        placeholder="업체명 입력"
+      />
+    ) : (
+      <Input value={currentUser?.companyName || ""} disabled placeholder="업체명" />
+    )}
+
+    <Input
+      value={highRiskTableInput.content}
+      onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, content: e.target.value })}
+      placeholder="작업내용 입력"
+    />
+
+    <Input
+      value={highRiskTableInput.safety}
+      onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, safety: e.target.value })}
+      placeholder="안전대책 입력"
+    />
+
+    <Button onClick={handleAddHighRiskTableItem} disabled={!canEditDabs} className="w-full md:w-auto">
+      추가
+    </Button>
+  </div>
+)}
+
+<div ref={dabsCaptureRef} className="-mx-2 bg-white md:mx-0">
+  {activeDabsKey === "highRisk" ? (
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+      <div className="lg:w-3/4">
+        {renderOverlayImage(dabsImages?.highRisk, isImageTab)}
+      </div>
+
+      <div className="lg:w-1/4">
+        <div className="overflow-x-auto rounded-xl border border-black bg-white md:rounded-2xl">
+          <table className="w-full table-fixed border-collapse text-[11px] md:text-xs">
+            <colgroup>
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "40%" }} />
+              <col style={{ width: "40%" }} />
+            </colgroup>
+
+            <thead>
+              <tr className="bg-slate-100 text-slate-700">
+                <th className="border border-black px-1 py-1 text-center">위치</th>
+                <th className="border border-black px-1 py-1 text-center">업체명</th>
+                <th className="border border-black px-1 py-1 text-center">작업내용</th>
+                <th className="border border-black px-1 py-1 text-center">안전대책</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {highRiskTableRows.map((item) => (
+                <tr key={item.id}>
+                  <td className="border border-black px-1 py-1 align-top break-all">{item.building}</td>
+                  <td className="border border-black px-1 py-1 align-top break-all">{item.company}</td>
+                  <td className="border border-black px-1 py-1 align-top whitespace-pre-wrap break-all">
+                    {item.content}
+                  </td>
+                  <td className="border border-black px-1 py-1 align-top whitespace-pre-wrap break-all">
+                    <div className="flex items-start justify-between gap-1">
+                      <span className="block w-full whitespace-pre-wrap break-all">{item.safety}</span>
+
+                      {!isCapturingImage && canManageHighRiskTableItem(item) && (
+                        <div className="flex shrink-0 flex-col items-end gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditHighRiskTablePopup({
+                                open: true,
+                                itemId: item.id,
+                                oldBuilding: item.building,
+                                building: item.building,
+                                company: item.company || "",
+                                content: item.content || "",
+                                safety: item.safety || "",
+                              })
+                            }
+                            className="rounded-full border border-slate-300 px-1 text-[10px] leading-4 text-slate-500 hover:bg-slate-100"
+                            title="수정"
+                          >
+                            수정
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHighRiskTableItem(item.id, item.building)}
+                            className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                            title="삭제"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+
+              {Array.from({ length: highRiskTableEmptyRowCount }).map((_, index) => (
+                <tr key={`highrisk-empty-${index}`}>
+                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  ) : (
+    renderOverlayImage(dabsImages?.equipmentFlow, isImageTab)
   )}
 </div></>}
                 {isSectionTab && <>
