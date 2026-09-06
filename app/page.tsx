@@ -3660,8 +3660,8 @@ useEffect(() => {
   const nextValue = dabsData[selectedDate]?.[activeDabsKey];
   setDabsDraft(typeof nextValue === "string" ? nextValue : "");
   setDabsMessage("");
-  setArrowStart(null);
-  setArrowPreview(null);
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
   setPendingEquipmentMarker(null);
 }, [selectedDate, activeDabsKey, dabsData]);
 
@@ -5507,12 +5507,12 @@ const handleUpdateOverlayInfo = async () => {
     equipmentType: "concrete_pump_truck",
   });
 
-  setArrowStart(null);
-  setArrowPreview(null);
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
 
   setDabsMessage(
     editOverlayPopup.targetKey === "equipmentFlow"
-      ? "수정되었습니다. 새 화살표 시작점과 종료점을 다시 선택하세요."
+      ? "수정되었습니다. 새 화살표 경로를 클릭으로 다시 그린 뒤 완료를 눌러주세요."
       : "수정되었습니다. 새 위치를 선택하세요."
   );
 };
