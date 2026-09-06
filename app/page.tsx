@@ -1381,10 +1381,12 @@ const unsubscribeOverlays = onSnapshot(doc(db, "dabsOverlays", selectedDate), (s
       highRisk: {
         markers: data.highRisk?.markers || [],
         arrows: data.highRisk?.arrows || [],
+        people: data.highRisk?.people || [],
       },
       equipmentFlow: {
         markers: data.equipmentFlow?.markers || [],
         arrows: data.equipmentFlow?.arrows || [],
+        people: data.equipmentFlow?.people || [],
       },
     },
   }));
@@ -1645,6 +1647,7 @@ const saveDabsOverlaysToFirestore = async (
     {
       markers?: OverlayMarkerItem[];
       arrows?: OverlayArrowItem[];
+      people?: OverlayPersonItem[];
     }
   >
 ) => {
@@ -5529,6 +5532,7 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
     [selectedDate]: {
       ...(dabsOverlays[selectedDate] || {}),
       [targetKey]: {
+        ...currentValue,
         markers: (currentValue.markers || []).filter((item) => item.id !== itemId),
         arrows: (currentValue.arrows || []).filter((item) => item.id !== itemId),
       },
@@ -6275,39 +6279,29 @@ if (touchGestureRef.current.moved) {
 const arrows = overlayBundle.arrows || [];
 const people = overlayBundle.people || [];
 const overlayCompanyList = getUniqueCompaniesFromMarkers(markers);
-const showBackgroundImage = targetKey !== "equipmentFlow";
 
 return (
   <div
     ref={imageAreaRef}
-    className={cn(
-      "relative overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:rounded-2xl",
-      showBackgroundImage ? "h-[260px] md:h-auto" : "h-[260px] md:h-[480px]"
-    )}
+    className="relative h-[260px] overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:h-auto md:rounded-2xl"
     onClick={activeDabsKey === "highRisk" ? openMarkerPopup : activeDabsKey === "equipmentFlow" ? handleEquipmentClick : undefined}
         onMouseMove={activeDabsKey === "equipmentFlow" ? handleEquipmentMouseMove : undefined}
         onTouchStart={isImageTab ? handleOverlayTouchStart : undefined}
         onTouchMove={activeDabsKey === "equipmentFlow" ? handleOverlayTouchMove : undefined}
         onTouchEnd={isImageTab ? handleOverlayTouchEnd : undefined}
       >
-  {showBackgroundImage ? (
-    selectedImage ? (
-      <img
-      src={selectedImage}
-      alt={activeDabsTab.label}
-      crossOrigin="anonymous"
-      className="block h-full w-full object-cover md:h-auto"
-    />
-    ) : (
-      <div className="flex h-64 items-center justify-center text-sm text-slate-400">
-        등록된 사진이 없습니다.
-      </div>
-    )
-  ) : (
-    <div className="flex h-full w-full items-center justify-center px-4 text-center text-xs text-slate-300">
-      클릭하여 화살표, 장비, 유도자·신호수를 표시하세요.
-    </div>
-  )}
+  {selectedImage ? (
+  <img
+  src={selectedImage}
+  alt={activeDabsTab.label}
+  crossOrigin="anonymous"
+  className="block h-full w-full object-cover md:h-auto"
+/>
+) : (
+  <div className="flex h-64 items-center justify-center text-sm text-slate-400">
+    등록된 사진이 없습니다.
+  </div>
+)}
   {selectedImage && (
           <>
             <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -6388,7 +6382,7 @@ const posY = adjustedPosition?.y ?? marker.y;
                   <div className={cn("flex flex-col items-center text-center", isHighRiskMarker
   ? "min-w-[100px] max-w-[140px] gap-0 lg:min-w-[170px] lg:max-w-[250px] lg:gap-1"
 : "min-w-[120px] max-w-[160px] gap-0 lg:min-w-[240px] lg:max-w-[340px] lg:gap-1")}>
-                    {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[13px] font-bold leading-none shadow-sm lg:text-[15px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm lg:p-1"><EquipmentIcon type={marker.equipmentType} className="h-6 w-6 lg:h-12 lg:w-12" /></span></> : null}
+                    {marker.equipmentType ? <span className="rounded-full bg-white/80 px-2 py-0.5 text-[13px] font-bold leading-none shadow-sm lg:text-[15px]">{getEquipmentLabel(marker.equipmentType)}</span> : null}
                     {isHighRiskMarker ? (
   <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2">
     <div className={cn("text-[22px] font-bold leading-tight tracking-tight lg:text-[26px]", buildingColor)}>
