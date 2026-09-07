@@ -6310,7 +6310,8 @@ handleAddEquipmentArrowPoint(point);
   selectedImage: string | undefined,
   isImageTab: boolean,
   targetKey = activeDabsKey,
-  fillHeight = false
+  fillHeight = false,
+  compactMarkers = false
 ) => {
   const overlayBundle = getOverlayBundle(targetKey);
     const markers = overlayBundle.markers || [];
@@ -6336,7 +6337,7 @@ return (
   src={selectedImage}
   alt={activeDabsTab.label}
   crossOrigin="anonymous"
-  className={cn("block h-full w-full object-cover", !fillHeight && "md:h-auto")}
+  className={cn("block h-full w-full", fillHeight ? "object-contain" : "object-cover", !fillHeight && "md:h-auto")}
 />
 ) : (
   <div className="flex h-64 items-center justify-center text-sm text-slate-400">
@@ -6443,33 +6444,40 @@ const posY = adjustedPosition?.y ?? marker.y;
 >
   <div
     className={cn(
-  "relative origin-center rounded-md border px-[3px] py-[2px] shadow-sm backdrop-blur-[1px] lg:rounded-xl lg:px-1.5 lg:py-1.5",
+  "relative origin-center rounded-md border shadow-sm backdrop-blur-[1px]",
+  compactMarkers
+    ? "px-[2px] py-[1px] lg:rounded-lg lg:px-1 lg:py-1"
+    : "px-[3px] py-[2px] lg:rounded-xl lg:px-1.5 lg:py-1.5",
   color.bg,
   color.text
 )}
   >
                   <div className={cn("flex flex-col items-center text-center", isHighRiskMarker
-  ? "min-w-[75px] max-w-[105px] gap-0.5 lg:min-w-[128px] lg:max-w-[188px] lg:gap-1"
-: "min-w-[90px] max-w-[120px] gap-0.5 lg:min-w-[180px] lg:max-w-[255px] lg:gap-1")}>
-                    {marker.equipmentType ? <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[11px] font-bold leading-none shadow-sm lg:text-[12px]">{getEquipmentLabel(marker.equipmentType)}</span> : null}
+  ? (compactMarkers
+      ? "min-w-[50px] max-w-[70px] gap-0.5 lg:min-w-[85px] lg:max-w-[125px] lg:gap-0.5"
+      : "min-w-[75px] max-w-[105px] gap-0.5 lg:min-w-[128px] lg:max-w-[188px] lg:gap-1")
+  : (compactMarkers
+      ? "min-w-[60px] max-w-[80px] gap-0.5 lg:min-w-[120px] lg:max-w-[170px] lg:gap-0.5"
+      : "min-w-[90px] max-w-[120px] gap-0.5 lg:min-w-[180px] lg:max-w-[255px] lg:gap-1"))}>
+                    {marker.equipmentType ? <span className={cn("rounded-full bg-white/80 font-bold leading-none shadow-sm", compactMarkers ? "px-1 py-0.5 text-[7px] lg:text-[8px]" : "px-1.5 py-0.5 text-[11px] lg:text-[12px]")}>{getEquipmentLabel(marker.equipmentType)}</span> : null}
                     {isHighRiskMarker ? (
-  <div className="w-full rounded-sm bg-white/65 px-[3px] py-[2px] shadow-sm lg:rounded-md lg:px-1.5 lg:py-1.5">
-    <div className={cn("text-[17px] font-bold leading-tight tracking-tight lg:text-[20px]", buildingColor)}>
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[3px] py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
+    <div className={cn("font-bold leading-tight tracking-tight", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[17px] lg:text-[20px]", buildingColor)}>
       {marker.building || "동 미선택"}
     </div>
-    <div className="mt-1 text-[15px] font-bold leading-tight lg:text-[16px]">
+    <div className={cn("mt-1 font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
   {marker.company || "업체명 없음"}
 </div>
-    <div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[16px]">
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
   {marker.note || "작업내용 없음"}
 </div>
   </div>
 ) : (
-  <div className="w-full rounded-sm bg-white/65 px-[3px] py-[2px] shadow-sm lg:rounded-md lg:px-1.5 lg:py-1.5">
-    <div className="text-[15px] font-bold leading-tight lg:text-[16px]">
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[3px] py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
+    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
   {marker.company || "업체명 없음"}
 </div>
-    <div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[16px]">
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
   {marker.note || "작업내용 없음"}
 </div>
   </div>
@@ -8766,7 +8774,7 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[], title: s
   const rows = getMergedSectionRows(tabKey);
 
   return (
-    <div className="flex h-full w-full items-center justify-center overflow-hidden p-1">
+    <div className="flex h-full w-full items-start justify-center overflow-auto p-1">
   <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[26px] xl:text-[27px]">
   <caption className="caption-top pb-1 text-left font-bold text-slate-900">
     {title}
@@ -8995,7 +9003,7 @@ const renderPortfolioSoloWorkerTable = (
   );
 
   return (
-    <div className="flex h-full w-full items-center justify-center overflow-hidden p-1">
+    <div className="flex h-full w-full items-start justify-center overflow-auto p-1">
       <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[26px] xl:text-[27px]">
         <caption className="caption-top pb-1 text-left font-bold text-slate-900">
           {title}
@@ -9158,8 +9166,8 @@ const renderPortfolioPage = () => {
 <div className="min-h-0 flex-1 bg-white text-slate-900">
         {slide.type === "overlay" && (
   <div className="flex h-full w-full items-center justify-center overflow-hidden bg-white p-4">
-    <div className="h-full w-full origin-center scale-100">
-      {renderOverlayImage(dabsImages?.equipmentFlow, true, slide.key)}
+    <div className="h-full w-full origin-center">
+      {renderOverlayImage(dabsImages?.equipmentFlow, true, slide.key, true, true)}
     </div>
   </div>
 )}
@@ -9168,7 +9176,7 @@ const renderPortfolioPage = () => {
   <div className="flex h-full w-full items-center justify-center overflow-hidden bg-white p-4">
   <div className="flex w-full max-h-full flex-col gap-3 lg:flex-row lg:items-stretch">
     <div className="lg:w-3/5">
-      {renderOverlayImage(dabsImages?.highRisk, true, "highRisk")}
+      {renderOverlayImage(dabsImages?.highRisk, true, "highRisk", false, true)}
     </div>
 
     <div className="flex min-h-0 flex-col lg:w-2/5">
