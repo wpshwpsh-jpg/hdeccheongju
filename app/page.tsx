@@ -6324,7 +6324,7 @@ return (
     ref={imageAreaRef}
     className={cn(
       "relative overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:rounded-2xl",
-      fillHeight ? "h-full" : "h-[260px] md:h-auto"
+      fillHeight ? "inline-flex max-h-full max-w-full items-center justify-center" : "h-[260px] md:h-auto"
     )}
     onClick={activeDabsKey === "highRisk" ? openMarkerPopup : activeDabsKey === "equipmentFlow" ? handleEquipmentClick : undefined}
         onMouseMove={activeDabsKey === "equipmentFlow" ? handleEquipmentMouseMove : undefined}
@@ -6337,7 +6337,10 @@ return (
   src={selectedImage}
   alt={activeDabsTab.label}
   crossOrigin="anonymous"
-  className={cn("block h-full w-full", fillHeight ? "object-contain" : "object-cover", !fillHeight && "md:h-auto")}
+  className={cn(
+    "block",
+    fillHeight ? "max-h-full max-w-full h-auto w-auto object-contain" : "h-full w-full object-cover md:h-auto"
+  )}
 />
 ) : (
   <div className="flex h-64 items-center justify-center text-sm text-slate-400">
@@ -9166,9 +9169,7 @@ const renderPortfolioPage = () => {
 <div className="min-h-0 flex-1 bg-white text-slate-900">
         {slide.type === "overlay" && (
   <div className="flex h-full w-full items-center justify-center overflow-hidden bg-white p-4">
-    <div className="w-full max-h-full">
-      {renderOverlayImage(dabsImages?.equipmentFlow, true, slide.key, false, true)}
-    </div>
+    {renderOverlayImage(dabsImages?.equipmentFlow, true, slide.key, true, true)}
   </div>
 )}
 
