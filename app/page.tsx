@@ -9165,12 +9165,13 @@ const renderPortfolioPage = () => {
 )}
 
         {slide.type === "overlayWithTable" && (
-  <div className="flex h-full w-full flex-col gap-3 overflow-hidden bg-white p-4 lg:flex-row lg:items-stretch">
-    <div className="min-h-0 lg:h-full lg:w-3/5">
-      {renderOverlayImage(dabsImages?.highRisk, true, "highRisk", true)}
+  <div className="flex h-full w-full items-center justify-center overflow-hidden bg-white p-4">
+  <div className="flex w-full max-h-full flex-col gap-3 lg:flex-row lg:items-stretch">
+    <div className="lg:w-3/5">
+      {renderOverlayImage(dabsImages?.highRisk, true, "highRisk")}
     </div>
 
-    <div className="flex min-h-0 flex-1 flex-col lg:h-full lg:w-2/5">
+    <div className="flex min-h-0 flex-col lg:w-2/5">
       <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-black">
         <table className="w-full table-fixed border-collapse text-lg">
           <colgroup>
@@ -9214,6 +9215,7 @@ const renderPortfolioPage = () => {
         </table>
       </div>
     </div>
+  </div>
   </div>
 )}
 
