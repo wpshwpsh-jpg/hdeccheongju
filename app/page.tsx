@@ -3743,8 +3743,8 @@ useLayoutEffect(() => {
     return;
   }
 
-  const padding = 6;
-const gap = 0;
+  const padding = 9;
+  const gap = 2;
   const placedRects: Array<{ left: number; top: number; right: number; bottom: number }> = [];
   const nextPositions: Record<string, { x: number; y: number }> = {};
 
@@ -6309,7 +6309,8 @@ handleAddEquipmentArrowPoint(point);
   const renderOverlayImage = (
   selectedImage: string | undefined,
   isImageTab: boolean,
-  targetKey = activeDabsKey
+  targetKey = activeDabsKey,
+  fillHeight = false
 ) => {
   const overlayBundle = getOverlayBundle(targetKey);
     const markers = overlayBundle.markers || [];
@@ -6320,7 +6321,10 @@ const overlayCompanyList = getUniqueCompaniesFromMarkers(markers);
 return (
   <div
     ref={imageAreaRef}
-    className="relative h-[260px] overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:h-auto md:rounded-2xl"
+    className={cn(
+      "relative overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:rounded-2xl",
+      fillHeight ? "h-full" : "h-[260px] md:h-auto"
+    )}
     onClick={activeDabsKey === "highRisk" ? openMarkerPopup : activeDabsKey === "equipmentFlow" ? handleEquipmentClick : undefined}
         onMouseMove={activeDabsKey === "equipmentFlow" ? handleEquipmentMouseMove : undefined}
         onTouchStart={isImageTab ? handleOverlayTouchStart : undefined}
@@ -6332,7 +6336,7 @@ return (
   src={selectedImage}
   alt={activeDabsTab.label}
   crossOrigin="anonymous"
-  className="block h-full w-full object-cover md:h-auto"
+  className={cn("block h-full w-full object-cover", !fillHeight && "md:h-auto")}
 />
 ) : (
   <div className="flex h-64 items-center justify-center text-sm text-slate-400">
@@ -6439,33 +6443,33 @@ const posY = adjustedPosition?.y ?? marker.y;
 >
   <div
     className={cn(
-  "relative origin-center rounded-md border px-[2px] py-[1px] shadow-sm backdrop-blur-[1px] lg:rounded-xl lg:px-1 lg:py-1",
+  "relative origin-center rounded-md border px-[3px] py-[2px] shadow-sm backdrop-blur-[1px] lg:rounded-xl lg:px-1.5 lg:py-1.5",
   color.bg,
   color.text
 )}
   >
                   <div className={cn("flex flex-col items-center text-center", isHighRiskMarker
-  ? "min-w-[50px] max-w-[70px] gap-0 lg:min-w-[85px] lg:max-w-[125px] lg:gap-0.5"
-: "min-w-[60px] max-w-[80px] gap-0 lg:min-w-[120px] lg:max-w-[170px] lg:gap-0.5")}>
-                    {marker.equipmentType ? <span className="rounded-full bg-white/80 px-1 py-0 text-[7px] font-bold leading-none shadow-sm lg:text-[8px]">{getEquipmentLabel(marker.equipmentType)}</span> : null}
+  ? "min-w-[75px] max-w-[105px] gap-0.5 lg:min-w-[128px] lg:max-w-[188px] lg:gap-1"
+: "min-w-[90px] max-w-[120px] gap-0.5 lg:min-w-[180px] lg:max-w-[255px] lg:gap-1")}>
+                    {marker.equipmentType ? <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[11px] font-bold leading-none shadow-sm lg:text-[12px]">{getEquipmentLabel(marker.equipmentType)}</span> : null}
                     {isHighRiskMarker ? (
-  <div className="w-full rounded-sm bg-white/65 px-0.5 py-[1px] shadow-sm lg:rounded-md lg:px-1 lg:py-1">
-    <div className={cn("text-[11px] font-bold leading-tight tracking-tight lg:text-[13px]", buildingColor)}>
+  <div className="w-full rounded-sm bg-white/65 px-[3px] py-[2px] shadow-sm lg:rounded-md lg:px-1.5 lg:py-1.5">
+    <div className={cn("text-[17px] font-bold leading-tight tracking-tight lg:text-[20px]", buildingColor)}>
       {marker.building || "동 미선택"}
     </div>
-    <div className="mt-0.5 text-[10px] font-bold leading-tight lg:text-[11px]">
+    <div className="mt-1 text-[15px] font-bold leading-tight lg:text-[16px]">
   {marker.company || "업체명 없음"}
 </div>
-    <div className="mt-0.5 break-words text-[10px] font-bold leading-tight lg:text-[11px]">
+    <div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[16px]">
   {marker.note || "작업내용 없음"}
 </div>
   </div>
 ) : (
-  <div className="w-full rounded-sm bg-white/65 px-0.5 py-[1px] shadow-sm lg:rounded-md lg:px-1 lg:py-1">
-    <div className="text-[10px] font-bold leading-tight lg:text-[11px]">
+  <div className="w-full rounded-sm bg-white/65 px-[3px] py-[2px] shadow-sm lg:rounded-md lg:px-1.5 lg:py-1.5">
+    <div className="text-[15px] font-bold leading-tight lg:text-[16px]">
   {marker.company || "업체명 없음"}
 </div>
-    <div className="mt-0.5 break-words text-[10px] font-bold leading-tight lg:text-[11px]">
+    <div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[16px]">
   {marker.note || "작업내용 없음"}
 </div>
   </div>
@@ -9161,14 +9165,14 @@ const renderPortfolioPage = () => {
 )}
 
         {slide.type === "overlayWithTable" && (
-  <div className="flex h-full w-full flex-col gap-3 overflow-hidden bg-white p-4 lg:flex-row">
+  <div className="flex h-full w-full flex-col gap-3 overflow-hidden bg-white p-4 lg:flex-row lg:items-stretch">
     <div className="min-h-0 lg:h-full lg:w-3/5">
-      {renderOverlayImage(dabsImages?.highRisk, true, "highRisk")}
+      {renderOverlayImage(dabsImages?.highRisk, true, "highRisk", true)}
     </div>
 
     <div className="flex min-h-0 flex-1 flex-col lg:h-full lg:w-2/5">
       <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-black">
-        <table className="w-full table-fixed border-collapse text-sm">
+        <table className="w-full table-fixed border-collapse text-lg">
           <colgroup>
             <col style={{ width: "10%" }} />
             <col style={{ width: "10%" }} />
@@ -9178,29 +9182,29 @@ const renderPortfolioPage = () => {
 
           <thead>
             <tr className="bg-slate-100 text-slate-700">
-              <th className="border border-black px-2 py-1 text-center">위치</th>
-              <th className="border border-black px-2 py-1 text-center">업체명</th>
-              <th className="border border-black px-2 py-1 text-center">작업내용</th>
-              <th className="border border-black px-2 py-1 text-center">안전대책</th>
+              <th className="border border-black px-3 py-2 text-center">위치</th>
+              <th className="border border-black px-3 py-2 text-center">업체명</th>
+              <th className="border border-black px-3 py-2 text-center">작업내용</th>
+              <th className="border border-black px-3 py-2 text-center">안전대책</th>
             </tr>
           </thead>
 
           <tbody>
             {(slide.highRiskTableItems || []).length === 0 ? (
               <tr>
-                <td colSpan={4} className="border border-black px-2 py-4 text-center text-slate-300">
+                <td colSpan={4} className="border border-black px-3 py-4 text-center text-slate-300">
                   입력된 내용이 없습니다.
                 </td>
               </tr>
             ) : (
               (slide.highRiskTableItems || []).map((item) => (
                 <tr key={item.id}>
-                  <td className="border border-black px-2 py-1 align-top break-all">{item.building}</td>
-                  <td className="border border-black px-2 py-1 align-top break-all">{item.company}</td>
-                  <td className="border border-black px-2 py-1 align-top whitespace-pre-wrap break-all">
+                  <td className="border border-black px-3 py-2 align-top break-all">{item.building}</td>
+                  <td className="border border-black px-3 py-2 align-top break-all">{item.company}</td>
+                  <td className="border border-black px-3 py-2 align-top whitespace-pre-wrap break-all">
                     {item.content}
                   </td>
-                  <td className="border border-black px-2 py-1 align-top whitespace-pre-wrap break-all">
+                  <td className="border border-black px-3 py-2 align-top whitespace-pre-wrap break-all">
                     {item.safety}
                   </td>
                 </tr>
