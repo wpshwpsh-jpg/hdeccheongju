@@ -706,6 +706,32 @@ function getHighRiskTableRows(
   return groups.flatMap((group) => group.items);
 }
 
+const HIGH_RISK_PORTFOLIO_MAX_ROWS = 8;
+
+function splitHighRiskRowsByCompany(
+  rows: Array<DabsRowItem & { building: string }>,
+  maxRows: number
+) {
+  const chunks: Array<Array<DabsRowItem & { building: string }>> = [];
+  let currentChunk: Array<DabsRowItem & { building: string }> = [];
+
+  rows.forEach((item) => {
+    const lastItem = currentChunk[currentChunk.length - 1];
+    const isNewCompany = !lastItem || lastItem.company !== item.company;
+
+    if (isNewCompany && currentChunk.length > 0 && currentChunk.length >= maxRows) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+    }
+
+    currentChunk.push(item);
+  });
+
+  if (currentChunk.length > 0) chunks.push(currentChunk);
+
+  return chunks.length > 0 ? chunks : [[]];
+}
+
 function groupSoloWorkersByCompany(list: DabsRowItem[]): Array<[string, DabsRowItem[]]> {
   const sorted = [...list].sort((a, b) => {
     const companyCompare = String(a.company || "").localeCompare(String(b.company || ""), "ko");
@@ -3509,23 +3535,48 @@ const getMergedSectionRows = (tabKey: string) => {
 
 const portfolioSlides = useMemo(() => {
   const slides: Array<{
-    type: "overlay" | "section" | "material" | "soloWorker";
+    type: "overlay" | "overlayWithTable" | "section" | "material" | "soloWorker";
     key: string;
     tabKey?: string;
     label: string;
     columns?: string[];
 soloItems?: Array<DabsRowItem & { building: string }>;
+highRiskTableItems?: Array<DabsRowItem & { building: string }>;
   }> = [];
 
   const maxRowsPerSlide = 17
 
   dabsTabs.forEach((tab) => {
-    if (tab.key === "highRisk" || tab.key === "equipmentFlow") {
+    if (tab.key === "equipmentFlow") {
       slides.push({
         type: "overlay",
         key: tab.key,
         tabKey: tab.key,
         label: tab.label,
+      });
+      return;
+    }
+
+    if (tab.key === "highRisk") {
+      const highRiskTabValue = dabsData[selectedDate]?.highRiskTable;
+      const highRiskStoredRows =
+        typeof highRiskTabValue === "object" && highRiskTabValue && "rows" in highRiskTabValue
+          ? highRiskTabValue.rows || {}
+          : {};
+      const highRiskRows = getHighRiskTableRows(highRiskStoredRows);
+      const highRiskChunks = splitHighRiskRowsByCompany(highRiskRows, HIGH_RISK_PORTFOLIO_MAX_ROWS);
+
+      highRiskChunks.forEach((chunk, index) => {
+        slides.push({
+          type: "overlayWithTable",
+          key: `highRisk-${index}`,
+          tabKey: tab.key,
+          label:
+            highRiskChunks.length > 1
+              ? `${tab.label} (${index + 1}/${highRiskChunks.length})`
+              : tab.label,
+          highRiskTableItems: chunk,
+        });
       });
       return;
     }
@@ -9104,11 +9155,60 @@ const renderPortfolioPage = () => {
         {slide.type === "overlay" && (
   <div className="flex h-full w-full items-center justify-center overflow-hidden bg-white p-4">
     <div className="h-full w-full origin-center scale-100">
-      {renderOverlayImage(
-        slide.key === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow,
-        true,
-        slide.key
-      )}
+      {renderOverlayImage(dabsImages?.equipmentFlow, true, slide.key)}
+    </div>
+  </div>
+)}
+
+        {slide.type === "overlayWithTable" && (
+  <div className="flex h-full w-full flex-col gap-3 overflow-hidden bg-white p-4 lg:flex-row">
+    <div className="min-h-0 lg:h-full lg:w-3/5">
+      {renderOverlayImage(dabsImages?.highRisk, true, "highRisk")}
+    </div>
+
+    <div className="flex min-h-0 flex-1 flex-col lg:h-full lg:w-2/5">
+      <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-black">
+        <table className="w-full table-fixed border-collapse text-sm">
+          <colgroup>
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "40%" }} />
+            <col style={{ width: "40%" }} />
+          </colgroup>
+
+          <thead>
+            <tr className="bg-slate-100 text-slate-700">
+              <th className="border border-black px-2 py-1 text-center">위치</th>
+              <th className="border border-black px-2 py-1 text-center">업체명</th>
+              <th className="border border-black px-2 py-1 text-center">작업내용</th>
+              <th className="border border-black px-2 py-1 text-center">안전대책</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {(slide.highRiskTableItems || []).length === 0 ? (
+              <tr>
+                <td colSpan={4} className="border border-black px-2 py-4 text-center text-slate-300">
+                  입력된 내용이 없습니다.
+                </td>
+              </tr>
+            ) : (
+              (slide.highRiskTableItems || []).map((item) => (
+                <tr key={item.id}>
+                  <td className="border border-black px-2 py-1 align-top break-all">{item.building}</td>
+                  <td className="border border-black px-2 py-1 align-top break-all">{item.company}</td>
+                  <td className="border border-black px-2 py-1 align-top whitespace-pre-wrap break-all">
+                    {item.content}
+                  </td>
+                  <td className="border border-black px-2 py-1 align-top whitespace-pre-wrap break-all">
+                    {item.safety}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 )}
