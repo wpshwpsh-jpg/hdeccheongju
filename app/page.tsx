@@ -9166,8 +9166,8 @@ const renderPortfolioPage = () => {
 <div className="min-h-0 flex-1 bg-white text-slate-900">
         {slide.type === "overlay" && (
   <div className="flex h-full w-full items-center justify-center overflow-hidden bg-white p-4">
-    <div className="h-full w-full origin-center">
-      {renderOverlayImage(dabsImages?.equipmentFlow, true, slide.key, true, true)}
+    <div className="w-full max-h-full">
+      {renderOverlayImage(dabsImages?.equipmentFlow, true, slide.key, false, true)}
     </div>
   </div>
 )}
