@@ -6388,40 +6388,40 @@ const posY = adjustedPosition?.y ?? marker.y;
 >
   <div
     className={cn(
-  "relative origin-center scale-50 rounded-lg border px-[4px] py-[2px] shadow-md backdrop-blur-[1px] lg:scale-[0.65] lg:rounded-2xl lg:px-2 lg:py-2",
+  "relative origin-center rounded-md border px-[2px] py-[1px] shadow-sm backdrop-blur-[1px] lg:rounded-xl lg:px-1 lg:py-1",
   color.bg,
   color.text
 )}
   >
                   <div className={cn("flex flex-col items-center text-center", isHighRiskMarker
-  ? "min-w-[100px] max-w-[140px] gap-0 lg:min-w-[170px] lg:max-w-[250px] lg:gap-1"
-: "min-w-[120px] max-w-[160px] gap-0 lg:min-w-[240px] lg:max-w-[340px] lg:gap-1")}>
-                    {marker.equipmentType ? <span className="rounded-full bg-white/80 px-2 py-0.5 text-[13px] font-bold leading-none shadow-sm lg:text-[15px]">{getEquipmentLabel(marker.equipmentType)}</span> : null}
+  ? "min-w-[50px] max-w-[70px] gap-0 lg:min-w-[85px] lg:max-w-[125px] lg:gap-0.5"
+: "min-w-[60px] max-w-[80px] gap-0 lg:min-w-[120px] lg:max-w-[170px] lg:gap-0.5")}>
+                    {marker.equipmentType ? <span className="rounded-full bg-white/80 px-1 py-0 text-[7px] font-bold leading-none shadow-sm lg:text-[8px]">{getEquipmentLabel(marker.equipmentType)}</span> : null}
                     {isHighRiskMarker ? (
-  <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2">
-    <div className={cn("text-[22px] font-bold leading-tight tracking-tight lg:text-[26px]", buildingColor)}>
+  <div className="w-full rounded-sm bg-white/65 px-0.5 py-[1px] shadow-sm lg:rounded-md lg:px-1 lg:py-1">
+    <div className={cn("text-[11px] font-bold leading-tight tracking-tight lg:text-[13px]", buildingColor)}>
       {marker.building || "동 미선택"}
     </div>
-    <div className="mt-1 text-[19px] font-bold leading-tight lg:text-[22px]">
+    <div className="mt-0.5 text-[10px] font-bold leading-tight lg:text-[11px]">
   {marker.company || "업체명 없음"}
 </div>
-    <div className="mt-1 break-words text-[19px] font-bold leading-tight lg:text-[22px]">
+    <div className="mt-0.5 break-words text-[10px] font-bold leading-tight lg:text-[11px]">
   {marker.note || "작업내용 없음"}
 </div>
   </div>
 ) : (
-  <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2">
-    <div className="text-[19px] font-bold leading-tight lg:text-[22px]">
+  <div className="w-full rounded-sm bg-white/65 px-0.5 py-[1px] shadow-sm lg:rounded-md lg:px-1 lg:py-1">
+    <div className="text-[10px] font-bold leading-tight lg:text-[11px]">
   {marker.company || "업체명 없음"}
 </div>
-    <div className="mt-1 break-words text-[19px] font-bold leading-tight lg:text-[22px]">
+    <div className="mt-0.5 break-words text-[10px] font-bold leading-tight lg:text-[11px]">
   {marker.note || "작업내용 없음"}
 </div>
   </div>
 )}
                   </div>
                   {!isCapturingImage && (
-<div className="absolute -top-8 -right-2 z-20 flex gap-1 lg:-top-6 lg:right-1">
+<div className="absolute -top-4 -right-1 z-20 flex gap-1 lg:-top-3 lg:right-0.5">
   {canAdminEditDabsItem && (
     <button
       type="button"
@@ -7946,12 +7946,12 @@ return (
 
 <div ref={dabsCaptureRef} className="-mx-2 bg-white md:mx-0">
   {activeDabsKey === "highRisk" ? (
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-      <div className="lg:w-2/3">
+    <div className="flex flex-col gap-3">
+      <div className="w-full">
         {renderOverlayImage(dabsImages?.highRisk, isImageTab)}
       </div>
 
-      <div className="lg:w-1/3">
+      <div className="w-full">
         <div className="overflow-x-auto rounded-xl border border-black bg-white md:rounded-2xl">
           <table className="w-full table-fixed border-collapse text-[22px] md:text-2xl">
             <colgroup>
