@@ -8165,20 +8165,47 @@ return (
   <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
   선택 날짜: {formatMonthDay(selectedDate)}
 </div>
+  {activeDabsKey === "highRisk" && (
+    <div className="text-xs font-semibold text-red-600">고위험작업만 입력! 일반작업 입력 금지</div>
+  )}
+  {activeDabsKey === "buildingDetail" && (
+    <div className="text-xs font-semibold text-red-600">상하 동시작업 위험이 있는 작업만 입력!</div>
+  )}
+  {activeDabsKey === "equipmentFlow" && (
+    <div className="text-xs font-semibold text-red-600">믹서트럭/덤프트럭/수목반입만 입력!</div>
+  )}
+  {(activeDabsKey === "archWork" || activeDabsKey === "mepWork" || activeDabsKey === "fireWork") && (
+    <div className="text-xs font-semibold text-red-600">작업장소 정확히 입력!</div>
+  )}
   {activeDabsKey === "buildingDetail" && (
     !selectedBuildingDetail ? (
       <div className="flex flex-col gap-2">
-        {BUILDING_DETAIL_LIST.map((building) => (
-          <Button
-            key={building}
-            type="button"
-            variant="outline"
-            className="w-full justify-start"
-            onClick={() => setSelectedBuildingDetail(building)}
-          >
-            {building}
-          </Button>
-        ))}
+        {BUILDING_DETAIL_LIST.map((building) => {
+          const buildingDetailBundle = getOverlayBundle(`buildingDetail::${building}`);
+          const hasBuildingDetailData =
+            (buildingDetailBundle.markers && buildingDetailBundle.markers.length > 0) ||
+            (buildingDetailBundle.arrows && buildingDetailBundle.arrows.length > 0);
+          return (
+            <Button
+              key={building}
+              type="button"
+              variant="outline"
+              className={cn(
+                "w-full justify-between",
+                hasBuildingDetailData && "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+              )}
+              onClick={() => setSelectedBuildingDetail(building)}
+            >
+              <span>{building}</span>
+              {hasBuildingDetailData && (
+                <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  입력됨
+                </span>
+              )}
+            </Button>
+          );
+        })}
       </div>
     ) : (
       <div className="flex items-center justify-between gap-2">
@@ -8702,7 +8729,7 @@ return (
   </div>
 </div></>}
                 {isMaterialTab && <><div className="space-y-3">
-  <div className="grid gap-2 md:grid-cols-[120px_100px_160px_1fr_1fr_1fr_1fr_1fr]">
+  <div className="grid gap-2 md:grid-cols-[120px_100px_160px_1fr_1fr_70px_1fr_1fr_1fr]">
     <select
       value={materialsInput.gate}
       onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })}
@@ -9042,7 +9069,7 @@ const renderPortfolioInputPanel = () => {
 
       {isMaterialTab && (
         <div className="space-y-2">
-          <div className="grid gap-2 md:grid-cols-[100px_100px_140px_1fr_1fr_1fr_1fr_1fr]">
+          <div className="grid gap-2 md:grid-cols-[100px_100px_140px_1fr_1fr_70px_1fr_1fr_1fr]">
             <select value={materialsInput.gate} onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })} className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm">
               <option value="1">1게이트</option>
               <option value="7">7게이트</option>
@@ -11350,6 +11377,8 @@ const renderSoloWorkerPage = () => (
             <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
               선택 날짜: {formatMonthDay(selectedDate)}
             </div>
+
+            <div className="text-xs font-semibold text-red-600">작업장소 정확히 입력!</div>
 
             <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
               <div className="space-y-2">
