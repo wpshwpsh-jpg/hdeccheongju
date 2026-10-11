@@ -3812,113 +3812,131 @@ useLayoutEffect(() => {
     return;
   }
 
-  const overlayBundle = getOverlayBundle(overlayTargetKey);
-  const markers = overlayBundle.markers || [];
-  const areaRect = imageArea.getBoundingClientRect();
+  const recomputeOverlayPositions = () => {
+    const overlayBundle = getOverlayBundle(overlayTargetKey);
+    const markers = overlayBundle.markers || [];
+    const areaRect = imageArea.getBoundingClientRect();
 
-  if (!areaRect.width || !areaRect.height || markers.length === 0) {
-    setAdjustedOverlayPositions({});
-    return;
-  }
-
-  const padding = 9;
-  const gap = 2;
-  const placedRects: Array<{ left: number; top: number; right: number; bottom: number }> = [];
-  const nextPositions: Record<string, { x: number; y: number }> = {};
-
-  const isOverlapping = (rect: { left: number; top: number; right: number; bottom: number }) =>
-    placedRects.some(
-      (placed) =>
-        rect.left < placed.right + gap &&
-        rect.right > placed.left - gap &&
-        rect.top < placed.bottom + gap &&
-        rect.bottom > placed.top - gap
-    );
-
-  const clampRect = (centerX: number, centerY: number, width: number, height: number) => {
-    const halfWidth = width / 2;
-    const halfHeight = height / 2;
-
-    const safeX = Math.min(
-      Math.max(centerX, halfWidth + padding),
-      areaRect.width - halfWidth - padding
-    );
-
-    const safeY = Math.min(
-      Math.max(centerY, halfHeight + padding),
-      areaRect.height - halfHeight - padding
-    );
-
-    return { x: safeX, y: safeY };
-  };
-
-  markers.forEach((marker) => {
-    const markerKey = `${overlayTargetKey}-${marker.id}`;
-    const markerElement = overlayMarkerRefs.current[markerKey];
-
-    if (!markerElement) return;
-
-    const markerRect = markerElement.getBoundingClientRect();
-    const width = markerRect.width;
-    const height = markerRect.height;
-
-    const originalX = (marker.x / 100) * areaRect.width;
-    const originalY = (marker.y / 100) * areaRect.height;
-
-    const candidates: Array<{ x: number; y: number }> = [];
-
-    const base = clampRect(originalX, originalY, width, height);
-    candidates.push(base);
-
-    const stepX = width + gap;
-    const stepY = height + gap;
-
-    for (let ring = 1; ring <= 8; ring += 1) {
-      candidates.push(
-        { x: originalX + stepX * ring, y: originalY },
-        { x: originalX - stepX * ring, y: originalY },
-        { x: originalX, y: originalY + stepY * ring },
-        { x: originalX, y: originalY - stepY * ring },
-        { x: originalX + stepX * ring, y: originalY + stepY * ring },
-        { x: originalX - stepX * ring, y: originalY + stepY * ring },
-        { x: originalX + stepX * ring, y: originalY - stepY * ring },
-        { x: originalX - stepX * ring, y: originalY - stepY * ring }
-      );
+    if (!areaRect.width || !areaRect.height || markers.length === 0) {
+      setAdjustedOverlayPositions({});
+      return;
     }
 
-    const safePoint =
-      candidates
-        .map((candidate) => clampRect(candidate.x, candidate.y, width, height))
-        .find((candidate) => {
-          const rect = {
-            left: candidate.x - width / 2,
-            top: candidate.y - height / 2,
-            right: candidate.x + width / 2,
-            bottom: candidate.y + height / 2,
-          };
+    const padding = 9;
+    const gap = 2;
+    const placedRects: Array<{ left: number; top: number; right: number; bottom: number }> = [];
+    const nextPositions: Record<string, { x: number; y: number }> = {};
 
-          return !isOverlapping(rect);
-        }) || base;
+    const isOverlapping = (rect: { left: number; top: number; right: number; bottom: number }) =>
+      placedRects.some(
+        (placed) =>
+          rect.left < placed.right + gap &&
+          rect.right > placed.left - gap &&
+          rect.top < placed.bottom + gap &&
+          rect.bottom > placed.top - gap
+      );
 
-    const finalRect = {
-      left: safePoint.x - width / 2,
-      top: safePoint.y - height / 2,
-      right: safePoint.x + width / 2,
-      bottom: safePoint.y + height / 2,
+    const clampRect = (centerX: number, centerY: number, width: number, height: number) => {
+      const halfWidth = width / 2;
+      const halfHeight = height / 2;
+
+      const safeX = Math.min(
+        Math.max(centerX, halfWidth + padding),
+        areaRect.width - halfWidth - padding
+      );
+
+      const safeY = Math.min(
+        Math.max(centerY, halfHeight + padding),
+        areaRect.height - halfHeight - padding
+      );
+
+      return { x: safeX, y: safeY };
     };
 
-    placedRects.push(finalRect);
+    markers.forEach((marker) => {
+      const markerKey = `${overlayTargetKey}-${marker.id}`;
+      const markerElement = overlayMarkerRefs.current[markerKey];
 
-    nextPositions[markerKey] = {
-      x: (safePoint.x / areaRect.width) * 100,
-      y: (safePoint.y / areaRect.height) * 100,
-    };
-  });
+      if (!markerElement) return;
 
-  setAdjustedOverlayPositions((prev) => {
-    if (JSON.stringify(prev) === JSON.stringify(nextPositions)) return prev;
-    return nextPositions;
-  });
+      const markerRect = markerElement.getBoundingClientRect();
+      const width = markerRect.width;
+      const height = markerRect.height;
+
+      const originalX = (marker.x / 100) * areaRect.width;
+      const originalY = (marker.y / 100) * areaRect.height;
+
+      const candidates: Array<{ x: number; y: number }> = [];
+
+      const base = clampRect(originalX, originalY, width, height);
+      candidates.push(base);
+
+      const stepX = width + gap;
+      const stepY = height + gap;
+
+      for (let ring = 1; ring <= 8; ring += 1) {
+        candidates.push(
+          { x: originalX + stepX * ring, y: originalY },
+          { x: originalX - stepX * ring, y: originalY },
+          { x: originalX, y: originalY + stepY * ring },
+          { x: originalX, y: originalY - stepY * ring },
+          { x: originalX + stepX * ring, y: originalY + stepY * ring },
+          { x: originalX - stepX * ring, y: originalY + stepY * ring },
+          { x: originalX + stepX * ring, y: originalY - stepY * ring },
+          { x: originalX - stepX * ring, y: originalY - stepY * ring }
+        );
+      }
+
+      const safePoint =
+        candidates
+          .map((candidate) => clampRect(candidate.x, candidate.y, width, height))
+          .find((candidate) => {
+            const rect = {
+              left: candidate.x - width / 2,
+              top: candidate.y - height / 2,
+              right: candidate.x + width / 2,
+              bottom: candidate.y + height / 2,
+            };
+
+            return !isOverlapping(rect);
+          }) || base;
+
+      const finalRect = {
+        left: safePoint.x - width / 2,
+        top: safePoint.y - height / 2,
+        right: safePoint.x + width / 2,
+        bottom: safePoint.y + height / 2,
+      };
+
+      placedRects.push(finalRect);
+
+      nextPositions[markerKey] = {
+        x: (safePoint.x / areaRect.width) * 100,
+        y: (safePoint.y / areaRect.height) * 100,
+      };
+    });
+
+    setAdjustedOverlayPositions((prev) => {
+      if (JSON.stringify(prev) === JSON.stringify(nextPositions)) return prev;
+      return nextPositions;
+    });
+  };
+
+  recomputeOverlayPositions();
+
+  // 화면 크기/회전/이미지 로딩 변화에도 마커 위치를 다시 계산해서
+  // 모바일-데스크톱 전환, 창 크기 조절 시에도 겹치거나 밀려나지 않도록 함.
+  const resizeObserver =
+    typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => recomputeOverlayPositions()) : null;
+  resizeObserver?.observe(imageArea);
+  window.addEventListener("resize", recomputeOverlayPositions);
+  window.addEventListener("orientationchange", recomputeOverlayPositions);
+
+  return () => {
+    resizeObserver?.disconnect();
+    window.removeEventListener("resize", recomputeOverlayPositions);
+    window.removeEventListener("orientationchange", recomputeOverlayPositions);
+  };
 }, [activeDabsKey, selectedDate, dabsOverlays, dabsImages, buildingDetailImages, selectedBuildingDetail, isCapturingImage]);
 
   const vibrateBriefly = () => {
@@ -6547,7 +6565,7 @@ return (
     ref={imageAreaRef}
     className={cn(
       "relative overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:rounded-2xl",
-      fillHeight ? "inline-flex max-h-full max-w-full items-center justify-center" : "h-[260px] md:h-auto"
+      fillHeight ? "inline-flex max-h-full max-w-full items-center justify-center" : "w-full"
     )}
     onClick={activeDabsKey === "highRisk" ? openMarkerPopup : (activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") ? handleEquipmentClick : undefined}
         onMouseMove={(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") ? handleEquipmentMouseMove : undefined}
@@ -6561,9 +6579,10 @@ return (
   alt={activeDabsTab.label}
   crossOrigin="anonymous"
   className={cn(
-    "block",
-    fillHeight ? "max-h-full max-w-full h-auto w-auto object-contain" : "h-full w-full object-cover md:h-auto"
+    "block select-none",
+    fillHeight ? "max-h-full max-w-full h-auto w-auto object-contain" : "w-full h-auto"
   )}
+  draggable={false}
 />
 ) : (
   <div className="flex h-64 items-center justify-center text-sm text-slate-400">
@@ -6574,9 +6593,9 @@ return (
           <>
             <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
               <defs>
-                <marker id="arrowhead" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" fill="#f97316"><polygon points="0 0, 4 2, 0 4" /></marker>
+                <marker id="arrowhead" markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" fill="#f97316"><polygon points="0 0, 4 2, 0 4" /></marker>
                 {COMPANY_STROKE_PALETTE.map((strokeColor, strokeIndex) => (
-                  <marker key={strokeIndex} id={`arrowhead-${targetKey}-${strokeIndex}`} markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" fill={strokeColor}><polygon points="0 0, 4 2, 0 4" /></marker>
+                  <marker key={strokeIndex} id={`arrowhead-${targetKey}-${strokeIndex}`} markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" fill={strokeColor}><polygon points="0 0, 4 2, 0 4" /></marker>
                 ))}
               </defs>
               {arrows.map((arrow) => {
@@ -6592,7 +6611,8 @@ return (
                     points={pts.map((p) => `${p.x},${p.y}`).join(" ")}
                     fill="none"
                     stroke={strokeColor}
-                    strokeWidth="0.6"
+                    strokeWidth="2.5"
+                    vectorEffect="non-scaling-stroke"
                     markerEnd={isLineStyle ? undefined : `url(#arrowhead-${targetKey}-${strokeIndex})`}
                   />
                 );
@@ -6604,8 +6624,9 @@ return (
                     .join(" ")}
                   fill="none"
                   stroke="#f97316"
-                  strokeWidth="0.5"
-                  strokeDasharray="1.5 1.5"
+                  strokeWidth="2.2"
+                  strokeDasharray="6 6"
+                  vectorEffect="non-scaling-stroke"
                   markerEnd={activeDabsKey === "buildingDetail" ? undefined : "url(#arrowhead)"}
                 />
               )}
@@ -6686,11 +6707,11 @@ const posY = adjustedPosition?.y ?? marker.y;
   >
                   <div className={cn("flex flex-col items-center text-center", (isHighRiskMarker || isBuildingDetailMarker)
   ? (compactMarkers
-      ? "min-w-[50px] max-w-[70px] gap-0.5 lg:min-w-[85px] lg:max-w-[125px] lg:gap-0.5"
-      : "min-w-[75px] max-w-[105px] gap-0.5 lg:min-w-[128px] lg:max-w-[188px] lg:gap-1")
+      ? "min-w-[42px] max-w-[62px] gap-0.5 lg:min-w-[85px] lg:max-w-[125px] lg:gap-0.5"
+      : "min-w-[62px] max-w-[90px] gap-0.5 lg:min-w-[128px] lg:max-w-[188px] lg:gap-1")
   : (compactMarkers
-      ? "min-w-[60px] max-w-[80px] gap-0.5 lg:min-w-[120px] lg:max-w-[170px] lg:gap-0.5"
-      : "min-w-[90px] max-w-[120px] gap-0.5 lg:min-w-[180px] lg:max-w-[255px] lg:gap-1"))}>
+      ? "min-w-[50px] max-w-[70px] gap-0.5 lg:min-w-[120px] lg:max-w-[170px] lg:gap-0.5"
+      : "min-w-[74px] max-w-[102px] gap-0.5 lg:min-w-[180px] lg:max-w-[255px] lg:gap-1"))}>
                     {marker.equipmentType ? <span className={cn("rounded-full bg-white/80 font-bold leading-none shadow-sm", compactMarkers ? "px-1 py-0.5 text-[7px] lg:text-[8px]" : "px-1.5 py-0.5 text-[11px] lg:text-[12px]")}>{getEquipmentLabel(marker.equipmentType)}</span> : null}
                     {isHighRiskMarker ? (
   <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[3px] py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
