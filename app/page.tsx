@@ -7798,6 +7798,7 @@ const renderEditPopups = () => (
                   company: "",
                   material: "",
                   vehicle: "",
+                  vehicleCount: "",
                   location: "",
                   manager: "",
                   phone: "",
