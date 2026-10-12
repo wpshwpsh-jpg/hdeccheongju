@@ -74,6 +74,13 @@ const HIGH_RISK_BUILDINGS = [
 ];
 const SOLO_WORKER_COLUMNS = [ALL_BUILDING_LABEL, ...Array.from({ length: 17 }, (_, i) => `${101 + i}동`), "상가"];
 const MATERIAL_TIMES = Array.from({ length: 12 }, (_, i) => String(i + 6).padStart(2, "0"));
+// 동별 상세도 종료시간 선택지 (07~18시, 시작시간보다 한 시간 뒤부터)
+const MATERIAL_END_TIMES = Array.from({ length: 12 }, (_, i) => String(i + 7).padStart(2, "0"));
+function getDefaultEndTime(startTime: string) {
+  const startNum = parseInt(startTime || "06", 10);
+  const endNum = Math.min((Number.isNaN(startNum) ? 6 : startNum) + 1, 18);
+  return String(endNum).padStart(2, "0");
+}
 const MAX_HEATWAVE_IMAGE_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_HEATWAVE_EXCEL_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -445,6 +452,7 @@ type OverlayMarkerItem = {
   note?: string;
   equipmentType?: string;
   time?: string;
+  endTime?: string;
 };
 
 type OverlayArrowItem = {
@@ -459,6 +467,7 @@ type OverlayArrowItem = {
   company?: string;
   note?: string;
   time?: string;
+  endTime?: string;
 };
 
 type OverlayPersonItem = {
@@ -1220,6 +1229,7 @@ const [editHighRiskTablePopup, setEditHighRiskTablePopup] = useState<{
   building: "",
   targetKey: "highRisk",
   time: "06",
+  endTime: "07",
 });
 
 const [editOverlayPopup, setEditOverlayPopup] = useState({
@@ -1231,6 +1241,7 @@ const [editOverlayPopup, setEditOverlayPopup] = useState({
   building: "",
   equipmentType: "concrete_pump_truck",
   time: "",
+  endTime: "",
 });
 
 const [moveOverlayTarget, setMoveOverlayTarget] = useState<{
@@ -1248,6 +1259,7 @@ const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   note: string;
   equipmentType: string;
   time?: string;
+  endTime?: string;
   logAction?: "입력" | "수정";
   createdByUid?: string;
   createdByName?: string;
@@ -5657,7 +5669,7 @@ const handleUpdateOverlayInfo = async () => {
     editOverlayPopup.targetKey === "equipmentFlow" ||
     editOverlayPopup.targetKey.startsWith("buildingDetail::");
 
-  if (editOverlayPopup.targetKey.startsWith("buildingDetail::") && !editOverlayPopup.time) {
+  if (editOverlayPopup.targetKey.startsWith("buildingDetail::") && (!editOverlayPopup.time || !editOverlayPopup.endTime)) {
     return;
   }
 
@@ -5703,7 +5715,7 @@ const handleUpdateOverlayInfo = async () => {
       editOverlayPopup.targetKey === "equipmentFlow"
         ? `장비동선 / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} → ${editOverlayPopup.company.trim()} / ${editOverlayPopup.note.trim()} / ${getEquipmentLabel(editOverlayPopup.equipmentType)}`
         : editOverlayPopup.targetKey.startsWith("buildingDetail::")
-        ? `동별 상세도 / ${editOverlayPopup.targetKey.split("::")[1] || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} → ${editOverlayPopup.company.trim()} / ${editOverlayPopup.note.trim()} / ${editOverlayPopup.time}시`
+        ? `동별 상세도 / ${editOverlayPopup.targetKey.split("::")[1] || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} → ${editOverlayPopup.company.trim()} / ${editOverlayPopup.note.trim()} / ${editOverlayPopup.time}시~${editOverlayPopup.endTime}시`
         : `고위험작업 / ${targetMarker?.building || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} → ${editOverlayPopup.building} / ${editOverlayPopup.company.trim()} / ${editOverlayPopup.note.trim()}`,
   });
 
@@ -5720,6 +5732,7 @@ const handleUpdateOverlayInfo = async () => {
       note: editOverlayPopup.note.trim(),
       equipmentType: editOverlayPopup.equipmentType,
       time: editOverlayPopup.time,
+      endTime: editOverlayPopup.endTime,
       logAction: "수정",
       createdByUid: currentUser?.uid,
       createdByName: currentUser?.name,
@@ -5741,6 +5754,7 @@ const handleUpdateOverlayInfo = async () => {
     building: "",
     equipmentType: "concrete_pump_truck",
     time: "",
+    endTime: "",
   });
 
   setArrowPoints([]);
@@ -5786,7 +5800,7 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
       targetKey === "equipmentFlow"
         ? `장비동선 / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} / ${targetMarker?.equipmentType ? getEquipmentLabel(targetMarker.equipmentType) : ""}`
         : targetKey.startsWith("buildingDetail::")
-        ? `동별 상세도 / ${targetKey.split("::")[1] || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} / ${targetMarker?.time ? `${targetMarker.time}시` : ""}`
+        ? `동별 상세도 / ${targetKey.split("::")[1] || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} / ${targetMarker?.time ? `${targetMarker.time}시~${targetMarker.endTime || ""}시` : ""}`
         : `고위험작업 / ${targetMarker?.building || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""}`,
   });
 };
@@ -5978,6 +5992,7 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
     building: "",
     targetKey: "highRisk",
     time: "06",
+    endTime: "07",
   });
 };
 
@@ -6043,12 +6058,18 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
     building: "",
     targetKey: "highRisk",
     time: "06",
+    endTime: "07",
   });
 };
 
   const cancelMarkerPopup = async () => {
-  if (imagePopup.targetKey === "equipmentFlow") {
-    const currentValue = getOverlayBundle("equipmentFlow");
+  const targetKey = imagePopup.targetKey;
+  const isLineBasedTarget = targetKey === "equipmentFlow" || targetKey.startsWith("buildingDetail::");
+
+  if (isLineBasedTarget) {
+    // 라인(화살표)을 그리고 완료한 뒤 말풍선 입력을 취소하면, 방금 그린 라인도 함께
+    // 되돌려야 말풍선 없이 라인만 남아 삭제가 불가능해지는 현상을 막을 수 있습니다.
+    const currentValue = getOverlayBundle(targetKey);
     const nextArrows = [...(currentValue.arrows || [])];
 
     if (nextArrows.length > 0) nextArrows.pop();
@@ -6057,7 +6078,7 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
       ...dabsOverlays,
       [selectedDate]: {
         ...(dabsOverlays[selectedDate] || {}),
-        equipmentFlow: {
+        [targetKey]: {
           ...currentValue,
           arrows: nextArrows,
         },
@@ -6068,6 +6089,7 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
     await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
   }
 
+  setMoveOverlayTarget(null);
   setArrowPoints([]);
   setArrowPreviewPoint(null);
   setPendingEquipmentMarker(null);
@@ -6081,6 +6103,7 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
     building: "",
     targetKey: "highRisk",
     time: "06",
+    endTime: "07",
   });
 };
 
@@ -6112,6 +6135,7 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
       note: imagePopup.note.trim(),
       equipmentType: imagePopup.equipmentType,
       time: imagePopup.time,
+      endTime: imagePopup.endTime,
       logAction: "입력",
       createdByUid: currentUser?.uid,
       createdByName: currentUser?.name,
@@ -6127,6 +6151,7 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
       building: "",
       targetKey: "highRisk",
       time: "06",
+      endTime: "07",
     });
 
     setDabsMessage("상자를 표시할 위치를 한 번 더 클릭하세요.");
@@ -6177,6 +6202,7 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
     building: "",
     targetKey: "highRisk",
     time: "06",
+    endTime: "07",
   });
 };
 
@@ -6285,6 +6311,7 @@ if (moveOverlayTarget?.targetKey === targetKey && moveOverlayTarget.mode === "ar
     building: "",
     targetKey,
     time: "06",
+    endTime: "07",
   });
   vibrateBriefly();
 };
@@ -6399,13 +6426,14 @@ const handleDeletePersonMarker = async (itemId: string) => {
       note: pendingEquipmentMarker.note,
       equipmentType: targetKey === "equipmentFlow" ? pendingEquipmentMarker.equipmentType : "",
       time: pendingEquipmentMarker.time,
+      endTime: pendingEquipmentMarker.endTime,
       createdByUid: pendingEquipmentMarker.createdByUid,
       createdByName: pendingEquipmentMarker.createdByName,
     };
 
     const nextArrows = (currentValue.arrows || []).map((arrow) =>
       arrow.id === pendingEquipmentMarker.arrowId
-        ? { ...arrow, company: pendingEquipmentMarker.company, note: pendingEquipmentMarker.note, time: pendingEquipmentMarker.time }
+        ? { ...arrow, company: pendingEquipmentMarker.company, note: pendingEquipmentMarker.note, time: pendingEquipmentMarker.time, endTime: pendingEquipmentMarker.endTime }
         : arrow
     );
 
@@ -6432,7 +6460,7 @@ const handleDeletePersonMarker = async (itemId: string) => {
       detail:
         targetKey === "equipmentFlow"
           ? `장비동선 / ${getEquipmentLabel(pendingEquipmentMarker.equipmentType)} / ${pendingEquipmentMarker.note}`
-          : `동별 상세도 / ${selectedBuildingDetail} / ${pendingEquipmentMarker.company} / ${pendingEquipmentMarker.note} / ${pendingEquipmentMarker.time}시`,
+          : `동별 상세도 / ${selectedBuildingDetail} / ${pendingEquipmentMarker.company} / ${pendingEquipmentMarker.note} / ${pendingEquipmentMarker.time}시~${pendingEquipmentMarker.endTime}시`,
     });
 
     setPendingEquipmentMarker(null);
@@ -6608,13 +6636,14 @@ if (
     note: pendingEquipmentMarker.note,
     equipmentType: targetKey === "equipmentFlow" ? pendingEquipmentMarker.equipmentType : "",
     time: pendingEquipmentMarker.time,
+    endTime: pendingEquipmentMarker.endTime,
     createdByUid: pendingEquipmentMarker.createdByUid,
     createdByName: pendingEquipmentMarker.createdByName,
   };
 
   const nextArrows = (currentValue.arrows || []).map((arrow) =>
     arrow.id === pendingEquipmentMarker.arrowId
-      ? { ...arrow, company: pendingEquipmentMarker.company, note: pendingEquipmentMarker.note, time: pendingEquipmentMarker.time }
+      ? { ...arrow, company: pendingEquipmentMarker.company, note: pendingEquipmentMarker.note, time: pendingEquipmentMarker.time, endTime: pendingEquipmentMarker.endTime }
       : arrow
   );
 
@@ -6640,7 +6669,7 @@ if (
   detail:
     targetKey === "equipmentFlow"
       ? `장비동선 / ${getEquipmentLabel(pendingEquipmentMarker.equipmentType)} / ${pendingEquipmentMarker.note}`
-      : `동별 상세도 / ${selectedBuildingDetail} / ${pendingEquipmentMarker.company} / ${pendingEquipmentMarker.note} / ${pendingEquipmentMarker.time}시`,
+      : `동별 상세도 / ${selectedBuildingDetail} / ${pendingEquipmentMarker.company} / ${pendingEquipmentMarker.note} / ${pendingEquipmentMarker.time}시~${pendingEquipmentMarker.endTime}시`,
 });
 
 setPendingEquipmentMarker(null);
@@ -6791,7 +6820,7 @@ return (
                     points={pts.map((p) => `${p.x},${p.y}`).join(" ")}
                     fill="none"
                     stroke={strokeColor}
-                    strokeWidth="2.5"
+                    strokeWidth={isLineStyle ? "12.5" : "2.5"}
                     vectorEffect="non-scaling-stroke"
                     markerEnd={isLineStyle ? undefined : `url(#arrowhead-${targetKey}-${strokeIndex})`}
                   />
@@ -6804,7 +6833,7 @@ return (
                     .join(" ")}
                   fill="none"
                   stroke="#f97316"
-                  strokeWidth="2.2"
+                  strokeWidth={activeDabsKey === "buildingDetail" ? "11" : "2.2"}
                   strokeDasharray="6 6"
                   vectorEffect="non-scaling-stroke"
                   markerEnd={activeDabsKey === "buildingDetail" ? undefined : "url(#arrowhead)"}
@@ -6914,7 +6943,7 @@ const posY = adjustedPosition?.y ?? marker.y;
   {marker.note || "작업내용 없음"}
 </div>
     <div className={cn("mt-1 font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[17px] lg:text-[20px]")}>
-  {marker.time ? `${marker.time}시` : ""}
+  {marker.time ? `${marker.time}시~${marker.endTime || ""}시` : ""}
 </div>
   </div>
 ) : (
@@ -6945,6 +6974,7 @@ const posY = adjustedPosition?.y ?? marker.y;
           building: marker.building || "",
           equipmentType: marker.equipmentType || "concrete_pump_truck",
           time: marker.time || "06",
+          endTime: marker.endTime || getDefaultEndTime(marker.time || "06"),
         });
       }}
       onTouchStart={(e) => e.stopPropagation()}
@@ -8340,21 +8370,48 @@ return (
       )}
 
       {imagePopup.targetKey.startsWith("buildingDetail::") && (
-        <div className="mt-4 space-y-2">
-          <label className="text-xs font-medium text-slate-600">시간</label>
-          <select
-            value={imagePopup.time}
-            onChange={(e) =>
-              setImagePopup((prev) => ({ ...prev, time: e.target.value }))
-            }
-            className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-          >
-            {MATERIAL_TIMES.map((time) => (
-              <option key={time} value={time}>
-                {time}시
-              </option>
-            ))}
-          </select>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600">시작시간</label>
+            <select
+              value={imagePopup.time}
+              onChange={(e) => {
+                const nextStart = e.target.value;
+                setImagePopup((prev) => ({
+                  ...prev,
+                  time: nextStart,
+                  endTime:
+                    parseInt(prev.endTime, 10) > parseInt(nextStart, 10)
+                      ? prev.endTime
+                      : getDefaultEndTime(nextStart),
+                }));
+              }}
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              {MATERIAL_TIMES.map((time) => (
+                <option key={time} value={time}>
+                  {time}시
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600">종료시간</label>
+            <select
+              value={imagePopup.endTime}
+              onChange={(e) =>
+                setImagePopup((prev) => ({ ...prev, endTime: e.target.value }))
+              }
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              {MATERIAL_END_TIMES.filter((time) => parseInt(time, 10) > parseInt(imagePopup.time, 10)).map((time) => (
+                <option key={time} value={time}>
+                  {time}시
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
 
@@ -8783,11 +8840,13 @@ return (
       </div>
     </div>
   ) : activeDabsKey === "buildingDetail" ? (
-    renderOverlayImage(
-      buildingDetailImages?.[selectedBuildingDetail],
-      isImageTab,
-      `buildingDetail::${selectedBuildingDetail}`
-    )
+    <div className="mx-auto w-1/2">
+      {renderOverlayImage(
+        buildingDetailImages?.[selectedBuildingDetail],
+        isImageTab,
+        `buildingDetail::${selectedBuildingDetail}`
+      )}
+    </div>
   ) : (
     renderOverlayImage(dabsImages?.equipmentFlow, isImageTab)
   )}
@@ -11875,24 +11934,51 @@ return (
           )}
 
           {editOverlayPopup.targetKey.startsWith("buildingDetail::") && (
-            <div className="mt-4 space-y-2">
-              <label className="text-xs font-medium text-slate-600">시간</label>
-              <select
-                value={editOverlayPopup.time}
-                onChange={(e) =>
-                  setEditOverlayPopup((prev) => ({
-                    ...prev,
-                    time: e.target.value,
-                  }))
-                }
-                className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-              >
-                {MATERIAL_TIMES.map((time) => (
-                  <option key={time} value={time}>
-                    {time}시
-                  </option>
-                ))}
-              </select>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-slate-600">시작시간</label>
+                <select
+                  value={editOverlayPopup.time}
+                  onChange={(e) => {
+                    const nextStart = e.target.value;
+                    setEditOverlayPopup((prev) => ({
+                      ...prev,
+                      time: nextStart,
+                      endTime:
+                        parseInt(prev.endTime, 10) > parseInt(nextStart, 10)
+                          ? prev.endTime
+                          : getDefaultEndTime(nextStart),
+                    }));
+                  }}
+                  className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                >
+                  {MATERIAL_TIMES.map((time) => (
+                    <option key={time} value={time}>
+                      {time}시
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-slate-600">종료시간</label>
+                <select
+                  value={editOverlayPopup.endTime}
+                  onChange={(e) =>
+                    setEditOverlayPopup((prev) => ({
+                      ...prev,
+                      endTime: e.target.value,
+                    }))
+                  }
+                  className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                >
+                  {MATERIAL_END_TIMES.filter((time) => parseInt(time, 10) > parseInt(editOverlayPopup.time, 10)).map((time) => (
+                    <option key={time} value={time}>
+                      {time}시
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
 
@@ -11938,6 +12024,7 @@ return (
                   building: "",
                   equipmentType: "concrete_pump_truck",
                   time: "",
+                  endTime: "",
                 })
               }
             >
