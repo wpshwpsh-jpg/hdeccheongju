@@ -1421,6 +1421,15 @@ const portfolioCaptureRef = useRef<HTMLDivElement | null>(null);const educationC
   const lastTouchTimeRef = useRef(0);
   const touchGestureRef = useRef({ moved: false, startX: 0, startY: 0 });
 
+  const [overlayZoom, setOverlayZoom] = useState(1);
+  const [overlayPan, setOverlayPan] = useState({ x: 0, y: 0 });
+  const panMouseStateRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
+  const panTouchStateRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const pinchDistRef = useRef<number | null>(null);
+  const suppressNextClickRef = useRef(false);
+  const OVERLAY_MIN_ZOOM = 1;
+  const OVERLAY_MAX_ZOOM = 4;
+
   useEffect(() => {
   if (isDemoMode || !db || !currentUser) return;
 
@@ -3801,13 +3810,65 @@ useEffect(() => {
   setPendingEquipmentMarker(null);
 }, [selectedDate, activeDabsKey, dabsData]);
 
+useEffect(() => {
+  setOverlayZoom(1);
+  setOverlayPan({ x: 0, y: 0 });
+}, [activeDabsKey, selectedBuildingDetail, selectedDate]);
+
   const getRelativePoint = (clientX: number, clientY: number) => {
   if (!imageAreaRef.current) return null;
   const rect = imageAreaRef.current.getBoundingClientRect();
+  const ix = (clientX - rect.left - overlayPan.x) / overlayZoom;
+  const iy = (clientY - rect.top - overlayPan.y) / overlayZoom;
   return {
-    x: ((clientX - rect.left) / rect.width) * 100,
-    y: ((clientY - rect.top) / rect.height) * 100,
+    x: (ix / rect.width) * 100,
+    y: (iy / rect.height) * 100,
   };
+};
+
+const clampOverlayPan = (
+  zoom: number,
+  pan: { x: number; y: number },
+  rect: { width: number; height: number } | null | undefined
+) => {
+  if (!rect || zoom <= 1) return { x: 0, y: 0 };
+  const minX = rect.width - rect.width * zoom;
+  const minY = rect.height - rect.height * zoom;
+  return {
+    x: Math.min(0, Math.max(minX, pan.x)),
+    y: Math.min(0, Math.max(minY, pan.y)),
+  };
+};
+
+const applyOverlayZoom = (
+  nextZoomRaw: number,
+  anchorClient?: { clientX: number; clientY: number }
+) => {
+  const rect = imageAreaRef.current?.getBoundingClientRect();
+  const nextZoom = Math.min(
+    OVERLAY_MAX_ZOOM,
+    Math.max(OVERLAY_MIN_ZOOM, Math.round(nextZoomRaw * 100) / 100)
+  );
+  if (!rect) {
+    setOverlayZoom(nextZoom);
+    setOverlayPan({ x: 0, y: 0 });
+    return;
+  }
+  const anchorX = anchorClient ? anchorClient.clientX - rect.left : rect.width / 2;
+  const anchorY = anchorClient ? anchorClient.clientY - rect.top : rect.height / 2;
+  const ix = (anchorX - overlayPan.x) / overlayZoom;
+  const iy = (anchorY - overlayPan.y) / overlayZoom;
+  const nextPan =
+    nextZoom <= 1
+      ? { x: 0, y: 0 }
+      : clampOverlayPan(nextZoom, { x: anchorX - ix * nextZoom, y: anchorY - iy * nextZoom }, rect);
+  setOverlayZoom(nextZoom);
+  setOverlayPan(nextPan);
+};
+
+const resetOverlayZoom = () => {
+  setOverlayZoom(1);
+  setOverlayPan({ x: 0, y: 0 });
 };
 
 useLayoutEffect(() => {
@@ -3874,8 +3935,8 @@ useLayoutEffect(() => {
       if (!markerElement) return;
 
       const markerRect = markerElement.getBoundingClientRect();
-      const width = markerRect.width;
-      const height = markerRect.height;
+      const width = markerRect.width / overlayZoom;
+      const height = markerRect.height / overlayZoom;
 
       const originalX = (marker.x / 100) * areaRect.width;
       const originalY = (marker.y / 100) * areaRect.height;
@@ -6392,9 +6453,56 @@ const handleDeletePersonMarker = async (itemId: string) => {
     setArrowPreviewPoint(point);
   };
 
+  const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (overlayZoom <= 1) {
+      panMouseStateRef.current = null;
+      return;
+    }
+    panMouseStateRef.current = { x: event.clientX, y: event.clientY, panX: overlayPan.x, panY: overlayPan.y, moved: false };
+  };
+
+  const handleOverlayMouseMoveCombined = (event: React.MouseEvent<HTMLDivElement>) => {
+    const panState = panMouseStateRef.current;
+    if (panState) {
+      const dx = event.clientX - panState.x;
+      const dy = event.clientY - panState.y;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) panState.moved = true;
+      if (panState.moved) {
+        const rect = imageAreaRef.current?.getBoundingClientRect();
+        setOverlayPan(clampOverlayPan(overlayZoom, { x: panState.panX + dx, y: panState.panY + dy }, rect));
+        suppressNextClickRef.current = true;
+        return;
+      }
+    }
+    if (activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") handleEquipmentMouseMove(event);
+  };
+
+  const handleOverlayMouseUp = () => {
+    panMouseStateRef.current = null;
+  };
+
+  const handleOverlayWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    const delta = event.deltaY > 0 ? -0.3 : 0.3;
+    applyOverlayZoom(overlayZoom + delta, { clientX: event.clientX, clientY: event.clientY });
+  };
+
+  const touchDistance = (t0: { clientX: number; clientY: number }, t1: { clientX: number; clientY: number }) =>
+    Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+
   const handleOverlayTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length >= 2) {
+      panTouchStateRef.current = null;
+      pinchDistRef.current = touchDistance(event.touches[0], event.touches[1]);
+      touchGestureRef.current.moved = true;
+      return;
+    }
     const touch = event.touches?.[0];
     if (!touch) return;
+    pinchDistRef.current = null;
+    panTouchStateRef.current =
+      overlayZoom > 1 ? { x: touch.clientX, y: touch.clientY, panX: overlayPan.x, panY: overlayPan.y } : null;
     if (activeDabsKey === "highRisk") {
       touchGestureRef.current = { moved: false, startX: touch.clientX, startY: touch.clientY };
       return;
@@ -6411,10 +6519,39 @@ const handleDeletePersonMarker = async (itemId: string) => {
   };
 
   const handleOverlayTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length >= 2) {
+      const rect = imageAreaRef.current?.getBoundingClientRect();
+      const dist = touchDistance(event.touches[0], event.touches[1]);
+      if (rect && pinchDistRef.current) {
+        const scale = dist / pinchDistRef.current;
+        const midX = (event.touches[0].clientX + event.touches[1].clientX) / 2 - rect.left;
+        const midY = (event.touches[0].clientY + event.touches[1].clientY) / 2 - rect.top;
+        const nextZoom = Math.min(OVERLAY_MAX_ZOOM, Math.max(OVERLAY_MIN_ZOOM, overlayZoom * scale));
+        const ix = (midX - overlayPan.x) / overlayZoom;
+        const iy = (midY - overlayPan.y) / overlayZoom;
+        const nextPan =
+          nextZoom <= 1
+            ? { x: 0, y: 0 }
+            : clampOverlayPan(nextZoom, { x: midX - ix * nextZoom, y: midY - iy * nextZoom }, rect);
+        setOverlayZoom(nextZoom);
+        setOverlayPan(nextPan);
+      }
+      pinchDistRef.current = dist;
+      return;
+    }
     const touch = event.touches?.[0];
     if (!touch) return;
     const gesture = touchGestureRef.current;
     if (Math.abs(touch.clientX - gesture.startX) > 6 || Math.abs(touch.clientY - gesture.startY) > 6) touchGestureRef.current.moved = true;
+    if (panTouchStateRef.current && overlayZoom > 1) {
+      const rect = imageAreaRef.current?.getBoundingClientRect();
+      const dx = touch.clientX - panTouchStateRef.current.x;
+      const dy = touch.clientY - panTouchStateRef.current.y;
+      setOverlayPan(
+        clampOverlayPan(overlayZoom, { x: panTouchStateRef.current.panX + dx, y: panTouchStateRef.current.panY + dy }, rect)
+      );
+      return;
+    }
     if (!(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") || arrowPoints.length === 0) return;
     const point = getRelativePoint(touch.clientX, touch.clientY);
     if (!point) return;
@@ -6422,6 +6559,10 @@ const handleDeletePersonMarker = async (itemId: string) => {
   };
 
   const handleOverlayTouchEnd = async (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length === 0) {
+      pinchDistRef.current = null;
+      panTouchStateRef.current = null;
+    }
     const touch = event.changedTouches?.[0];
     if (!touch) return;
     const point = getRelativePoint(touch.clientX, touch.clientY);
@@ -6581,19 +6722,30 @@ return (
       "relative overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:rounded-2xl",
       fillHeight ? "inline-flex max-h-full max-w-full items-center justify-center" : "w-full"
     )}
-    onClick={activeDabsKey === "highRisk" ? openMarkerPopup : (activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") ? handleEquipmentClick : undefined}
-        onMouseMove={(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") ? handleEquipmentMouseMove : undefined}
+    onClick={(event) => {
+      if (suppressNextClickRef.current) {
+        suppressNextClickRef.current = false;
+        return;
+      }
+      if (activeDabsKey === "highRisk") openMarkerPopup(event);
+      else if (activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") handleEquipmentClick(event);
+    }}
+        onMouseMove={handleOverlayMouseMoveCombined}
+        onMouseDown={isImageTab ? handleOverlayMouseDown : undefined}
+        onMouseUp={isImageTab ? handleOverlayMouseUp : undefined}
+        onMouseLeave={isImageTab ? handleOverlayMouseUp : undefined}
+        onWheel={isImageTab ? handleOverlayWheel : undefined}
         onTouchStart={isImageTab ? handleOverlayTouchStart : undefined}
-        onTouchMove={(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") ? handleOverlayTouchMove : undefined}
+        onTouchMove={isImageTab ? handleOverlayTouchMove : undefined}
         onTouchEnd={isImageTab ? handleOverlayTouchEnd : undefined}
       >
   {selectedImage ? (
   <img
   src={selectedImage}
-  alt={activeDabsTab.label}
-  crossOrigin="anonymous"
+  alt=""
+  aria-hidden="true"
   className={cn(
-    "block select-none",
+    "block invisible select-none",
     fillHeight ? "max-h-full max-w-full h-auto w-auto object-contain" : "w-full h-auto"
   )}
   draggable={false}
@@ -6604,6 +6756,20 @@ return (
   </div>
 )}
   {selectedImage && (
+    <div
+      className="absolute inset-0"
+      style={{
+        transform: `translate(${overlayPan.x}px, ${overlayPan.y}px) scale(${overlayZoom})`,
+        transformOrigin: "0 0",
+      }}
+    >
+      <img
+        src={selectedImage}
+        alt={activeDabsTab.label}
+        crossOrigin="anonymous"
+        className="block h-full w-full select-none object-contain"
+        draggable={false}
+      />
           <>
             <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
               <defs>
@@ -6813,6 +6979,55 @@ const posY = adjustedPosition?.y ?? marker.y;
               );
             })}
                       </>
+      </div>
+        )}
+        {selectedImage && isImageTab && (
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-2 z-40 flex items-center justify-center gap-1 lg:bottom-3"
+          >
+            <div className="pointer-events-auto flex items-center gap-0.5 rounded-full bg-white/95 p-1 shadow-lg ring-1 ring-black/10 backdrop-blur">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  applyOverlayZoom(overlayZoom - 0.5);
+                }}
+                onTouchStart={(e) => e.stopPropagation()}
+                disabled={overlayZoom <= OVERLAY_MIN_ZOOM}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-base font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-30 lg:h-7 lg:w-7 lg:text-sm"
+              >
+                −
+              </button>
+              <span className="min-w-[2.6rem] text-center text-[11px] font-semibold text-slate-600 lg:text-[10px]">
+                {Math.round(overlayZoom * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  applyOverlayZoom(overlayZoom + 0.5);
+                }}
+                onTouchStart={(e) => e.stopPropagation()}
+                disabled={overlayZoom >= OVERLAY_MAX_ZOOM}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-base font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-30 lg:h-7 lg:w-7 lg:text-sm"
+              >
+                +
+              </button>
+              {overlayZoom !== 1 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    resetOverlayZoom();
+                  }}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  className="ml-0.5 flex h-8 items-center justify-center rounded-full px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 lg:h-7 lg:text-[10px]"
+                >
+                  원래대로
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </div>
     );
