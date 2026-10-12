@@ -9,6 +9,7 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  HelpCircle,
   LayoutGrid,
   LogOut,
   MessageSquare,
@@ -33,7 +34,11 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  limit,
   onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -71,6 +76,18 @@ const SOLO_WORKER_COLUMNS = [ALL_BUILDING_LABEL, ...Array.from({ length: 17 }, (
 const MATERIAL_TIMES = Array.from({ length: 12 }, (_, i) => String(i + 6).padStart(2, "0"));
 const MAX_HEATWAVE_IMAGE_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_HEATWAVE_EXCEL_FILE_SIZE = 10 * 1024 * 1024;
+
+const DABS_MANUAL_GIF: Record<string, string> = {
+  highRisk: "/manuals/manual-highrisk.gif",
+  buildingDetail: "/manuals/manual-buildingdetail.gif",
+  equipmentFlow: "/manuals/manual-equipmentflow.gif",
+  archWork: "/manuals/manual-sectionwork.gif",
+  mepWork: "/manuals/manual-sectionwork.gif",
+  fireWork: "/manuals/manual-sectionwork.gif",
+  materialsAfter0: "/manuals/manual-materials.gif",
+  materialsAfter1: "/manuals/manual-materials.gif",
+};
+const SOLO_WORKER_MANUAL_GIF = "/manuals/manual-soloworker.gif";
 
 const EQUIPMENT_OPTIONS = [  { value: "concrete_pump_truck", label: "콘크리트 펌프카" },
   { value: "concrete_mixer_truck", label: "콘크리트 믹서트럭" },
@@ -154,7 +171,7 @@ function Input({
   return (
     <input
       className={cn(
-        "h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200",
+        "h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200 [font-family:inherit]",
         className
       )}
       {...props}
@@ -213,6 +230,16 @@ function getDefaultSelectedDateKey() {
 
 function getTodayKey() {
   return formatDateKey(new Date());
+}
+
+function getSaturdayKeyFromDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const d = new Date(year, month - 1, day);
+  const daysUntilSaturday = (6 - d.getDay() + 7) % 7;
+
+  d.setDate(d.getDate() + daysUntilSaturday);
+
+  return formatDateKey(d);
 }
 
 function getMonthGrid(currentDate: Date) {
@@ -341,11 +368,24 @@ type EntryItem = {
   createdAt?: string | null;
 };
 
+type ActivityLogItem = {
+  id: string;
+  action: string;
+  page?: string;
+  target?: string;
+  detail?: string;
+  actorUid?: string;
+  actorName?: string;
+  actorCompany?: string;
+  actorRole?: string;
+  createdAt?: any;
+};
+
 type HeatwaveUploadItem = {
   id: string;
   fileName: string;
   fileUrl: string;
-  fileType: "image" | "excel" | "thermoPhoto" | "thermoLedger" | "breakTimeLedger";
+  fileType: "image" | "thermoPhoto" | "thermoLedger";
   storagePath?: string;
   companyName?: string;
   uploadedByUid?: string;
@@ -370,7 +410,6 @@ type HeatwaveSharedFileItem = {
 type HeatwaveSharedDateValue = {
   date?: string;
   thermoHygrometerImage?: HeatwaveSharedFileItem | null;
-  breakTimeExcel?: HeatwaveSharedFileItem | null;
 };
 
 type DabsRowItem = {
@@ -380,12 +419,18 @@ type DabsRowItem = {
   createdByName?: string;
   content?: string;
   contentRedRanges?: TextColorRange[];
+  safety?: string;
   name?: string;
   elderly?: string;
   gate?: string;
   material?: string;
   vehicle?: string;
+  vehicleCount?: string;
   location?: string;
+  manager?: string;
+  phone?: string;
+  workerOnCargo?: boolean;
+  cargoHeight1m?: boolean;
   time?: string;
 };
 
@@ -399,6 +444,7 @@ type OverlayMarkerItem = {
   company?: string;
   note?: string;
   equipmentType?: string;
+  time?: string;
 };
 
 type OverlayArrowItem = {
@@ -409,6 +455,19 @@ type OverlayArrowItem = {
   startY: number;
   endX: number;
   endY: number;
+  points?: { x: number; y: number }[];
+  company?: string;
+  note?: string;
+  time?: string;
+};
+
+type OverlayPersonItem = {
+  id: string;
+  createdByUid?: string;
+  createdByName?: string;
+  x: number;
+  y: number;
+  personType: "guide" | "signal";
 };
 
 type DabsTabValue =
@@ -435,6 +494,43 @@ const COMPANY_COLOR_PALETTE = [
   { bg: "bg-pink-50/95", border: "border-pink-300", text: "text-pink-800" },
   { bg: "bg-lime-50/95", border: "border-lime-300", text: "text-lime-800" },
 ];
+
+// COMPANY_COLOR_PALETTE와 동일한 순서/인덱스로 매칭되는 SVG stroke용 hex 색상 (화살표/라인 등)
+const COMPANY_STROKE_PALETTE = [
+  "#e11d48", // rose-600
+  "#2563eb", // blue-600
+  "#059669", // emerald-600
+  "#d97706", // amber-600
+  "#7c3aed", // violet-600
+  "#0891b2", // cyan-600
+  "#db2777", // pink-600
+  "#65a30d", // lime-600
+];
+
+function getCompanyStrokeIndex(company: string, companyList: string[]) {
+  const safeCompany = String(company || "-").trim() || "-";
+  const index = companyList.indexOf(safeCompany);
+  return index >= 0 ? index % COMPANY_STROKE_PALETTE.length : 0;
+}
+
+function getCompanyStrokeColor(company: string, companyList: string[]) {
+  return COMPANY_STROKE_PALETTE[getCompanyStrokeIndex(company, companyList)];
+}
+
+// MATERIAL_TIMES(06~17시)의 각 시간대와 1:1로 매칭되는 라인 색상 (동별 상세도)
+const TIME_STROKE_PALETTE = [
+  "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#10b981", "#06b6d4",
+  "#3b82f6", "#6366f1", "#8b5cf6", "#d946ef", "#ec4899", "#14b8a6",
+];
+
+function getTimeStrokeColor(time: string) {
+  const index = MATERIAL_TIMES.indexOf(String(time || ""));
+  return TIME_STROKE_PALETTE[index >= 0 ? index % TIME_STROKE_PALETTE.length : 0];
+}
+
+const BUILDING_DETAIL_LIST = HIGH_RISK_BUILDINGS.filter(
+  (building) => building !== ALL_BUILDING_LABEL && building !== "상가"
+);
 
 function getUniqueCompaniesFromMarkers(markers: OverlayMarkerItem[]) {
   return Array.from(
@@ -624,6 +720,71 @@ function getDabsColumnsByTabKey(tabKey: string) {
   if (tabKey === "section2_arch" || tabKey === "section2_mep") return SECTION2_COLUMNS;
   if (tabKey === "fireWork") return FIRE_WORK_COLUMNS;
   return [];
+}
+
+const HIGH_RISK_TABLE_MIN_ROWS = 14;
+
+function getHighRiskTableRows(
+  rows: Record<string, DabsRowItem[]>
+): Array<DabsRowItem & { building: string }> {
+  const buildingOrder = HIGH_RISK_BUILDINGS.filter((building) => building !== ALL_BUILDING_LABEL);
+  const buildingIndex = (building: string) => {
+    const index = buildingOrder.indexOf(building);
+    return index === -1 ? buildingOrder.length : index;
+  };
+
+  const flat: Array<DabsRowItem & { building: string }> = [];
+  Object.entries(rows || {}).forEach(([building, items]) => {
+    (items || []).forEach((item) => flat.push({ ...item, building }));
+  });
+
+  const companyMap = new Map<string, Array<DabsRowItem & { building: string }>>();
+  flat.forEach((item) => {
+    const key = item.company || "-";
+    if (!companyMap.has(key)) companyMap.set(key, []);
+    companyMap.get(key)?.push(item);
+  });
+
+  const groups = Array.from(companyMap.entries()).map(([company, items]) => {
+    const sortedItems = [...items].sort(
+      (a, b) => buildingIndex(a.building) - buildingIndex(b.building)
+    );
+    const minIndex = Math.min(...sortedItems.map((item) => buildingIndex(item.building)));
+    return { company, items: sortedItems, minIndex };
+  });
+
+  groups.sort((a, b) => {
+    if (a.minIndex !== b.minIndex) return a.minIndex - b.minIndex;
+    return a.company.localeCompare(b.company, "ko");
+  });
+
+  return groups.flatMap((group) => group.items);
+}
+
+const HIGH_RISK_PORTFOLIO_MAX_ROWS = 8;
+
+function splitHighRiskRowsByCompany(
+  rows: Array<DabsRowItem & { building: string }>,
+  maxRows: number
+) {
+  const chunks: Array<Array<DabsRowItem & { building: string }>> = [];
+  let currentChunk: Array<DabsRowItem & { building: string }> = [];
+
+  rows.forEach((item) => {
+    const lastItem = currentChunk[currentChunk.length - 1];
+    const isNewCompany = !lastItem || lastItem.company !== item.company;
+
+    if (isNewCompany && currentChunk.length > 0 && currentChunk.length >= maxRows) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+    }
+
+    currentChunk.push(item);
+  });
+
+  if (currentChunk.length > 0) chunks.push(currentChunk);
+
+  return chunks.length > 0 ? chunks : [[]];
 }
 
 function groupSoloWorkersByCompany(list: DabsRowItem[]): Array<[string, DabsRowItem[]]> {
@@ -823,7 +984,7 @@ function MobileListCard({ title, children, action }: { title: ReactNode; childre
   );
 }
 
-const TABLE_BASE_CLASS = "w-full table-fixed border-collapse text-[21px]";
+const TABLE_BASE_CLASS = "w-full table-fixed border-collapse text-[32px]";
 
 const dottedRow = (index: number) =>
   index > 0 ? "border-t border-dashed border-black pt-2" : "";
@@ -920,13 +1081,22 @@ const storage = isConfigured ? getStorage() : null;
   const [currentUser, setCurrentUser] = useState<UserItem | null>(null);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [entries, setEntries] = useState<EntryItem[]>([]);
+const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([]);
 const [heatwaveImageSelectedCompanies, setHeatwaveImageSelectedCompanies] = useState<string[]>([]);
 const [heatwaveExcelSelectedCompanies, setHeatwaveExcelSelectedCompanies] = useState<string[]>([]);
 const [heatwaveUploads, setHeatwaveUploads] = useState<Record<string, HeatwaveDateValue>>({});
 const [heatwaveMessage, setHeatwaveMessage] = useState("");
 const [heatwaveStatusPopupOpen, setHeatwaveStatusPopupOpen] = useState(false);
+const [heatwaveActiveTab, setHeatwaveActiveTab] = useState<"upload" | "sensitive">("upload");
+const [heatwaveDownloadStartDate, setHeatwaveDownloadStartDate] = useState(() => getTodayKey());
+const [heatwaveDownloadEndDate, setHeatwaveDownloadEndDate] = useState(() => getTodayKey());
+const [heatwaveDownloadTypes, setHeatwaveDownloadTypes] = useState({ thermoPhoto: true, thermoLedger: true });
+const [heatwaveDownloadLoading, setHeatwaveDownloadLoading] = useState(false);
+const [heatwaveDeleteAllLoading, setHeatwaveDeleteAllLoading] = useState(false);
 const [heatwaveSharedFiles, setHeatwaveSharedFiles] = useState<Record<string, HeatwaveSharedDateValue>>({});
   const [selectedDate, setSelectedDate] = useState(() => getDefaultSelectedDateKey());
+const heatwaveDateKey = getTodayKey();
+const [heatwaveViewDateKey, setHeatwaveViewDateKey] = useState(() => getTodayKey());
 const [manualSelectedDate, setManualSelectedDate] = useState("");
 const [manualSelectedDateSavedToday, setManualSelectedDateSavedToday] = useState("");
   const [selectedTime, setSelectedTime] = useState("09:00");
@@ -957,6 +1127,8 @@ const [isExportingPortfolioImages, setIsExportingPortfolioImages] = useState(fal
   const [dabsTabIndex, setDabsTabIndex] = useState(0);
   const [dabsData, setDabsData] = useState<Record<string, DabsDateValue>>({});
   const [dabsImages, setDabsImages] = useState<Record<string, string>>({});
+  const [buildingDetailImages, setBuildingDetailImages] = useState<Record<string, string>>({});
+  const [selectedBuildingDetail, setSelectedBuildingDetail] = useState<string>("");
   const [dabsOverlays, setDabsOverlays] = useState<
   Record<
     string,
@@ -965,10 +1137,12 @@ const [isExportingPortfolioImages, setIsExportingPortfolioImages] = useState(fal
       {
         markers?: OverlayMarkerItem[];
         arrows?: OverlayArrowItem[];
+        people?: OverlayPersonItem[];
       }
     >
   >
 >({});
+  const [personPlacementMode, setPersonPlacementMode] = useState<"guide" | "signal" | null>(null);
   const [dabsDraft, setDabsDraft] = useState("");
   const [dabsMessage, setDabsMessage] = useState("");
   const [sectionInput, setSectionInput] = useState<{
@@ -1004,7 +1178,38 @@ const [editSectionPopup, setEditSectionPopup] = useState<{
 });
 
 const [editSectionTextSelection, setEditSectionTextSelection] = useState({ start: 0, end: 0 });
-  const [materialsInput, setMaterialsInput] = useState({ gate: "1", company: "", material: "", vehicle: "", location: "", time: "06" });
+
+const [highRiskTableInput, setHighRiskTableInput] = useState<{
+  building: string;
+  company: string;
+  content: string;
+  safety: string;
+}>({
+  building: "",
+  company: "",
+  content: "",
+  safety: "",
+});
+
+const [editHighRiskTablePopup, setEditHighRiskTablePopup] = useState<{
+  open: boolean;
+  itemId: string;
+  oldBuilding: string;
+  building: string;
+  company: string;
+  content: string;
+  safety: string;
+}>({
+  open: false,
+  itemId: "",
+  oldBuilding: "",
+  building: "",
+  company: "",
+  content: "",
+  safety: "",
+});
+
+  const [materialsInput, setMaterialsInput] = useState({ gate: "1", company: "", material: "", vehicle: "", vehicleCount: "", location: "", manager: "", phone: "", workerOnCargo: false, cargoHeight1m: false, time: "06" });
   const [imagePopup, setImagePopup] = useState({
   open: false,
   x: 0,
@@ -1014,6 +1219,7 @@ const [editSectionTextSelection, setEditSectionTextSelection] = useState({ start
   equipmentType: "concrete_pump_truck",
   building: "",
   targetKey: "highRisk",
+  time: "06",
 });
 
 const [editOverlayPopup, setEditOverlayPopup] = useState({
@@ -1024,6 +1230,7 @@ const [editOverlayPopup, setEditOverlayPopup] = useState({
   note: "",
   building: "",
   equipmentType: "concrete_pump_truck",
+  time: "",
 });
 
 const [moveOverlayTarget, setMoveOverlayTarget] = useState<{
@@ -1032,22 +1239,127 @@ const [moveOverlayTarget, setMoveOverlayTarget] = useState<{
   mode: "marker" | "arrow";
 } | null>(null);
 
-const [arrowStart, setArrowStart] = useState<{ x: number; y: number } | null>(null);
-const [arrowPreview, setArrowPreview] = useState<
-  { startX: number; startY: number; endX: number; endY: number } | null
->(null);
+const [arrowPoints, setArrowPoints] = useState<{ x: number; y: number }[]>([]);
+const [arrowPreviewPoint, setArrowPreviewPoint] = useState<{ x: number; y: number } | null>(null);
 
 const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
   arrowId: string;
   company: string;
   note: string;
   equipmentType: string;
+  time?: string;
+  logAction?: "입력" | "수정";
   createdByUid?: string;
   createdByName?: string;
 } | null>(null);
   const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
-const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "", elderly: "유질환자" });
-const [heatwaveTab, setHeatwaveTab] = useState<"upload" | "heatSensitive">("upload");
+const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "" });
+
+const [supplementTab, setSupplementTab] = useState<"nightMorning" | "tomorrow">("nightMorning");
+const [supplementNoticeText, setSupplementNoticeText] = useState("");
+const [supplementNoticeImage, setSupplementNoticeImage] = useState("");
+const [supplementNightText, setSupplementNightText] = useState("");
+const [supplementMorningText, setSupplementMorningText] = useState("");
+const [supplementMessage, setSupplementMessage] = useState("");
+
+const supplementNightMorningDateKey = selectedDate;
+
+const [supplementNightMorningRows, setSupplementNightMorningRows] = useState<Array<{
+  id: string;
+  company: string;
+  nightText: string;
+  morningText: string;
+  createdByUid?: string;
+  createdByName?: string;
+}>>([]);
+
+const [editSupplementNightMorningPopup, setEditSupplementNightMorningPopup] = useState({
+  open: false,
+  id: "",
+  company: "",
+  nightText: "",
+  morningText: "",
+});
+
+const [supplementTomorrowNoticeText, setSupplementTomorrowNoticeText] = useState("");
+const [supplementTomorrowNoticeImage, setSupplementTomorrowNoticeImage] = useState("");
+const [supplementTomorrowRows, setSupplementTomorrowRows] = useState<Array<{
+  id: string;
+  workType: string;
+  company: string;
+  location: string;
+  workerCount: string;
+  supervisorCount: string;
+  content: string;
+  safetyAction: string;
+  createdByUid?: string;
+  createdByName?: string;
+}>>([]);
+
+const [supplementTomorrowInput, setSupplementTomorrowInput] = useState({
+  workType: "조출",
+  location: "",
+  workerCount: "",
+  supervisorCount: "",
+  content: "",
+  safetyAction: "",
+});
+
+const [editSupplementTomorrowPopup, setEditSupplementTomorrowPopup] = useState({
+  open: false,
+  id: "",
+  workType: "조출",
+  company: "",
+  location: "",
+  workerCount: "",
+  supervisorCount: "",
+  content: "",
+  safetyAction: "",
+});
+
+const [manualSupplementWeekendDate, setManualSupplementWeekendDate] = useState("");
+const [manualSupplementWeekendDateSavedToday, setManualSupplementWeekendDateSavedToday] = useState("");
+
+const supplementWeekendDefaultDateKey = getSaturdayKeyFromDateKey(selectedDate);
+
+const supplementWeekendDateKey =
+  manualSupplementWeekendDate && manualSupplementWeekendDateSavedToday === getTodayKey()
+    ? manualSupplementWeekendDate
+    : supplementWeekendDefaultDateKey;
+
+const [supplementWeekendNoticeText, setSupplementWeekendNoticeText] = useState("");
+const [supplementWeekendNoticeImage, setSupplementWeekendNoticeImage] = useState("");
+const [supplementWeekendRows, setSupplementWeekendRows] = useState<Array<{
+  id: string;
+  workType: string;
+  company: string;
+  location: string;
+  workerCount: string;
+  supervisorCount: string;
+  content: string;
+  safetyAction: string;
+  createdByUid?: string;
+  createdByName?: string;
+}>>([]);
+
+const [supplementWeekendInput, setSupplementWeekendInput] = useState({
+  location: "",
+  workerCount: "",
+  supervisorCount: "",
+  content: "",
+  safetyAction: "",
+});
+
+const [editSupplementWeekendPopup, setEditSupplementWeekendPopup] = useState({
+  open: false,
+  id: "",
+  company: "",
+  location: "",
+  workerCount: "",
+  supervisorCount: "",
+  content: "",
+  safetyAction: "",
+});
   const [editSoloPopup, setEditSoloPopup] = useState({
   open: false,
   itemId: "",
@@ -1067,7 +1379,6 @@ const [editHeatSensitivePopup, setEditHeatSensitivePopup] = useState({
   company: "",
   name: "",
   content: "",
-  elderly: "유질환자",
 });
 
 const [editMaterialPopup, setEditMaterialPopup] = useState({
@@ -1078,7 +1389,12 @@ const [editMaterialPopup, setEditMaterialPopup] = useState({
   company: "",
   material: "",
   vehicle: "",
+  vehicleCount: "",
   location: "",
+  manager: "",
+  phone: "",
+  workerOnCargo: false,
+  cargoHeight1m: false,
 });
   const [loadSourceDate, setLoadSourceDate] = useState(() => {
   const d = new Date();
@@ -1089,6 +1405,7 @@ const [soloCompanyFilter, setSoloCompanyFilter] = useState("");
 const [heatSensitiveCompanyFilter, setHeatSensitiveCompanyFilter] = useState("");
 const [isCapturingImage, setIsCapturingImage] = useState(false);
 const [companyListPopupOpen, setCompanyListPopupOpen] = useState(false);
+const [manualPopup, setManualPopup] = useState<{ src: string; label: string } | null>(null);
 
 const [adjustedOverlayPositions, setAdjustedOverlayPositions] = useState<
   Record<string, { x: number; y: number }>
@@ -1137,26 +1454,23 @@ const portfolioCaptureRef = useRef<HTMLDivElement | null>(null);const educationC
     }));
   });
 
-const unsubscribeHeatSensitive = onSnapshot(doc(db, "heatSensitiveWorkers", selectedDate), (snap) => {
-  if (!snap.exists()) return;
-
-  const data = snap.data() as { rows?: Record<string, DabsRowItem[]> };
-
-  setDabsData((prev) => ({
-    ...prev,
-    [selectedDate]: {
-      ...(prev[selectedDate] || {}),
-      heatSensitive: {
-        rows: data.rows || {},
-      },
-    },
-  }));
-});
+const unsubscribeHeatSensitive = () => {};
 
 const unsubscribeOverlays = onSnapshot(doc(db, "dabsOverlays", selectedDate), (snap) => {
   if (!snap.exists()) return;
 
   const data = snap.data();
+
+  const buildingDetailEntries: Record<string, { markers: OverlayMarkerItem[]; arrows: OverlayArrowItem[]; people: OverlayPersonItem[] }> = {};
+  Object.keys(data).forEach((key) => {
+    if (key.startsWith("buildingDetail::")) {
+      buildingDetailEntries[key] = {
+        markers: data[key]?.markers || [],
+        arrows: data[key]?.arrows || [],
+        people: data[key]?.people || [],
+      };
+    }
+  });
 
   setDabsOverlays((prev) => ({
     ...prev,
@@ -1165,11 +1479,14 @@ const unsubscribeOverlays = onSnapshot(doc(db, "dabsOverlays", selectedDate), (s
       highRisk: {
         markers: data.highRisk?.markers || [],
         arrows: data.highRisk?.arrows || [],
+        people: data.highRisk?.people || [],
       },
       equipmentFlow: {
         markers: data.equipmentFlow?.markers || [],
         arrows: data.equipmentFlow?.arrows || [],
+        people: data.equipmentFlow?.people || [],
       },
+      ...buildingDetailEntries,
     },
   }));
 });
@@ -1185,12 +1502,22 @@ const unsubscribeImages = onSnapshot(doc(db, "dabsImages", "shared"), (snap) => 
   });
 });
 
+const unsubscribeBuildingDetailImages = onSnapshot(doc(db, "dabsImages", "buildingDetail"), (snap) => {
+  if (!snap.exists()) return;
+
+  const data = snap.data() as Record<string, string>;
+  const { updatedAt, updatedByUid, updatedByName, ...images } = data as Record<string, any>;
+
+  setBuildingDetailImages(images as Record<string, string>);
+});
+
   return () => {
   unsubscribeDabs();
 unsubscribeSolo();
 unsubscribeHeatSensitive();
 unsubscribeOverlays();
 unsubscribeImages();
+unsubscribeBuildingDetailImages();
 };
 }, [db, isDemoMode, currentUser, selectedDate]);
 
@@ -1307,7 +1634,12 @@ unsubscribeImages();
   const approvedUsers = useMemo(() => users.filter((user) => user.status === "approved"), [users]);
   const canApproveGeneral = currentUser?.role === "master" || currentUser?.role === "admin";
   const canApproveAdmin = currentUser?.role === "master";
-  const canManageApprovals = currentUser?.role === "master" || currentUser?.role === "admin";
+  const canManageApprovals =
+  currentUser?.role === "master" ||
+  currentUser?.role === "admin";
+
+const canViewActivityLogs =
+  currentUser?.role === "master";
   const canEditDabs = Boolean(currentUser && currentUser.status === "approved");
   const canUploadDabsImage = currentUser?.role === "master" || currentUser?.role === "admin";
   const canAdminEditDabsItem = currentUser?.role === "master" || currentUser?.role === "admin";
@@ -1317,6 +1649,11 @@ const canManageHeatwaveCompanies = currentUser?.role === "master" || currentUser
   if (!currentUser) return false;
   if (currentUser.role === "master" || currentUser.role === "admin") return true;
   return item?.createdByUid === currentUser.uid;
+};
+  const canManageHighRiskTableItem = (item?: { company?: string }) => {
+  if (!currentUser) return false;
+  if (currentUser.role === "master" || currentUser.role === "admin") return true;
+  return Boolean(currentUser.companyName) && item?.company === currentUser.companyName;
 };
 
 useEffect(() => {
@@ -1328,6 +1665,15 @@ useEffect(() => {
     setSelectedDate(getDefaultSelectedDateKey());
   }
 }, [manualSelectedDate, manualSelectedDateSavedToday]);
+
+useEffect(() => {
+  const today = getTodayKey();
+
+  if (manualSupplementWeekendDate && manualSupplementWeekendDateSavedToday !== today) {
+    setManualSupplementWeekendDate("");
+    setManualSupplementWeekendDateSavedToday("");
+  }
+}, [manualSupplementWeekendDate, manualSupplementWeekendDateSavedToday]);
 
 const handleManualSelectedDateChange = (dateKey: string) => {
   if (!canManualChangeSelectedDate) return;
@@ -1381,10 +1727,12 @@ const saveHeatSensitiveWorkersToFirestore = async (
   if (isDemoMode || !db || !currentUser) return;
 
   await setDoc(
-    doc(db, "heatSensitiveWorkers", dateKey),
+    doc(db, "dabsMeetings", dateKey),
     {
       date: dateKey,
-      rows,
+      heatSensitive: {
+        rows,
+      },
       updatedAt: serverTimestamp(),
     },
     { merge: true }
@@ -1408,6 +1756,7 @@ const saveDabsOverlaysToFirestore = async (
     {
       markers?: OverlayMarkerItem[];
       arrows?: OverlayArrowItem[];
+      people?: OverlayPersonItem[];
     }
   >
 ) => {
@@ -1423,6 +1772,154 @@ const saveDabsOverlaysToFirestore = async (
     { merge: true }
   );
 };
+
+const writeActivityLog = async ({
+  action,
+  page,
+  target,
+  detail,
+}: {
+  action: string;
+  page: string;
+  target?: string;
+  detail?: string;
+}) => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  await addDoc(collection(db, "activityLogs"), {
+    action,
+    page,
+    target: target || "",
+    detail: detail || "",
+    actorUid: currentUser.uid || "",
+    actorName: currentUser.name || "",
+    actorCompany: currentUser.companyName || "",
+    actorRole: currentUser.role || "general",
+    createdAt: serverTimestamp(),
+  });
+};  
+
+// 혹서기 기간별 다운로드 (마스터/관리자)
+const handleHeatwaveDownload = async () => {
+  const isAdmin = currentUser?.role === "master" || currentUser?.role === "admin";
+  if (!isAdmin || !db) { setHeatwaveMessage("마스터 또는 관리자만 다운로드할 수 있습니다."); return; }
+  if (!heatwaveDownloadTypes.thermoPhoto && !heatwaveDownloadTypes.thermoLedger) { setHeatwaveMessage("다운로드할 파일 종류를 하나 이상 선택하세요."); return; }
+  if (!heatwaveDownloadStartDate || !heatwaveDownloadEndDate) { setHeatwaveMessage("다운로드 기간을 설정해주세요."); return; }
+  if (heatwaveDownloadStartDate > heatwaveDownloadEndDate) { setHeatwaveMessage("시작 날짜가 종료 날짜보다 클 수 없습니다."); return; }
+  setHeatwaveDownloadLoading(true);
+  setHeatwaveMessage("");
+  try {
+    const dates: string[] = [];
+    const start = new Date(heatwaveDownloadStartDate);
+    const end = new Date(heatwaveDownloadEndDate);
+    const cur = new Date(start);
+    while (cur <= end) { dates.push(formatDateKey(cur)); cur.setDate(cur.getDate() + 1); }
+    const allFiles: Array<{ url: string; name: string; type: string; date: string; company: string }> = [];
+    for (const dateKey of dates) {
+      const snap = await getDoc(doc(db, "heatwaveUploads", dateKey));
+      if (!snap.exists()) continue;
+      const data = snap.data() as HeatwaveDateValue;
+      const uploads = data.uploads || {};
+      for (const [companyName, fileList] of Object.entries(uploads)) {
+        for (const file of (fileList as HeatwaveUploadItem[])) {
+          const isThermo = file.fileType === "thermoPhoto" || file.fileType === "image";
+          const isLedger = file.fileType === "thermoLedger";
+          if (isThermo && heatwaveDownloadTypes.thermoPhoto) allFiles.push({ url: file.fileUrl, name: file.fileName, type: "온습도계사진", date: dateKey, company: companyName });
+          else if (isLedger && heatwaveDownloadTypes.thermoLedger) allFiles.push({ url: file.fileUrl, name: file.fileName, type: "온습도계관리대장", date: dateKey, company: companyName });
+        }
+      }
+    }
+    if (allFiles.length === 0) { setHeatwaveMessage("선택한 기간/종류에 해당하는 파일이 없습니다."); setHeatwaveDownloadLoading(false); return; }
+    for (const file of allFiles) {
+      try {
+        const response = await fetch(file.url);
+        const blob = await response.blob();
+        const safeName = `${file.date}_${file.company}_${file.type}_${file.name}`.replace(/[\\/:*?"<>|]/g, "_");
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url; link.download = safeName;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      } catch { console.log("파일 다운로드 실패:", file.name); }
+    }
+    setHeatwaveMessage(`${allFiles.length}개 파일 다운로드를 시작했습니다.`);
+    await writeActivityLog({ action: "다운로드", page: "혹서기", target: "기간별 파일 다운로드", detail: `${heatwaveDownloadStartDate} ~ ${heatwaveDownloadEndDate} / ${allFiles.length}건` });
+  } catch (error) { console.log("HEATWAVE DOWNLOAD ERROR:", error); setHeatwaveMessage("다운로드 중 오류가 발생했습니다."); }
+  setHeatwaveDownloadLoading(false);
+};
+
+// 혹서기 전체 파일 일괄 삭제 (마스터만)
+const handleHeatwaveDeleteAll = async () => {
+  if (currentUser?.role !== "master" || !db || !storage) { setHeatwaveMessage("마스터만 전체 삭제를 할 수 있습니다."); return; }
+  const confirmed = window.confirm("모든 혹서기 업로드 파일을 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?");
+  if (!confirmed) return;
+  setHeatwaveDeleteAllLoading(true);
+  setHeatwaveMessage("");
+  try {
+    const snapshot = await getDocs(collection(db, "heatwaveUploads"));
+    let deletedCount = 0;
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data() as HeatwaveDateValue;
+      const uploads = data.uploads || {};
+      for (const fileList of Object.values(uploads)) {
+        for (const file of (fileList as HeatwaveUploadItem[])) {
+          if (file.storagePath) {
+            try { await deleteObject(storageRef(storage, file.storagePath)); } catch { console.log("스토리지 파일 삭제 실패:", file.storagePath); }
+          }
+          deletedCount++;
+        }
+      }
+      await deleteDoc(docSnap.ref);
+    }
+    setHeatwaveUploads({});
+    await writeActivityLog({ action: "일괄삭제", page: "혹서기", target: "전체 업로드 파일", detail: `총 ${deletedCount}개 파일 전체 삭제` });
+    setHeatwaveMessage(`혹서기 업로드 파일 ${deletedCount}개가 모두 삭제되었습니다.`);
+  } catch (error) { console.log("HEATWAVE DELETE ALL ERROR:", error); setHeatwaveMessage("전체 삭제 중 오류가 발생했습니다."); }
+  setHeatwaveDeleteAllLoading(false);
+};
+
+useEffect(() => {
+  if (isDemoMode || !db || !currentUser) {
+    setActivityLogs([]);
+    return;
+  }
+
+  if (currentUser.role !== "master") {
+    setActivityLogs([]);
+    return;
+  }
+
+  const logsQuery = query(
+    collection(db, "activityLogs"),
+    orderBy("createdAt", "desc"),
+    limit(2000)
+  );
+
+  const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    oneWeekAgo.setHours(0, 0, 0, 0);
+
+    setActivityLogs(
+      snapshot.docs
+        .map((item) => ({
+          id: item.id,
+          ...(item.data() as Omit<ActivityLogItem, "id">),
+        }))
+        .filter((log) => {
+          if (!log.createdAt) return true;
+          const date =
+            typeof log.createdAt?.toDate === "function"
+              ? log.createdAt.toDate()
+              : new Date(log.createdAt);
+          return date >= oneWeekAgo;
+        })
+    );
+  });
+
+  return () => unsubscribeLogs();
+}, [db, isDemoMode, currentUser]);
 
 const approvedCompanyNames = useMemo(
   () =>
@@ -1440,6 +1937,86 @@ const approvedCompanyNames = useMemo(
 useEffect(() => {
   if (isDemoMode || !db || !currentUser) return;
 
+  let isActiveSupplementSnapshot = true;
+
+  setSupplementNoticeText("");
+  setSupplementNoticeImage("");
+  setSupplementNightText("");
+  setSupplementMorningText("");
+  setSupplementNightMorningRows([]);
+
+  setSupplementTomorrowNoticeText("");
+  setSupplementTomorrowNoticeImage("");
+  setSupplementTomorrowRows([]);
+
+  setSupplementWeekendNoticeText("");
+  setSupplementWeekendNoticeImage("");
+  setSupplementWeekendRows([]);
+
+  const unsubscribeSupplementNightMorning = onSnapshot(
+  doc(db, "supplementWorks", supplementNightMorningDateKey),
+  (snap) => {
+    if (!isActiveSupplementSnapshot) return;
+
+    if (!snap.exists()) {
+      setSupplementNoticeText("");
+      setSupplementNoticeImage("");
+      setSupplementNightText("");
+      setSupplementMorningText("");
+      setSupplementNightMorningRows([]);
+      return;
+    }
+
+    const data = snap.data();
+
+    setSupplementNoticeText(String(data.noticeText || ""));
+    setSupplementNoticeImage(String(data.noticeImage || ""));
+    setSupplementNightText("");
+    setSupplementMorningText("");
+    setSupplementNightMorningRows(Array.isArray(data.nightMorningRows) ? data.nightMorningRows : []);
+  }
+);
+
+const unsubscribeSupplementTomorrow = onSnapshot(
+  doc(db, "supplementWorks", selectedDate),
+  (snap) => {
+    if (!isActiveSupplementSnapshot) return;
+
+    if (!snap.exists()) {
+      setSupplementTomorrowNoticeText("");
+      setSupplementTomorrowNoticeImage("");
+      setSupplementTomorrowRows([]);
+      return;
+    }
+
+    const data = snap.data();
+
+    setSupplementTomorrowNoticeText(String(data.tomorrowNoticeText || ""));
+    setSupplementTomorrowNoticeImage(String(data.tomorrowNoticeImage || ""));
+    setSupplementTomorrowRows(Array.isArray(data.tomorrowRows) ? data.tomorrowRows : []);
+  }
+);
+
+const unsubscribeSupplementWeekend = onSnapshot(
+  doc(db, "supplementWorks", supplementWeekendDateKey),
+  (snap) => {
+    if (!isActiveSupplementSnapshot) return;
+
+    if (!snap.exists()) {
+      setSupplementWeekendNoticeText("");
+      setSupplementWeekendNoticeImage("");
+      setSupplementWeekendRows([]);
+      return;
+    }
+
+    const data = snap.data();
+
+    setSupplementWeekendNoticeText(String(data.weekendNoticeText || ""));
+    setSupplementWeekendNoticeImage(String(data.weekendNoticeImage || ""));
+    setSupplementWeekendRows(Array.isArray(data.weekendRows) ? data.weekendRows : []);
+  }
+);
+
   const unsubscribeSettings = onSnapshot(doc(db, "heatwaveSettings", "companies"), (snap) => {
   if (!snap.exists()) return;
 
@@ -1452,89 +2029,86 @@ useEffect(() => {
     ? data.selectedImageCompanies.map(String)
     : oldCompanies;
 
-  const excelCompanies = Array.isArray(data.selectedExcelCompanies)
-    ? data.selectedExcelCompanies.map(String)
-    : oldCompanies;
-
   setHeatwaveImageSelectedCompanies(imageCompanies);
-  setHeatwaveExcelSelectedCompanies(excelCompanies);
+  setHeatwaveExcelSelectedCompanies([]);
 });
 
-const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", selectedDate), (snap) => {
-  if (!snap.exists()) return;
+const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", heatwaveViewDateKey), (snap) => {
+  if (!snap.exists()) {
+    setHeatwaveUploads((prev) => ({
+      ...prev,
+      [heatwaveViewDateKey]: {
+        date: heatwaveViewDateKey,
+        uploads: {},
+      },
+    }));
+    return;
+  }
 
   const data = snap.data() as HeatwaveDateValue;
 
   setHeatwaveUploads((prev) => ({
     ...prev,
-    [selectedDate]: {
-      date: selectedDate,
+    [heatwaveViewDateKey]: {
+      date: heatwaveViewDateKey,
       uploads: data.uploads || {},
     },
   }));
 });
-  const unsubscribeSharedFiles = onSnapshot(doc(db, "heatwaveSharedFiles", selectedDate), (snap) => {
+
+const unsubscribeSharedFiles = onSnapshot(doc(db, "heatwaveSharedFiles", heatwaveDateKey), (snap) => {
   if (!snap.exists()) return;
 
   const data = snap.data() as HeatwaveSharedDateValue;
 
   setHeatwaveSharedFiles((prev) => ({
     ...prev,
-    [selectedDate]: {
-      date: selectedDate,
+    [heatwaveDateKey]: {
+      date: heatwaveDateKey,
       thermoHygrometerImage: data.thermoHygrometerImage || null,
-      breakTimeExcel: data.breakTimeExcel || null,
     },
   }));
 });
   return () => {
+    isActiveSupplementSnapshot = false;
+
+    unsubscribeSupplementNightMorning();
+unsubscribeSupplementTomorrow();
+unsubscribeSupplementWeekend();
     unsubscribeSettings();
     unsubscribeUploads();
     unsubscribeSharedFiles();
   };
-}, [db, isDemoMode, currentUser, selectedDate]);
+}, [db, isDemoMode, currentUser, heatwaveDateKey, heatwaveViewDateKey, selectedDate, supplementWeekendDateKey]);
 
 const handleToggleHeatwaveCompany = async (
   companyName: string,
-  fileType: "image" | "excel"
+  fileType: "image"
 ) => {
   if (!canManageHeatwaveCompanies || !db || !currentUser) return;
 
-  const currentList =
-    fileType === "image"
-      ? heatwaveImageSelectedCompanies
-      : heatwaveExcelSelectedCompanies;
+  const nextList = heatwaveImageSelectedCompanies.includes(companyName)
+    ? heatwaveImageSelectedCompanies.filter((item) => item !== companyName)
+    : [...heatwaveImageSelectedCompanies, companyName].sort((a, b) => a.localeCompare(b, "ko"));
 
-  const nextList = currentList.includes(companyName)
-    ? currentList.filter((item) => item !== companyName)
-    : [...currentList, companyName].sort((a, b) => a.localeCompare(b, "ko"));
-
-  const nextImageCompanies =
-    fileType === "image" ? nextList : heatwaveImageSelectedCompanies;
-
-  const nextExcelCompanies =
-    fileType === "excel" ? nextList : heatwaveExcelSelectedCompanies;
-
-  setHeatwaveImageSelectedCompanies(nextImageCompanies);
-  setHeatwaveExcelSelectedCompanies(nextExcelCompanies);
+  setHeatwaveImageSelectedCompanies(nextList);
 
   await setDoc(
     doc(db, "heatwaveSettings", "companies"),
     {
-      selectedImageCompanies: nextImageCompanies,
-      selectedExcelCompanies: nextExcelCompanies,
+      selectedImageCompanies: nextList,
       updatedAt: serverTimestamp(),
       updatedByUid: currentUser.uid || "",
-updatedByName: currentUser.name || "",
+      updatedByName: currentUser.name || "",
     },
     { merge: true }
   );
 };
-const getHeatwaveCompanyUploads = (companyName: string) =>
-  heatwaveUploads[selectedDate]?.uploads?.[companyName] || [];
+const getHeatwaveCompanyUploads = (companyName: string, dateKey = heatwaveViewDateKey) =>
+  heatwaveUploads[dateKey]?.uploads?.[companyName] || [];
 
-const getHeatwaveCompanyStatus = (companyName: string) => {
-  const uploads = getHeatwaveCompanyUploads(companyName);
+const getHeatwaveCompanyStatus = (companyName: string, dateKey = heatwaveViewDateKey) => {
+  const uploads = getHeatwaveCompanyUploads(companyName, dateKey);
 
   const thermoPhotoCount = uploads.filter(
     (item) => item.fileType === "thermoPhoto" || item.fileType === "image"
@@ -1544,27 +2118,34 @@ const getHeatwaveCompanyStatus = (companyName: string) => {
     (item) => item.fileType === "thermoLedger"
   ).length;
 
-  const breakTimeLedgerCount = uploads.filter(
-    (item) => item.fileType === "breakTimeLedger" || item.fileType === "excel"
-  ).length;
-
   return {
     uploads,
     imageCount: thermoPhotoCount,
-    excelCount: breakTimeLedgerCount,
+    excelCount: 0,
     thermoPhotoCount,
     thermoLedgerCount,
-    breakTimeLedgerCount,
-    isComplete:
-  thermoPhotoCount >= 4 &&
-  thermoLedgerCount >= 1 &&
-  breakTimeLedgerCount >= 1,
+    breakTimeLedgerCount: 0,
+    isComplete: thermoPhotoCount >= 4 && thermoLedgerCount >= 1,
   };
+};
+
+const getHeatwaveFileTypeLabel = (
+  fileType: "image" | "thermoPhoto" | "thermoLedger"
+) => {
+  if (fileType === "thermoPhoto" || fileType === "image") return "온습도계 사진";
+  if (fileType === "thermoLedger") return "온습도계 관리대장";
+  return "파일";
+};
+
+const getHeatwaveSharedFileKindLabel = (
+  fileKind: "thermoHygrometerImage"
+) => {
+  return "온습도계 이미지";
 };
 
 const handleHeatwaveUpload = async (
   event: React.ChangeEvent<HTMLInputElement>,
-  fileType: "thermoPhoto" | "thermoLedger" | "breakTimeLedger"
+  fileType: "thermoPhoto" | "thermoLedger"
 ) => {
   setHeatwaveMessage("");
 
@@ -1579,17 +2160,10 @@ const handleHeatwaveUpload = async (
     return;
   }
 
-  const isTargetCompany =
-    fileType === "thermoPhoto" || fileType === "thermoLedger"
-      ? heatwaveImageSelectedCompanies.includes(companyName)
-      : heatwaveExcelSelectedCompanies.includes(companyName);
+  const isTargetCompany = heatwaveImageSelectedCompanies.includes(companyName);
 
   if (!isTargetCompany) {
-    setHeatwaveMessage(
-      fileType === "thermoPhoto" || fileType === "thermoLedger"
-        ? "온습도계 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다."
-        : "휴게시간 관리대장 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다."
-    );
+    setHeatwaveMessage("온습도계 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
@@ -1600,22 +2174,19 @@ const handleHeatwaveUpload = async (
     return;
   }
 
-  const maxSize =
-    fileType === "thermoPhoto"
-      ? MAX_HEATWAVE_IMAGE_FILE_SIZE
-      : MAX_HEATWAVE_EXCEL_FILE_SIZE;
+  const maxSize = MAX_HEATWAVE_IMAGE_FILE_SIZE;
 
   if (file.size > maxSize) {
     setHeatwaveMessage(
       fileType === "thermoPhoto"
         ? "온습도계 사진은 5MB 이하만 업로드할 수 있습니다."
-        : "관리대장은 10MB 이하만 업로드할 수 있습니다."
+        : "관리대장은 5MB 이하만 업로드할 수 있습니다."
     );
     event.target.value = "";
     return;
   }
 
-  const currentUploads = getHeatwaveCompanyUploads(companyName);
+  const currentUploads = getHeatwaveCompanyUploads(companyName, heatwaveDateKey);
 
   const thermoPhotoCount = currentUploads.filter(
     (item) => item.fileType === "thermoPhoto" || item.fileType === "image"
@@ -1625,15 +2196,11 @@ const handleHeatwaveUpload = async (
     (item) => item.fileType === "thermoLedger"
   ).length;
 
-  const breakTimeLedgerCount = currentUploads.filter(
-    (item) => item.fileType === "breakTimeLedger" || item.fileType === "excel"
-  ).length;
-
   if (fileType === "thermoPhoto" && thermoPhotoCount >= 4) {
-  setHeatwaveMessage("온습도계 사진은 하루 4개까지만 업로드할 수 있습니다.");
-  event.target.value = "";
-  return;
-}
+    setHeatwaveMessage("온습도계 사진은 하루 4개까지만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
 
   if (fileType === "thermoLedger" && thermoLedgerCount >= 1) {
     setHeatwaveMessage("온습도계 관리대장은 하루 1개까지만 업로드할 수 있습니다.");
@@ -1641,16 +2208,10 @@ const handleHeatwaveUpload = async (
     return;
   }
 
-  if (fileType === "breakTimeLedger" && breakTimeLedgerCount >= 1) {
-    setHeatwaveMessage("휴게시간 관리대장은 하루 1개까지만 업로드할 수 있습니다.");
-    event.target.value = "";
-    return;
-  }
-
   try {
     const safeCompanyName = companyName.replace(/[\\/:*?"<>|]/g, "-");
     const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
-    const storagePath = `heatwaveUploads/${selectedDate}/${safeCompanyName}/${Date.now()}-${safeFileName}`;
+    const storagePath = `heatwaveUploads/${heatwaveDateKey}/${safeCompanyName}/${Date.now()}-${safeFileName}`;
     const fileRef = storageRef(storage, storagePath);
 
     await uploadBytes(fileRef, file);
@@ -1668,7 +2229,7 @@ const handleHeatwaveUpload = async (
       createdAt: new Date().toISOString(),
     };
 
-    const latestUploadSnap = await getDoc(doc(db, "heatwaveUploads", selectedDate));
+    const latestUploadSnap = await getDoc(doc(db, "heatwaveUploads", heatwaveDateKey));
 
     const latestUploadData = latestUploadSnap.exists()
       ? (latestUploadSnap.data() as HeatwaveDateValue)
@@ -1684,23 +2245,30 @@ const handleHeatwaveUpload = async (
 
     setHeatwaveUploads((prev) => ({
       ...prev,
-      [selectedDate]: {
-        date: selectedDate,
+      [heatwaveDateKey]: {
+        date: heatwaveDateKey,
         uploads: nextUploads,
       },
     }));
 
     await setDoc(
-      doc(db, "heatwaveUploads", selectedDate),
+      doc(db, "heatwaveUploads", heatwaveDateKey),
       {
-        date: selectedDate,
+        date: heatwaveDateKey,
         uploads: nextUploads,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
     );
 
-    setHeatwaveMessage("업로드되었습니다.");
+    await writeActivityLog({
+  action: "입력",
+  page: "혹서기",
+  target: companyName,
+  detail: `${getHeatwaveFileTypeLabel(fileType)} 업로드 / ${file.name}`,
+});
+
+setHeatwaveMessage("업로드되었습니다.");
   } catch (error) {
     console.log("HEATWAVE UPLOAD ERROR:", error);
 
@@ -1754,7 +2322,7 @@ const handleDeleteHeatwaveUpload = async (companyName: string, uploadId: string)
     return;
   }
 
-  const currentUploads = getHeatwaveCompanyUploads(companyName);
+  const currentUploads = getHeatwaveCompanyUploads(companyName, heatwaveViewDateKey);
   const targetFile = currentUploads.find((item) => item.id === uploadId);
 
   if (!targetFile) {
@@ -1776,30 +2344,37 @@ const handleDeleteHeatwaveUpload = async (companyName: string, uploadId: string)
       }
     }
 
-    const nextUploads = {
-      ...(heatwaveUploads[selectedDate]?.uploads || {}),
+        const nextUploads = {
+      ...(heatwaveUploads[heatwaveViewDateKey]?.uploads || {}),
       [companyName]: currentUploads.filter((item) => item.id !== uploadId),
     };
 
     setHeatwaveUploads((prev) => ({
       ...prev,
-      [selectedDate]: {
-        date: selectedDate,
+      [heatwaveViewDateKey]: {
+        date: heatwaveViewDateKey,
         uploads: nextUploads,
       },
     }));
 
     await setDoc(
-      doc(db, "heatwaveUploads", selectedDate),
+      doc(db, "heatwaveUploads", heatwaveViewDateKey),
       {
-        date: selectedDate,
+        date: heatwaveViewDateKey,
         uploads: nextUploads,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
     );
 
-    setHeatwaveMessage("파일이 삭제되었습니다.");
+    await writeActivityLog({
+  action: "삭제",
+  page: "혹서기",
+  target: companyName,
+  detail: `${getHeatwaveFileTypeLabel(targetFile.fileType)} 삭제 / ${targetFile.fileName}`,
+});
+
+setHeatwaveMessage("파일이 삭제되었습니다.");
   } catch (error) {
     console.log("HEATWAVE DELETE ERROR:", error);
     setHeatwaveMessage("파일 삭제 중 오류가 발생했습니다.");
@@ -1825,9 +2400,7 @@ const renderHeatwaveUploadFileList = (companyName: string) => {
             <div className="font-semibold text-slate-800">
               {file.fileType === "thermoPhoto" || file.fileType === "image"
   ? "온습도계 사진"
-  : file.fileType === "thermoLedger"
-    ? "온습도계 관리대장"
-    : "휴게시간 관리대장"} · {file.fileName}
+  : "온습도계 관리대장"} · {file.fileName}
             </div>
 
             {(file.fileType === "thermoPhoto" || file.fileType === "image") && (
@@ -1861,7 +2434,7 @@ const renderHeatwaveUploadFileList = (companyName: string) => {
 };
 
 const handleDeleteHeatwaveSharedFile = async (
-  fileKind: "thermoHygrometerImage" | "breakTimeExcel"
+  fileKind: "thermoHygrometerImage"
 ) => {
   setHeatwaveMessage("");
 
@@ -1875,7 +2448,7 @@ const handleDeleteHeatwaveSharedFile = async (
     return;
   }
 
-  const targetFile = heatwaveSharedFiles[selectedDate]?.[fileKind];
+  const targetFile = heatwaveSharedFiles[heatwaveDateKey]?.[fileKind];
 
   if (!targetFile) {
     setHeatwaveMessage("삭제할 파일이 없습니다.");
@@ -1892,26 +2465,33 @@ const handleDeleteHeatwaveSharedFile = async (
     }
 
     const nextSharedFiles = {
-      ...(heatwaveSharedFiles[selectedDate] || { date: selectedDate }),
+      ...(heatwaveSharedFiles[heatwaveDateKey] || { date: heatwaveDateKey }),
       [fileKind]: null,
     };
 
     setHeatwaveSharedFiles((prev) => ({
       ...prev,
-      [selectedDate]: nextSharedFiles,
+      [heatwaveDateKey]: nextSharedFiles,
     }));
 
     await setDoc(
-      doc(db, "heatwaveSharedFiles", selectedDate),
+      doc(db, "heatwaveSharedFiles", heatwaveDateKey),
       {
-        date: selectedDate,
+        date: heatwaveDateKey,
         ...nextSharedFiles,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
     );
 
-    setHeatwaveMessage("공통 파일이 삭제되었습니다.");
+    await writeActivityLog({
+  action: "삭제",
+  page: "혹서기",
+  target: "공통 파일",
+  detail: `${getHeatwaveSharedFileKindLabel(fileKind)} 삭제 / ${targetFile.fileName}`,
+});
+
+setHeatwaveMessage("공통 파일이 삭제되었습니다.");
   } catch (error) {
     console.log("HEATWAVE SHARED DELETE ERROR:", error);
     setHeatwaveMessage("공통 파일 삭제 중 오류가 발생했습니다.");
@@ -1920,9 +2500,9 @@ const handleDeleteHeatwaveSharedFile = async (
 
 const renderHeatwaveSharedFileBox = (
   title: string,
-  fileKind: "thermoHygrometerImage" | "breakTimeExcel"
+  fileKind: "thermoHygrometerImage"
 ) => {
-  const file = heatwaveSharedFiles[selectedDate]?.[fileKind];
+  const file = heatwaveSharedFiles[heatwaveDateKey]?.[fileKind];
 
   return (
     <div className="rounded-2xl border border-slate-200 p-4">
@@ -1965,7 +2545,7 @@ const renderHeatwaveSharedFileBox = (
 
 const handleHeatwaveSharedFileUpload = async (
   event: React.ChangeEvent<HTMLInputElement>,
-  fileKind: "thermoHygrometerImage" | "breakTimeExcel"
+  fileKind: "thermoHygrometerImage"
 ) => {
   setHeatwaveMessage("");
 
@@ -1973,35 +2553,28 @@ const handleHeatwaveSharedFileUpload = async (
   if (!file) return;
 
   if (!canManageHeatwaveCompanies) {
-    setHeatwaveMessage("온습도계와 휴게시간 파일은 마스터, 관리자만 업로드할 수 있습니다.");
+    setHeatwaveMessage("온습도계 파일은 마스터, 관리자만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
 
-    if (!db || !storage) {
+  if (!db || !storage) {
     setHeatwaveMessage("Firebase 연결 오류");
     event.target.value = "";
     return;
   }
 
-    const maxSize =
-    fileKind === "thermoHygrometerImage"
-      ? MAX_HEATWAVE_IMAGE_FILE_SIZE
-      : MAX_HEATWAVE_EXCEL_FILE_SIZE;
+  const maxSize = MAX_HEATWAVE_IMAGE_FILE_SIZE;
 
   if (file.size > maxSize) {
-    setHeatwaveMessage(
-      fileKind === "thermoHygrometerImage"
-        ? "온습도계 이미지는 5MB 이하만 업로드할 수 있습니다."
-        : "휴게시간 엑셀파일은 10MB 이하만 업로드할 수 있습니다."
-    );
+    setHeatwaveMessage("온습도계 이미지는 5MB 이하만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
 
   try {
     const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
-    const storagePath = `heatwaveSharedFiles/${selectedDate}/${fileKind}-${Date.now()}-${safeFileName}`;
+    const storagePath = `heatwaveSharedFiles/${heatwaveDateKey}/${fileKind}-${Date.now()}-${safeFileName}`;
     const fileRef = storageRef(storage, storagePath);
 
     await uploadBytes(fileRef, file);
@@ -2017,30 +2590,33 @@ createdAt: new Date().toISOString(),
     };
 
     const nextSharedFiles = {
-      ...(heatwaveSharedFiles[selectedDate] || { date: selectedDate }),
+      ...(heatwaveSharedFiles[heatwaveDateKey] || { date: heatwaveDateKey }),
       [fileKind]: newFile,
     };
 
     setHeatwaveSharedFiles((prev) => ({
       ...prev,
-      [selectedDate]: nextSharedFiles,
+      [heatwaveDateKey]: nextSharedFiles,
     }));
 
     await setDoc(
-      doc(db, "heatwaveSharedFiles", selectedDate),
+      doc(db, "heatwaveSharedFiles", heatwaveDateKey),
       {
-        date: selectedDate,
+        date: heatwaveDateKey,
         ...nextSharedFiles,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
     );
 
-    setHeatwaveMessage(
-      fileKind === "thermoHygrometerImage"
-        ? "온습도계 이미지가 업로드되었습니다."
-        : "휴게시간 엑셀파일이 업로드되었습니다."
-    );
+    await writeActivityLog({
+  action: "입력",
+  page: "혹서기",
+  target: "공통 파일",
+  detail: `${getHeatwaveSharedFileKindLabel(fileKind)} 업로드 / ${file.name}`,
+});
+
+setHeatwaveMessage("온습도계 이미지가 업로드되었습니다.");
   } catch (error) {
     console.log("HEATWAVE SHARED FILE UPLOAD ERROR:", error);
 
@@ -2053,16 +2629,939 @@ setHeatwaveMessage(
 );
   }
 
+    event.target.value = "";
+};
+
+const canManageSupplementNotice = currentUser?.role === "master" || currentUser?.role === "admin";
+
+const getSupplementCopyText = () => {
+  return supplementNightMorningRows
+    .map((row) => [row.nightText.trim(), row.morningText.trim()].filter(Boolean).join("\n\n"))
+    .filter(Boolean)
+    .join("\n\n");
+};
+
+const saveSupplementNightMorningRows = async (
+  rows: typeof supplementNightMorningRows,
+  action: string,
+  target: string,
+  detail: string
+) => {
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return false;
+  }
+
+  try {
+    setSupplementNightMorningRows(rows);
+
+    await setDoc(
+      doc(db, "supplementWorks", supplementNightMorningDateKey),
+      {
+        date: supplementNightMorningDateKey,
+        nightMorningRows: rows,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action,
+      page: "보충작업",
+      target,
+      detail,
+    });
+
+    return true;
+  } catch (error) {
+    console.log("SUPPLEMENT NIGHT MORNING SAVE ERROR:", error);
+    setSupplementMessage("저장 권한 또는 네트워크 오류로 저장되지 않았습니다.");
+    return false;
+  }
+};
+
+const handleSaveSupplementNightMorning = async () => {
+  setSupplementMessage("");
+
+  if (!currentUser) {
+    setSupplementMessage("로그인 후 입력할 수 있습니다.");
+    return;
+  }
+
+  if (!supplementNightText.trim() && !supplementMorningText.trim()) {
+    setSupplementMessage("금일 야간 또는 명일 조출 내용을 입력하세요.");
+    return;
+  }
+
+  const companyName = String(currentUser.companyName || "").trim();
+
+  const newRow = {
+    id: createLocalId("supplement-night-morning"),
+    company: companyName,
+    nightText: supplementNightText.trim(),
+    morningText: supplementMorningText.trim(),
+    createdByUid: currentUser.uid,
+    createdByName: currentUser.name,
+  };
+
+  const saved = await saveSupplementNightMorningRows(
+    [...supplementNightMorningRows, newRow],
+    "입력",
+    companyName,
+    `금일야간 ${newRow.nightText.length}자 / 명일조출 ${newRow.morningText.length}자`
+  );
+
+  if (!saved) return;
+
+  setSupplementNightText("");
+  setSupplementMorningText("");
+  setSupplementMessage("저장되었습니다.");
+};
+
+const handleUpdateSupplementNightMorningRow = async () => {
+  setSupplementMessage("");
+
+  if (!canAdminEditDabsItem) {
+    setSupplementMessage("수정은 마스터, 관리자만 가능합니다.");
+    return;
+  }
+
+  if (!editSupplementNightMorningPopup.id) return;
+
+  const targetRow = supplementNightMorningRows.find(
+    (row) => row.id === editSupplementNightMorningPopup.id
+  );
+
+  const nextRows = supplementNightMorningRows.map((row) =>
+    row.id === editSupplementNightMorningPopup.id
+      ? {
+          ...row,
+          company: editSupplementNightMorningPopup.company.trim(),
+          nightText: editSupplementNightMorningPopup.nightText.trim(),
+          morningText: editSupplementNightMorningPopup.morningText.trim(),
+        }
+      : row
+  );
+
+  await saveSupplementNightMorningRows(
+    nextRows,
+    "수정",
+    editSupplementNightMorningPopup.company.trim(),
+    `${targetRow?.company || ""} → ${editSupplementNightMorningPopup.company.trim()}`
+  );
+
+  setEditSupplementNightMorningPopup({
+    open: false,
+    id: "",
+    company: "",
+    nightText: "",
+    morningText: "",
+  });
+
+  setSupplementMessage("수정되었습니다.");
+};
+
+const handleDeleteSupplementNightMorningRow = async (rowId: string) => {
+  setSupplementMessage("");
+
+  const targetRow = supplementNightMorningRows.find((row) => row.id === rowId);
+
+  if (!canDeleteOwnItem(targetRow)) {
+    setSupplementMessage("본인이 입력한 항목 또는 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  await saveSupplementNightMorningRows(
+    supplementNightMorningRows.filter((row) => row.id !== rowId),
+    "삭제",
+    targetRow?.company || "",
+    `${targetRow?.nightText || ""} / ${targetRow?.morningText || ""}`
+  );
+
+  setSupplementMessage("삭제되었습니다.");
+};
+
+const handleCopySupplementNightMorning = async () => {
+  const copyText = getSupplementCopyText();
+
+  if (!copyText) {
+    setSupplementMessage("복사할 내용이 없습니다.");
+    return;
+  }
+
+  await navigator.clipboard.writeText(copyText);
+  setSupplementMessage("복사되었습니다.");
+};
+
+const handleDownloadSupplementTomorrowExcel = () => {
+  const headers = ["작업구분", "업체명", "작업위치", "작업인원", "관리감독자", "작업내용", "안전대책, 조치사항"];
+
+  const rows = supplementTomorrowRows.map((row) => [
+    row.workType,
+    row.company,
+    row.location,
+    row.workerCount,
+    row.supervisorCount,
+    row.content,
+    row.safetyAction,
+  ]);
+
+  const html = `
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+      </head>
+      <body>
+        <table border="1">
+          <thead>
+            <tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                (row) =>
+                  `<tr>${row
+                    .map((cell) => `<td>${String(cell || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</td>`)
+                    .join("")}</tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `;
+
+  const blob = new Blob([html], {
+    type: "application/vnd.ms-excel;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `명일보충작업-${selectedDate}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const handleSaveSupplementNotice = async () => {
+  setSupplementMessage("");
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지는 마스터, 관리자만 저장할 수 있습니다.");
+    return;
+  }
+
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return;
+  }
+
+  await setDoc(
+    doc(db, "supplementWorks", supplementNightMorningDateKey),
+    {
+      date: supplementNightMorningDateKey,
+      noticeText: supplementNoticeText,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+
+  await writeActivityLog({
+    action: "수정",
+    page: "보충작업",
+    target: "공지",
+    detail: supplementNoticeText,
+  });
+
+  setSupplementMessage("공지가 저장되었습니다.");
+};
+
+const handleSupplementNoticeImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  setSupplementMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지 이미지는 마스터, 관리자만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `supplementWorks/${supplementNightMorningDateKey}/notice-${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    setSupplementNoticeImage(fileUrl);
+
+    await setDoc(
+      doc(db, "supplementWorks", supplementNightMorningDateKey),
+      {
+        date: supplementNightMorningDateKey,
+        noticeImage: fileUrl,
+        noticeImageStoragePath: storagePath,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action: "수정",
+      page: "보충작업",
+      target: "공지 이미지",
+      detail: file.name,
+    });
+
+    setSupplementMessage("공지 이미지가 업로드되었습니다.");
+  } catch (error) {
+    console.log("SUPPLEMENT NOTICE IMAGE UPLOAD ERROR:", error);
+    setSupplementMessage("공지 이미지 업로드 중 오류가 발생했습니다.");
+  }
+
   event.target.value = "";
+};
+
+const handleSaveSupplementTomorrowNotice = async () => {
+  setSupplementMessage("");
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지는 마스터, 관리자만 저장할 수 있습니다.");
+    return;
+  }
+
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return;
+  }
+
+  await setDoc(
+    doc(db, "supplementWorks", selectedDate),
+    {
+      date: selectedDate,
+      tomorrowNoticeText: supplementTomorrowNoticeText,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+
+  await writeActivityLog({
+    action: "수정",
+    page: "보충작업",
+    target: "명일 보충작업 공지",
+    detail: supplementTomorrowNoticeText,
+  });
+
+  setSupplementMessage("공지가 저장되었습니다.");
+};
+
+const handleSupplementTomorrowNoticeImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  setSupplementMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지 이미지는 마스터, 관리자만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `supplementWorks/${selectedDate}/tomorrow-notice-${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    setSupplementTomorrowNoticeImage(fileUrl);
+
+    await setDoc(
+      doc(db, "supplementWorks", selectedDate),
+      {
+        date: selectedDate,
+        tomorrowNoticeImage: fileUrl,
+        tomorrowNoticeImageStoragePath: storagePath,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action: "수정",
+      page: "보충작업",
+      target: "명일 보충작업 공지 이미지",
+      detail: file.name,
+    });
+
+    setSupplementMessage("공지 이미지가 업로드되었습니다.");
+  } catch (error) {
+    console.log("SUPPLEMENT TOMORROW NOTICE IMAGE UPLOAD ERROR:", error);
+    setSupplementMessage("공지 이미지 업로드 중 오류가 발생했습니다.");
+  }
+
+  event.target.value = "";
+};
+
+const saveSupplementTomorrowRows = async (
+  rows: typeof supplementTomorrowRows,
+  action: string,
+  target: string,
+  detail: string
+) => {
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return false;
+  }
+
+  try {
+    setSupplementTomorrowRows(rows);
+
+    await setDoc(
+      doc(db, "supplementWorks", selectedDate),
+      {
+        date: selectedDate,
+        tomorrowRows: rows,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action,
+      page: "보충작업",
+      target,
+      detail,
+    });
+
+    return true;
+  } catch (error) {
+    console.log("SUPPLEMENT TOMORROW SAVE ERROR:", error);
+    setSupplementMessage("저장 권한 또는 네트워크 오류로 저장되지 않았습니다.");
+    return false;
+  }
+};
+
+const handleAddSupplementTomorrowRow = async () => {
+  setSupplementMessage("");
+
+  if (!currentUser) {
+    setSupplementMessage("로그인 후 입력할 수 있습니다.");
+    return;
+  }
+
+  if (
+    !supplementTomorrowInput.location.trim() ||
+    !supplementTomorrowInput.workerCount.trim() ||
+    !supplementTomorrowInput.supervisorCount.trim() ||
+    !supplementTomorrowInput.content.trim() ||
+    !supplementTomorrowInput.safetyAction.trim()
+  ) {
+    setSupplementMessage("모든 입력값을 입력하세요.");
+    return;
+  }
+
+  const companyName = String(currentUser.companyName || "").trim();
+
+  const newRow = {
+    id: createLocalId("supplement-tomorrow"),
+    workType: supplementTomorrowInput.workType,
+    company: companyName,
+    location: supplementTomorrowInput.location.trim(),
+    workerCount: supplementTomorrowInput.workerCount.trim(),
+    supervisorCount: supplementTomorrowInput.supervisorCount.trim(),
+    content: supplementTomorrowInput.content.trim(),
+    safetyAction: supplementTomorrowInput.safetyAction.trim(),
+    createdByUid: currentUser.uid,
+    createdByName: currentUser.name,
+  };
+
+  const nextRows = [...supplementTomorrowRows, newRow];
+
+  const saved = await saveSupplementTomorrowRows(
+    nextRows,
+    "입력",
+    companyName,
+    `${newRow.workType} / ${newRow.location} / 작업인원 ${newRow.workerCount} / 관리감독자 ${newRow.supervisorCount} / ${newRow.content}`
+  );
+
+  if (!saved) return;
+
+  setSupplementTomorrowInput({
+    workType: "조출",
+    location: "",
+    workerCount: "",
+    supervisorCount: "",
+    content: "",
+    safetyAction: "",
+  });
+
+  setSupplementMessage("저장되었습니다.");
+};
+
+const handleUpdateSupplementTomorrowRow = async () => {
+  setSupplementMessage("");
+
+  if (!canAdminEditDabsItem) {
+    setSupplementMessage("수정은 마스터, 관리자만 가능합니다.");
+    return;
+  }
+
+  if (
+    !editSupplementTomorrowPopup.id ||
+    !editSupplementTomorrowPopup.company.trim() ||
+    !editSupplementTomorrowPopup.location.trim() ||
+    !editSupplementTomorrowPopup.workerCount.trim() ||
+    !editSupplementTomorrowPopup.supervisorCount.trim() ||
+    !editSupplementTomorrowPopup.content.trim() ||
+    !editSupplementTomorrowPopup.safetyAction.trim()
+  ) {
+    setSupplementMessage("모든 입력값을 입력하세요.");
+    return;
+  }
+
+  const targetRow = supplementTomorrowRows.find(
+    (row) => row.id === editSupplementTomorrowPopup.id
+  );
+
+  const nextRows = supplementTomorrowRows.map((row) =>
+    row.id === editSupplementTomorrowPopup.id
+      ? {
+          ...row,
+          workType: editSupplementTomorrowPopup.workType,
+          company: editSupplementTomorrowPopup.company.trim(),
+          location: editSupplementTomorrowPopup.location.trim(),
+          workerCount: editSupplementTomorrowPopup.workerCount.trim(),
+          supervisorCount: editSupplementTomorrowPopup.supervisorCount.trim(),
+          content: editSupplementTomorrowPopup.content.trim(),
+          safetyAction: editSupplementTomorrowPopup.safetyAction.trim(),
+        }
+      : row
+  );
+
+  await saveSupplementTomorrowRows(
+    nextRows,
+    "수정",
+    editSupplementTomorrowPopup.company.trim(),
+    `${targetRow?.workType || ""} / ${targetRow?.location || ""} → ${editSupplementTomorrowPopup.workType} / ${editSupplementTomorrowPopup.location.trim()}`
+  );
+
+  setEditSupplementTomorrowPopup({
+    open: false,
+    id: "",
+    workType: "조출",
+    company: "",
+    location: "",
+    workerCount: "",
+    supervisorCount: "",
+    content: "",
+    safetyAction: "",
+  });
+
+  setSupplementMessage("수정되었습니다.");
+};
+
+const handleDeleteSupplementTomorrowRow = async (rowId: string) => {
+  setSupplementMessage("");
+
+  const targetRow = supplementTomorrowRows.find((row) => row.id === rowId);
+
+  if (!canDeleteOwnItem(targetRow)) {
+    setSupplementMessage("본인이 입력한 항목 또는 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  const nextRows = supplementTomorrowRows.filter((row) => row.id !== rowId);
+
+  await saveSupplementTomorrowRows(
+    nextRows,
+    "삭제",
+    targetRow?.company || "",
+    `${targetRow?.workType || ""} / ${targetRow?.location || ""} / ${targetRow?.content || ""}`
+  );
+
+  setSupplementMessage("삭제되었습니다.");
+};
+
+const handleSupplementWeekendDateChange = (dateKey: string) => {
+  if (!canAdminEditDabsItem) return;
+
+  setManualSupplementWeekendDate(dateKey);
+  setManualSupplementWeekendDateSavedToday(getTodayKey());
+};
+
+const handleResetSupplementWeekendDate = () => {
+  setManualSupplementWeekendDate("");
+  setManualSupplementWeekendDateSavedToday("");
+};
+
+const handleSaveSupplementWeekendNotice = async () => {
+  setSupplementMessage("");
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지는 마스터, 관리자만 저장할 수 있습니다.");
+    return;
+  }
+
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return;
+  }
+
+  await setDoc(
+    doc(db, "supplementWorks", supplementWeekendDateKey),
+    {
+      date: supplementWeekendDateKey,
+      weekendNoticeText: supplementWeekendNoticeText,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+
+  await writeActivityLog({
+    action: "수정",
+    page: "보충작업",
+    target: "주말 보충작업 공지",
+    detail: supplementWeekendNoticeText,
+  });
+
+  setSupplementMessage("공지가 저장되었습니다.");
+};
+
+const handleSupplementWeekendNoticeImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  setSupplementMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지 이미지는 마스터, 관리자만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `supplementWorks/${supplementWeekendDateKey}/weekend-notice-${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    setSupplementWeekendNoticeImage(fileUrl);
+
+    await setDoc(
+      doc(db, "supplementWorks", supplementWeekendDateKey),
+      {
+        date: supplementWeekendDateKey,
+        weekendNoticeImage: fileUrl,
+        weekendNoticeImageStoragePath: storagePath,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action: "수정",
+      page: "보충작업",
+      target: "주말 보충작업 공지 이미지",
+      detail: file.name,
+    });
+
+    setSupplementMessage("공지 이미지가 업로드되었습니다.");
+  } catch (error) {
+    console.log("SUPPLEMENT WEEKEND NOTICE IMAGE UPLOAD ERROR:", error);
+    setSupplementMessage("공지 이미지 업로드 중 오류가 발생했습니다.");
+  }
+
+  event.target.value = "";
+};
+
+const saveSupplementWeekendRows = async (
+  rows: typeof supplementWeekendRows,
+  action: string,
+  target: string,
+  detail: string
+) => {
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return false;
+  }
+
+  try {
+    setSupplementWeekendRows(rows);
+
+    await setDoc(
+      doc(db, "supplementWorks", supplementWeekendDateKey),
+      {
+        date: supplementWeekendDateKey,
+        weekendRows: rows,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action,
+      page: "보충작업",
+      target,
+      detail,
+    });
+
+    return true;
+  } catch (error) {
+    console.log("SUPPLEMENT WEEKEND SAVE ERROR:", error);
+    setSupplementMessage("저장 권한 또는 네트워크 오류로 저장되지 않았습니다.");
+    return false;
+  }
+};
+
+const handleAddSupplementWeekendRow = async () => {
+  setSupplementMessage("");
+
+  if (!currentUser) {
+    setSupplementMessage("로그인 후 입력할 수 있습니다.");
+    return;
+  }
+
+  if (
+    !supplementWeekendInput.location.trim() ||
+    !supplementWeekendInput.workerCount.trim() ||
+    !supplementWeekendInput.supervisorCount.trim() ||
+    !supplementWeekendInput.content.trim() ||
+    !supplementWeekendInput.safetyAction.trim()
+  ) {
+    setSupplementMessage("모든 입력값을 입력하세요.");
+    return;
+  }
+
+  const companyName = String(currentUser.companyName || "").trim();
+
+  const newRow = {
+    id: createLocalId("supplement-weekend"),
+    workType: "주말",
+    company: companyName,
+    location: supplementWeekendInput.location.trim(),
+    workerCount: supplementWeekendInput.workerCount.trim(),
+    supervisorCount: supplementWeekendInput.supervisorCount.trim(),
+    content: supplementWeekendInput.content.trim(),
+    safetyAction: supplementWeekendInput.safetyAction.trim(),
+    createdByUid: currentUser.uid,
+    createdByName: currentUser.name,
+  };
+
+  const nextRows = [...supplementWeekendRows, newRow];
+
+  const saved = await saveSupplementWeekendRows(
+    nextRows,
+    "입력",
+    companyName,
+    `주말 / ${newRow.location} / 작업인원 ${newRow.workerCount} / 관리감독자 ${newRow.supervisorCount} / ${newRow.content}`
+  );
+
+  if (!saved) return;
+
+  setSupplementWeekendInput({
+    location: "",
+    workerCount: "",
+    supervisorCount: "",
+    content: "",
+    safetyAction: "",
+  });
+
+  setSupplementMessage("저장되었습니다.");
+};
+
+const handleUpdateSupplementWeekendRow = async () => {
+  setSupplementMessage("");
+
+  if (!canAdminEditDabsItem) {
+    setSupplementMessage("수정은 마스터, 관리자만 가능합니다.");
+    return;
+  }
+
+  if (
+    !editSupplementWeekendPopup.id ||
+    !editSupplementWeekendPopup.company.trim() ||
+    !editSupplementWeekendPopup.location.trim() ||
+    !editSupplementWeekendPopup.workerCount.trim() ||
+    !editSupplementWeekendPopup.supervisorCount.trim() ||
+    !editSupplementWeekendPopup.content.trim() ||
+    !editSupplementWeekendPopup.safetyAction.trim()
+  ) {
+    setSupplementMessage("모든 입력값을 입력하세요.");
+    return;
+  }
+
+  const targetRow = supplementWeekendRows.find(
+    (row) => row.id === editSupplementWeekendPopup.id
+  );
+
+  const nextRows = supplementWeekendRows.map((row) =>
+    row.id === editSupplementWeekendPopup.id
+      ? {
+          ...row,
+          workType: "주말",
+          company: editSupplementWeekendPopup.company.trim(),
+          location: editSupplementWeekendPopup.location.trim(),
+          workerCount: editSupplementWeekendPopup.workerCount.trim(),
+          supervisorCount: editSupplementWeekendPopup.supervisorCount.trim(),
+          content: editSupplementWeekendPopup.content.trim(),
+          safetyAction: editSupplementWeekendPopup.safetyAction.trim(),
+        }
+      : row
+  );
+
+  await saveSupplementWeekendRows(
+    nextRows,
+    "수정",
+    editSupplementWeekendPopup.company.trim(),
+    `${targetRow?.location || ""} → ${editSupplementWeekendPopup.location.trim()}`
+  );
+
+  setEditSupplementWeekendPopup({
+    open: false,
+    id: "",
+    company: "",
+    location: "",
+    workerCount: "",
+    supervisorCount: "",
+    content: "",
+    safetyAction: "",
+  });
+
+  setSupplementMessage("수정되었습니다.");
+};
+
+const handleDeleteSupplementWeekendRow = async (rowId: string) => {
+  setSupplementMessage("");
+
+  const targetRow = supplementWeekendRows.find((row) => row.id === rowId);
+
+  if (!canDeleteOwnItem(targetRow)) {
+    setSupplementMessage("본인이 입력한 항목 또는 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  const nextRows = supplementWeekendRows.filter((row) => row.id !== rowId);
+
+  await saveSupplementWeekendRows(
+    nextRows,
+    "삭제",
+    targetRow?.company || "",
+    `${targetRow?.workType || ""} / ${targetRow?.location || ""} / ${targetRow?.content || ""}`
+  );
+
+  setSupplementMessage("삭제되었습니다.");
+};
+
+const handleDownloadSupplementWeekendExcel = () => {
+  const headers = ["작업구분", "업체명", "작업위치", "작업인원", "관리감독자", "작업내용", "안전대책, 조치사항"];
+
+  const rows = supplementWeekendRows.map((row) => [
+    row.workType,
+    row.company,
+    row.location,
+    row.workerCount,
+    row.supervisorCount,
+    row.content,
+    row.safetyAction,
+  ]);
+
+  const html = `
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+      </head>
+      <body>
+        <table border="1">
+          <thead>
+            <tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                (row) =>
+                  `<tr>${row
+                    .map((cell) => `<td>${String(cell || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</td>`)
+                    .join("")}</tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `;
+
+  const blob = new Blob([html], {
+    type: "application/vnd.ms-excel;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `주말보충작업-${supplementWeekendDateKey}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 
   const menuItems = [
   { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
   { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
   { key: "soloWorker", title: "단독작업자", description: "단독작업자 관리 페이지로 이동", icon: Users },
-  { key: "heatwave", title: "혹서기", description: "혹서기 온습도계·휴게시간 관리대장 업로드 현황 관리", icon: CalendarDays },
+{ key: "heatwave", title: "혹서기", description: "혹서기 온습도계 업로드 현황 관리", icon: CalendarDays },
+{ key: "supplementWork", title: "보충작업", description: "금일야간/명일조출, 명일·주말 보충작업 관리", icon: CalendarDays },
   ...(canManageApprovals
     ? [{ key: "approval", title: "회원 승인 관리", description: "가입 신청 승인/반려 관리", icon: UserPlus }]
+    : []),
+  ...(canViewActivityLogs
+    ? [{ key: "activityLog", title: "활동 로그", description: "입력·수정·삭제 기록 확인", icon: LayoutGrid }]
     : []),
 ];
 
@@ -2081,6 +3580,7 @@ const selectedDatePlusOne = useMemo(() => {
  
   const dabsTabs = useMemo(() => [
   { key: "highRisk", label: "고위험작업" },
+  { key: "buildingDetail", label: "동별 상세도" },
   { key: "equipmentFlow", label: "장비동선" },
   { key: "archWork", label: "건축토목 작업" },
   { key: "mepWork", label: "기전부 작업" },
@@ -2120,23 +3620,48 @@ const getMergedSectionRows = (tabKey: string) => {
 
 const portfolioSlides = useMemo(() => {
   const slides: Array<{
-    type: "overlay" | "section" | "material" | "soloWorker";
+    type: "overlay" | "overlayWithTable" | "section" | "material" | "soloWorker";
     key: string;
     tabKey?: string;
     label: string;
     columns?: string[];
 soloItems?: Array<DabsRowItem & { building: string }>;
+highRiskTableItems?: Array<DabsRowItem & { building: string }>;
   }> = [];
 
   const maxRowsPerSlide = 17
 
   dabsTabs.forEach((tab) => {
-    if (tab.key === "highRisk" || tab.key === "equipmentFlow") {
+    if (tab.key === "equipmentFlow") {
       slides.push({
         type: "overlay",
         key: tab.key,
         tabKey: tab.key,
         label: tab.label,
+      });
+      return;
+    }
+
+    if (tab.key === "highRisk") {
+      const highRiskTabValue = dabsData[selectedDate]?.highRiskTable;
+      const highRiskStoredRows =
+        typeof highRiskTabValue === "object" && highRiskTabValue && "rows" in highRiskTabValue
+          ? highRiskTabValue.rows || {}
+          : {};
+      const highRiskRows = getHighRiskTableRows(highRiskStoredRows);
+      const highRiskChunks = splitHighRiskRowsByCompany(highRiskRows, HIGH_RISK_PORTFOLIO_MAX_ROWS);
+
+      highRiskChunks.forEach((chunk, index) => {
+        slides.push({
+          type: "overlayWithTable",
+          key: `highRisk-${index}`,
+          tabKey: tab.key,
+          label:
+            highRiskChunks.length > 1
+              ? `${tab.label} (${index + 1}/${highRiskChunks.length})`
+              : tab.label,
+          highRiskTableItems: chunk,
+        });
       });
       return;
     }
@@ -2203,6 +3728,22 @@ const soloCompanyColorList = useMemo(
   [soloRows]
 );
 
+const heatSensitiveList = useMemo(
+  () => getSoloWorkerRowsByCompany(heatSensitiveRows, heatSensitiveCompanyFilter),
+  [heatSensitiveRows, heatSensitiveCompanyFilter]
+);
+
+const heatSensitiveGrouped = useMemo(
+  () =>
+    heatSensitiveList.reduce<Record<string, typeof heatSensitiveList>>((acc, item) => {
+      const key = item.company || "-";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    }, {}),
+  [heatSensitiveList]
+);
+
 const heatSensitiveCompanyColorList = useMemo(
   () => getUniqueCompaniesFromRows(heatSensitiveRows),
   [heatSensitiveRows]
@@ -2255,8 +3796,8 @@ useEffect(() => {
   const nextValue = dabsData[selectedDate]?.[activeDabsKey];
   setDabsDraft(typeof nextValue === "string" ? nextValue : "");
   setDabsMessage("");
-  setArrowStart(null);
-  setArrowPreview(null);
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
   setPendingEquipmentMarker(null);
 }, [selectedDate, activeDabsKey, dabsData]);
 
@@ -2270,7 +3811,14 @@ useEffect(() => {
 };
 
 useLayoutEffect(() => {
-  const isImageTab = activeDabsKey === "highRisk" || activeDabsKey === "equipmentFlow";
+  const isImageTab =
+    activeDabsKey === "highRisk" ||
+    activeDabsKey === "equipmentFlow" ||
+    (activeDabsKey === "buildingDetail" && !!selectedBuildingDetail);
+  const overlayTargetKey =
+    activeDabsKey === "buildingDetail" && selectedBuildingDetail
+      ? `buildingDetail::${selectedBuildingDetail}`
+      : activeDabsKey;
   const imageArea = imageAreaRef.current;
 
   if (!isImageTab || !imageArea) {
@@ -2278,114 +3826,132 @@ useLayoutEffect(() => {
     return;
   }
 
-  const overlayBundle = getOverlayBundle();
-  const markers = overlayBundle.markers || [];
-  const areaRect = imageArea.getBoundingClientRect();
+  const recomputeOverlayPositions = () => {
+    const overlayBundle = getOverlayBundle(overlayTargetKey);
+    const markers = overlayBundle.markers || [];
+    const areaRect = imageArea.getBoundingClientRect();
 
-  if (!areaRect.width || !areaRect.height || markers.length === 0) {
-    setAdjustedOverlayPositions({});
-    return;
-  }
-
-  const padding = 6;
-const gap = 0;
-  const placedRects: Array<{ left: number; top: number; right: number; bottom: number }> = [];
-  const nextPositions: Record<string, { x: number; y: number }> = {};
-
-  const isOverlapping = (rect: { left: number; top: number; right: number; bottom: number }) =>
-    placedRects.some(
-      (placed) =>
-        rect.left < placed.right + gap &&
-        rect.right > placed.left - gap &&
-        rect.top < placed.bottom + gap &&
-        rect.bottom > placed.top - gap
-    );
-
-  const clampRect = (centerX: number, centerY: number, width: number, height: number) => {
-    const halfWidth = width / 2;
-    const halfHeight = height / 2;
-
-    const safeX = Math.min(
-      Math.max(centerX, halfWidth + padding),
-      areaRect.width - halfWidth - padding
-    );
-
-    const safeY = Math.min(
-      Math.max(centerY, halfHeight + padding),
-      areaRect.height - halfHeight - padding
-    );
-
-    return { x: safeX, y: safeY };
-  };
-
-  markers.forEach((marker) => {
-    const markerKey = `${activeDabsKey}-${marker.id}`;
-    const markerElement = overlayMarkerRefs.current[markerKey];
-
-    if (!markerElement) return;
-
-    const markerRect = markerElement.getBoundingClientRect();
-    const width = markerRect.width;
-    const height = markerRect.height;
-
-    const originalX = (marker.x / 100) * areaRect.width;
-    const originalY = (marker.y / 100) * areaRect.height;
-
-    const candidates: Array<{ x: number; y: number }> = [];
-
-    const base = clampRect(originalX, originalY, width, height);
-    candidates.push(base);
-
-    const stepX = width + gap;
-    const stepY = height + gap;
-
-    for (let ring = 1; ring <= 8; ring += 1) {
-      candidates.push(
-        { x: originalX + stepX * ring, y: originalY },
-        { x: originalX - stepX * ring, y: originalY },
-        { x: originalX, y: originalY + stepY * ring },
-        { x: originalX, y: originalY - stepY * ring },
-        { x: originalX + stepX * ring, y: originalY + stepY * ring },
-        { x: originalX - stepX * ring, y: originalY + stepY * ring },
-        { x: originalX + stepX * ring, y: originalY - stepY * ring },
-        { x: originalX - stepX * ring, y: originalY - stepY * ring }
-      );
+    if (!areaRect.width || !areaRect.height || markers.length === 0) {
+      setAdjustedOverlayPositions({});
+      return;
     }
 
-    const safePoint =
-      candidates
-        .map((candidate) => clampRect(candidate.x, candidate.y, width, height))
-        .find((candidate) => {
-          const rect = {
-            left: candidate.x - width / 2,
-            top: candidate.y - height / 2,
-            right: candidate.x + width / 2,
-            bottom: candidate.y + height / 2,
-          };
+    const padding = 9;
+    const gap = 2;
+    const placedRects: Array<{ left: number; top: number; right: number; bottom: number }> = [];
+    const nextPositions: Record<string, { x: number; y: number }> = {};
 
-          return !isOverlapping(rect);
-        }) || base;
+    const isOverlapping = (rect: { left: number; top: number; right: number; bottom: number }) =>
+      placedRects.some(
+        (placed) =>
+          rect.left < placed.right + gap &&
+          rect.right > placed.left - gap &&
+          rect.top < placed.bottom + gap &&
+          rect.bottom > placed.top - gap
+      );
 
-    const finalRect = {
-      left: safePoint.x - width / 2,
-      top: safePoint.y - height / 2,
-      right: safePoint.x + width / 2,
-      bottom: safePoint.y + height / 2,
+    const clampRect = (centerX: number, centerY: number, width: number, height: number) => {
+      const halfWidth = width / 2;
+      const halfHeight = height / 2;
+
+      const safeX = Math.min(
+        Math.max(centerX, halfWidth + padding),
+        areaRect.width - halfWidth - padding
+      );
+
+      const safeY = Math.min(
+        Math.max(centerY, halfHeight + padding),
+        areaRect.height - halfHeight - padding
+      );
+
+      return { x: safeX, y: safeY };
     };
 
-    placedRects.push(finalRect);
+    markers.forEach((marker) => {
+      const markerKey = `${overlayTargetKey}-${marker.id}`;
+      const markerElement = overlayMarkerRefs.current[markerKey];
 
-    nextPositions[markerKey] = {
-      x: (safePoint.x / areaRect.width) * 100,
-      y: (safePoint.y / areaRect.height) * 100,
-    };
-  });
+      if (!markerElement) return;
 
-  setAdjustedOverlayPositions((prev) => {
-    if (JSON.stringify(prev) === JSON.stringify(nextPositions)) return prev;
-    return nextPositions;
-  });
-}, [activeDabsKey, selectedDate, dabsOverlays, dabsImages, isCapturingImage]);
+      const markerRect = markerElement.getBoundingClientRect();
+      const width = markerRect.width;
+      const height = markerRect.height;
+
+      const originalX = (marker.x / 100) * areaRect.width;
+      const originalY = (marker.y / 100) * areaRect.height;
+
+      const candidates: Array<{ x: number; y: number }> = [];
+
+      const base = clampRect(originalX, originalY, width, height);
+      candidates.push(base);
+
+      const stepX = width + gap;
+      const stepY = height + gap;
+
+      for (let ring = 1; ring <= 8; ring += 1) {
+        candidates.push(
+          { x: originalX + stepX * ring, y: originalY },
+          { x: originalX - stepX * ring, y: originalY },
+          { x: originalX, y: originalY + stepY * ring },
+          { x: originalX, y: originalY - stepY * ring },
+          { x: originalX + stepX * ring, y: originalY + stepY * ring },
+          { x: originalX - stepX * ring, y: originalY + stepY * ring },
+          { x: originalX + stepX * ring, y: originalY - stepY * ring },
+          { x: originalX - stepX * ring, y: originalY - stepY * ring }
+        );
+      }
+
+      const safePoint =
+        candidates
+          .map((candidate) => clampRect(candidate.x, candidate.y, width, height))
+          .find((candidate) => {
+            const rect = {
+              left: candidate.x - width / 2,
+              top: candidate.y - height / 2,
+              right: candidate.x + width / 2,
+              bottom: candidate.y + height / 2,
+            };
+
+            return !isOverlapping(rect);
+          }) || base;
+
+      const finalRect = {
+        left: safePoint.x - width / 2,
+        top: safePoint.y - height / 2,
+        right: safePoint.x + width / 2,
+        bottom: safePoint.y + height / 2,
+      };
+
+      placedRects.push(finalRect);
+
+      nextPositions[markerKey] = {
+        x: (safePoint.x / areaRect.width) * 100,
+        y: (safePoint.y / areaRect.height) * 100,
+      };
+    });
+
+    setAdjustedOverlayPositions((prev) => {
+      if (JSON.stringify(prev) === JSON.stringify(nextPositions)) return prev;
+      return nextPositions;
+    });
+  };
+
+  recomputeOverlayPositions();
+
+  // 화면 크기/회전/이미지 로딩 변화에도 마커 위치를 다시 계산해서
+  // 모바일-데스크톱 전환, 창 크기 조절 시에도 겹치거나 밀려나지 않도록 함.
+  const resizeObserver =
+    typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => recomputeOverlayPositions()) : null;
+  resizeObserver?.observe(imageArea);
+  window.addEventListener("resize", recomputeOverlayPositions);
+  window.addEventListener("orientationchange", recomputeOverlayPositions);
+
+  return () => {
+    resizeObserver?.disconnect();
+    window.removeEventListener("resize", recomputeOverlayPositions);
+    window.removeEventListener("orientationchange", recomputeOverlayPositions);
+  };
+}, [activeDabsKey, selectedDate, dabsOverlays, dabsImages, buildingDetailImages, selectedBuildingDetail, isCapturingImage]);
 
   const vibrateBriefly = () => {
   if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") navigator.vibrate(25);
@@ -2548,11 +4114,18 @@ setPortfolioSlideIndex(0);
 
   try {
     await addDoc(collection(db, "entries"), {
-  ...newEntryData,
-  createdAt: serverTimestamp(),
-});
+      ...newEntryData,
+      createdAt: serverTimestamp(),
+    });
 
-setEntryMessage("일정이 등록되었습니다.");
+    await writeActivityLog({
+      action: "입력",
+      page: "교육일정",
+      target: currentUser.companyName || "",
+      detail: `${selectedDate} ${effectiveSelectedTime}~${effectiveEndTime}`,
+    });
+
+    setEntryMessage("일정이 등록되었습니다.");
   } catch (error) {
     console.log("ENTRY ADD ERROR:", error);
     setEntryMessage("일정 등록 중 오류가 발생했습니다.");
@@ -2590,6 +4163,14 @@ setEntryMessage("일정이 등록되었습니다.");
 
   try {
     await deleteDoc(doc(db, "entries", entryId));
+
+    await writeActivityLog({
+      action: "삭제",
+      page: "교육일정",
+      target: targetEntry?.companyName || "",
+      detail: `${targetEntry?.date || ""} ${targetEntry?.startTime || ""}~${targetEntry?.endTime || ""}`,
+    });
+
     setEntryMessage("일정이 삭제되었습니다.");
   } catch (error: any) {
     console.log("ENTRY DELETE ERROR:", error);
@@ -2678,6 +4259,13 @@ const handleUpdateEntry = async () => {
       startTime: editEntryPopup.startTime,
       endTime: nextEndTime,
       companyName: editEntryPopup.companyName.trim(),
+    });
+
+    await writeActivityLog({
+      action: "수정",
+      page: "교육일정",
+      target: editEntryPopup.companyName.trim(),
+      detail: `${targetEntry.date} ${targetEntry.startTime}~${targetEntry.endTime} → ${editEntryPopup.date} ${editEntryPopup.startTime}~${nextEndTime}`,
     });
 
     setSelectedDate(editEntryPopup.date);
@@ -2982,11 +4570,11 @@ const cancelApprovalUser = async (uid: string) => {
   );
 
   const storageKey = getSectionStorageKey(activeDabsKey, sectionInput.building);
-const currentTabValue = dabsData[selectedDate]?.[storageKey];
-const currentRows =
-  typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
-    ? currentTabValue.rows || {}
-    : {};
+  const currentTabValue = dabsData[selectedDate]?.[storageKey];
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
 
   const buildingRows = currentRows[sectionInput.building] || [];
   const existingIndex = buildingRows.findIndex((item) => item.company === companyName);
@@ -3040,13 +4628,21 @@ const currentRows =
   setDabsData(nextData);
 
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: existingIndex >= 0 ? "수정" : "입력",
+    page: "DAB's회의",
+    target: companyName,
+    detail: `${activeDabsTab.label} / ${sectionInput.building} / ${inputContent}`,
+  });
+
   setSectionInput({ building: "", company: "", content: "", contentRedRanges: [] });
   setSectionTextSelection({ start: 0, end: 0 });
   setDabsMessage("저장되었습니다.");
 };
 
   const handleAddMaterial = async () => {
-  const { gate, material, vehicle, location, time } = materialsInput;
+  const { gate, material, vehicle, vehicleCount, location, manager, phone, workerOnCargo, cargoHeight1m, time } = materialsInput;
   if (!canEditDabs || !material.trim() || !vehicle.trim() || !location.trim()) return;
 
   const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
@@ -3072,7 +4668,12 @@ const currentRows =
       gate,
       material: material.trim(),
       vehicle: vehicle.trim(),
+      vehicleCount: vehicleCount.trim(),
       location: location.trim(),
+      manager: manager.trim(),
+      phone: phone.trim(),
+      workerOnCargo,
+      cargoHeight1m: workerOnCargo ? cargoHeight1m : false,
       time,
       company: companyName,
       createdByUid: currentUser?.uid,
@@ -3091,7 +4692,15 @@ const currentRows =
   setDabsData(nextData);
 
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
-  setMaterialsInput({ gate: "1", company: "", material: "", vehicle: "", location: "", time: "06" });
+
+  await writeActivityLog({
+    action: "입력",
+    page: "DAB's회의",
+    target: companyName,
+    detail: `${activeDabsTab.label} / ${time}시 / ${gate}게이트 / ${material.trim()} / ${vehicle.trim()}${vehicleCount.trim() ? ` ${vehicleCount.trim()}대` : ""} / ${location.trim()} / 담당자: ${manager.trim()} / 연락처: ${phone.trim()}`,
+  });
+
+  setMaterialsInput({ gate: "1", company: "", material: "", vehicle: "", vehicleCount: "", location: "", manager: "", phone: "", workerOnCargo: false, cargoHeight1m: false, time: "06" });
   setDabsMessage("저장되었습니다.");
 };
 
@@ -3117,6 +4726,8 @@ const handleUpdateMaterial = async () => {
       ? currentTabValue.list || []
       : [];
 
+  const targetItem = currentList.find((item) => item.id === editMaterialPopup.itemId);
+
   const nextList = currentList.map((item) =>
     item.id === editMaterialPopup.itemId
       ? {
@@ -3126,7 +4737,12 @@ const handleUpdateMaterial = async () => {
           company: editMaterialPopup.company.trim(),
           material: editMaterialPopup.material.trim(),
           vehicle: editMaterialPopup.vehicle.trim(),
+          vehicleCount: editMaterialPopup.vehicleCount.trim(),
           location: editMaterialPopup.location.trim(),
+          manager: editMaterialPopup.manager.trim(),
+          phone: editMaterialPopup.phone.trim(),
+          workerOnCargo: editMaterialPopup.workerOnCargo,
+          cargoHeight1m: editMaterialPopup.workerOnCargo ? editMaterialPopup.cargoHeight1m : false,
         }
       : item
   );
@@ -3143,6 +4759,13 @@ const handleUpdateMaterial = async () => {
 
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
 
+  await writeActivityLog({
+    action: "수정",
+    page: "DAB's회의",
+    target: editMaterialPopup.company.trim(),
+    detail: `${activeDabsTab.label} / ${targetItem?.time || ""}시 ${targetItem?.gate || ""}게이트 ${targetItem?.material || ""} → ${editMaterialPopup.time}시 ${editMaterialPopup.gate}게이트 ${editMaterialPopup.material.trim()}`,
+  });
+
   setEditMaterialPopup({
     open: false,
     itemId: "",
@@ -3151,7 +4774,12 @@ const handleUpdateMaterial = async () => {
     company: "",
     material: "",
     vehicle: "",
+    vehicleCount: "",
     location: "",
+    manager: "",
+    phone: "",
+    workerOnCargo: false,
+    cargoHeight1m: false,
   });
 
   setDabsMessage("수정되었습니다.");
@@ -3236,6 +4864,13 @@ const nextData = {
 
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
 
+  await writeActivityLog({
+    action: "수정",
+    page: "DAB's회의",
+    target: editSectionPopup.company.trim(),
+    detail: `${activeDabsTab.label} / ${oldBuilding} / ${targetItem.content || ""} → ${newBuilding} / ${nextContent}`,
+  });
+
   setEditSectionPopup({
     open: false,
     itemId: "",
@@ -3250,45 +4885,52 @@ const nextData = {
   setDabsMessage("수정되었습니다.");
 };
   const handleDeleteDabsItem = async (itemId: string, building: string | null = null) => {
-
   if (isSectionWorkTabKey(activeDabsKey)) {
     const sourceKey =
-  getMergedSectionKeys(activeDabsKey).find((key) => {
-    const tabValue = dabsData[selectedDate]?.[key];
-    const rows =
-      typeof tabValue === "object" && tabValue && "rows" in tabValue
-        ? tabValue.rows || {}
+      getMergedSectionKeys(activeDabsKey).find((key) => {
+        const tabValue = dabsData[selectedDate]?.[key];
+        const rows =
+          typeof tabValue === "object" && tabValue && "rows" in tabValue
+            ? tabValue.rows || {}
+            : {};
+
+        return building ? (rows[building] || []).some((item) => item.id === itemId) : false;
+      }) || activeDabsKey;
+
+    const currentTabValue = dabsData[selectedDate]?.[sourceKey];
+    const currentRows =
+      typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+        ? currentTabValue.rows || {}
         : {};
 
-    return building ? (rows[building] || []).some((item) => item.id === itemId) : false;
-  }) || activeDabsKey;
+    const nextRows = { ...currentRows };
+    const targetItem = building ? (nextRows[building] || []).find((item) => item.id === itemId) : undefined;
 
-const currentTabValue = dabsData[selectedDate]?.[sourceKey];
-const currentRows =
-  typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
-    ? currentTabValue.rows || {}
-    : {};
+    if (!canDeleteOwnItem(targetItem)) return;
 
-const nextRows = { ...currentRows };
+    if (building) {
+      nextRows[building] = (nextRows[building] || []).filter((item) => item.id !== itemId);
+    }
 
-if (building) {
-  const targetItem = (nextRows[building] || []).find((item) => item.id === itemId);
-  if (!canDeleteOwnItem(targetItem)) return;
-
-  nextRows[building] = (nextRows[building] || []).filter((item) => item.id !== itemId);
-}
-
-const nextData = {
-  ...dabsData,
-  [selectedDate]: {
-    ...(dabsData[selectedDate] || {}),
-    [sourceKey]: { rows: nextRows },
-  },
-};
+    const nextData = {
+      ...dabsData,
+      [selectedDate]: {
+        ...(dabsData[selectedDate] || {}),
+        [sourceKey]: { rows: nextRows },
+      },
+    };
 
     setDabsData(nextData);
-    
+
     await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+    await writeActivityLog({
+      action: "삭제",
+      page: "DAB's회의",
+      target: targetItem?.company || "",
+      detail: `${activeDabsTab.label} / ${building || ""} / ${targetItem?.content || ""}`,
+    });
+
     return;
   }
 
@@ -3298,22 +4940,207 @@ const nextData = {
       ? currentTabValue.list || []
       : [];
 
+  const targetItem = currentList.find((item) => item.id === itemId);
+
+  if (!canDeleteOwnItem(targetItem)) return;
+
   const nextData = {
     ...dabsData,
     [selectedDate]: {
       ...(dabsData[selectedDate] || {}),
       [activeDabsKey]: {
-        list: currentList.filter((item) => {
-  if (item.id !== itemId) return true;
-  return !canDeleteOwnItem(item);
-}),
+        list: currentList.filter((item) => item.id !== itemId),
       },
     },
   };
 
   setDabsData(nextData);
-  
+
   await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "DAB's회의",
+    target: targetItem?.company || "",
+    detail: `${activeDabsTab.label} / ${targetItem?.time || ""}시 / ${targetItem?.gate || ""}게이트 / ${targetItem?.material || ""} / ${targetItem?.vehicle || ""} / ${targetItem?.location || ""} / 담당자: ${targetItem?.manager || ""} / 연락처: ${targetItem?.phone || ""}`,
+  });
+};
+
+const handleAddHighRiskTableItem = async () => {
+  if (!canEditDabs || !highRiskTableInput.building || !highRiskTableInput.content.trim()) return;
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? highRiskTableInput.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
+
+  const currentTabValue = dabsData[selectedDate]?.highRiskTable;
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const buildingRows = currentRows[highRiskTableInput.building] || [];
+
+  const nextBuildingRows = [
+    ...buildingRows,
+    {
+      id: createLocalId("highRiskTable"),
+      company: companyName,
+      content: highRiskTableInput.content.trim(),
+      safety: highRiskTableInput.safety.trim(),
+      createdByUid: currentUser?.uid,
+      createdByName: currentUser?.name,
+    },
+  ];
+
+  const nextRows = {
+    ...currentRows,
+    [highRiskTableInput.building]: nextBuildingRows,
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      highRiskTable: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "DAB's회의",
+    target: companyName,
+    detail: `고위험작업 표 / ${highRiskTableInput.building} / ${highRiskTableInput.content.trim()} / ${highRiskTableInput.safety.trim()}`,
+  });
+
+  setHighRiskTableInput({ building: "", company: "", content: "", safety: "" });
+  setDabsMessage("저장되었습니다.");
+};
+
+const handleUpdateHighRiskTableItem = async () => {
+  if (
+    !editHighRiskTablePopup.itemId ||
+    !editHighRiskTablePopup.building ||
+    !editHighRiskTablePopup.company.trim() ||
+    !editHighRiskTablePopup.content.trim()
+  ) {
+    return;
+  }
+
+  const oldBuilding = editHighRiskTablePopup.oldBuilding;
+  const newBuilding = editHighRiskTablePopup.building;
+
+  const currentTabValue = dabsData[selectedDate]?.highRiskTable;
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const targetItem = (currentRows[oldBuilding] || []).find(
+    (item) => item.id === editHighRiskTablePopup.itemId
+  );
+  if (!targetItem) return;
+  if (!canManageHighRiskTableItem(targetItem)) return;
+
+  const nextRowsAfterRemoval = {
+    ...currentRows,
+    [oldBuilding]: (currentRows[oldBuilding] || []).filter(
+      (item) => item.id !== editHighRiskTablePopup.itemId
+    ),
+  };
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const nextCompany = canManualCompany
+    ? editHighRiskTablePopup.company.trim()
+    : targetItem.company || "";
+
+  const updatedItem = {
+    ...targetItem,
+    company: nextCompany,
+    content: editHighRiskTablePopup.content.trim(),
+    safety: editHighRiskTablePopup.safety.trim(),
+  };
+
+  const nextRows = {
+    ...nextRowsAfterRemoval,
+    [newBuilding]: [...(nextRowsAfterRemoval[newBuilding] || []), updatedItem],
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      highRiskTable: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "수정",
+    page: "DAB's회의",
+    target: updatedItem.company || "",
+    detail: `고위험작업 표 / ${oldBuilding} / ${targetItem.content || ""} → ${newBuilding} / ${updatedItem.content}`,
+  });
+
+  setEditHighRiskTablePopup({
+    open: false,
+    itemId: "",
+    oldBuilding: "",
+    building: "",
+    company: "",
+    content: "",
+    safety: "",
+  });
+
+  setDabsMessage("수정되었습니다.");
+};
+
+const handleDeleteHighRiskTableItem = async (itemId: string, building: string) => {
+  const currentTabValue = dabsData[selectedDate]?.highRiskTable;
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const targetItem = (currentRows[building] || []).find((item) => item.id === itemId);
+  if (!canManageHighRiskTableItem(targetItem)) return;
+
+  const nextRows = {
+    ...currentRows,
+    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      highRiskTable: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "DAB's회의",
+    target: targetItem?.company || "",
+    detail: `고위험작업 표 / ${building} / ${targetItem?.content || ""}`,
+  });
 };
 
 const handleLoadPreviousCompanyData = async (targetKey: string) => {
@@ -3460,7 +5287,16 @@ const handleAddSoloWorker = async () => {
   };
 
   setDabsData(nextData);
+
   await saveSoloWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "단독작업자",
+    target: companyName,
+    detail: `${soloWorkerInput.building} / ${soloWorkerInput.name.trim()} / ${soloWorkerInput.content.trim()} / 고령자 ${soloWorkerInput.elderly}`,
+  });
+
   setSoloWorkerInput({ building: "", company: "", name: "", content: "", elderly: "x" });
 };
 
@@ -3501,7 +5337,15 @@ const handleAddSoloWorker = async () => {
   };
 
   setDabsData(nextData);
+
   await saveSoloWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "수정",
+    page: "단독작업자",
+    target: editSoloPopup.company.trim(),
+    detail: `${editSoloPopup.oldBuilding} / ${targetItem.name || ""} / ${targetItem.content || ""} → ${editSoloPopup.building} / ${editSoloPopup.name.trim()} / ${editSoloPopup.content.trim()}`,
+  });
 
   setEditSoloPopup({
     open: false,
@@ -3516,15 +5360,14 @@ const handleAddSoloWorker = async () => {
 };
 
   const handleDeleteSoloWorker = async (itemId: string, building: string) => {
-
   const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
+  const targetItem = (currentRows[building] || []).find((item) => item.id === itemId);
+
+  if (!canDeleteOwnItem(targetItem)) return;
 
   const nextRows = {
     ...currentRows,
-    [building]: (currentRows[building] || []).filter((item) => {
-  if (item.id !== itemId) return true;
-  return !canDeleteOwnItem(item);
-}),
+    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
   };
 
   const nextData = {
@@ -3536,8 +5379,15 @@ const handleAddSoloWorker = async () => {
   };
 
   setDabsData(nextData);
-  
+
   await saveSoloWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "단독작업자",
+    target: targetItem?.company || "",
+    detail: `${building} / ${targetItem?.name || ""} / ${targetItem?.content || ""}`,
+  });
 };
 
 const handleAddHeatSensitive = async () => {
@@ -3555,12 +5405,12 @@ const handleAddHeatSensitive = async () => {
 
   const heatSensitiveValue = dabsData[selectedDate]?.heatSensitive;
 
-const currentRows =
-  typeof heatSensitiveValue === "object" &&
-  heatSensitiveValue &&
-  "rows" in heatSensitiveValue
-    ? heatSensitiveValue.rows || {}
-    : {};
+  const currentRows =
+    typeof heatSensitiveValue === "object" &&
+    heatSensitiveValue &&
+    "rows" in heatSensitiveValue
+      ? heatSensitiveValue.rows || {}
+      : {};
 
   const nextRows = {
     ...currentRows,
@@ -3571,7 +5421,6 @@ const currentRows =
         company: companyName,
         name: heatSensitiveInput.name.trim(),
         content: heatSensitiveInput.content.trim(),
-        elderly: heatSensitiveInput.elderly,
         createdByUid: currentUser?.uid,
         createdByName: currentUser?.name,
       },
@@ -3587,8 +5436,17 @@ const currentRows =
   };
 
   setDabsData(nextData);
+
   await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
-  setHeatSensitiveInput({ building: "", company: "", name: "", content: "", elderly: "유질환자" });
+
+  await writeActivityLog({
+    action: "입력",
+    page: "고령자",
+    target: companyName,
+    detail: `${heatSensitiveInput.building} / ${heatSensitiveInput.name.trim()} / ${heatSensitiveInput.content.trim()}`,
+  });
+
+  setHeatSensitiveInput({ building: "", company: "", name: "", content: "" });
 };
 
 const handleUpdateHeatSensitive = async () => {
@@ -3597,12 +5455,13 @@ const handleUpdateHeatSensitive = async () => {
 
   const heatSensitiveValue = dabsData[selectedDate]?.heatSensitive;
 
-const currentRows =
-  typeof heatSensitiveValue === "object" &&
-  heatSensitiveValue &&
-  "rows" in heatSensitiveValue
-    ? heatSensitiveValue.rows || {}
-    : {};
+  const currentRows =
+    typeof heatSensitiveValue === "object" &&
+    heatSensitiveValue &&
+    "rows" in heatSensitiveValue
+      ? heatSensitiveValue.rows || {}
+      : {};
+
   const nextRows = { ...currentRows };
 
   const targetItem = (nextRows[editHeatSensitivePopup.oldBuilding] || []).find(
@@ -3622,7 +5481,7 @@ const currentRows =
       company: editHeatSensitivePopup.company.trim(),
       name: editHeatSensitivePopup.name.trim(),
       content: editHeatSensitivePopup.content.trim(),
-      elderly: editHeatSensitivePopup.elderly,
+      
     },
   ];
 
@@ -3635,36 +5494,44 @@ const currentRows =
   };
 
   setDabsData(nextData);
+
   await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
 
+  await writeActivityLog({
+    action: "수정",
+    page: "고령자",
+    target: editHeatSensitivePopup.company.trim(),
+    detail: `${editHeatSensitivePopup.oldBuilding} / ${targetItem.name || ""} / ${targetItem.content || ""} → ${editHeatSensitivePopup.building} / ${editHeatSensitivePopup.name.trim()} / ${editHeatSensitivePopup.content.trim()}`,
+  });
+
   setEditHeatSensitivePopup({
-  open: false,
-  itemId: "",
-  oldBuilding: "",
-  building: "",
-  company: "",
-  name: "",
-  content: "",
-  elderly: "유질환자",
-});
+    open: false,
+    itemId: "",
+    oldBuilding: "",
+    building: "",
+    company: "",
+    name: "",
+    content: "",
+  });
 };
 
 const handleDeleteHeatSensitive = async (itemId: string, building: string) => {
   const heatSensitiveValue = dabsData[selectedDate]?.heatSensitive;
 
-const currentRows =
-  typeof heatSensitiveValue === "object" &&
-  heatSensitiveValue &&
-  "rows" in heatSensitiveValue
-    ? heatSensitiveValue.rows || {}
-    : {};
+  const currentRows =
+    typeof heatSensitiveValue === "object" &&
+    heatSensitiveValue &&
+    "rows" in heatSensitiveValue
+      ? heatSensitiveValue.rows || {}
+      : {};
+
+  const targetItem = (currentRows[building] || []).find((item) => item.id === itemId);
+
+  if (!canDeleteOwnItem(targetItem)) return;
 
   const nextRows = {
     ...currentRows,
-    [building]: (currentRows[building] || []).filter((item) => {
-      if (item.id !== itemId) return true;
-      return !canDeleteOwnItem(item);
-    }),
+    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
   };
 
   const nextData = {
@@ -3676,10 +5543,18 @@ const currentRows =
   };
 
   setDabsData(nextData);
+
   await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "고령자",
+    target: targetItem?.company || "",
+    detail: `${building} / ${targetItem?.name || ""} / ${targetItem?.content || ""}`,
+  });
 };
 
-const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [] };
+const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [], people: [] };
 
 const getCompanyListFromWorkTabs = () => {
   const workTabs = [
@@ -3717,10 +5592,18 @@ const handleUpdateOverlayInfo = async () => {
     return;
   }
 
-  const currentValue = getOverlayBundle(editOverlayPopup.targetKey);
+  const isLineBasedTarget =
+    editOverlayPopup.targetKey === "equipmentFlow" ||
+    editOverlayPopup.targetKey.startsWith("buildingDetail::");
 
-  const nextMarkers =
-  editOverlayPopup.targetKey === "equipmentFlow"
+  if (editOverlayPopup.targetKey.startsWith("buildingDetail::") && !editOverlayPopup.time) {
+    return;
+  }
+
+  const currentValue = getOverlayBundle(editOverlayPopup.targetKey);
+  const targetMarker = (currentValue.markers || []).find((marker) => marker.id === editOverlayPopup.itemId);
+
+  const nextMarkers = isLineBasedTarget
     ? (currentValue.markers || []).filter(
         (marker) => marker.id !== editOverlayPopup.itemId
       )
@@ -3729,12 +5612,12 @@ const handleUpdateOverlayInfo = async () => {
           ? {
               ...marker,
               company: editOverlayPopup.company.trim(),
-              note: editOverlayPopup.note.trim(),
-              building: editOverlayPopup.building,
-              equipmentType: "",
-            }
-          : marker
-      );
+                note: editOverlayPopup.note.trim(),
+                building: editOverlayPopup.building,
+                equipmentType: "",
+              }
+            : marker
+        );
 
   const nextData = {
     ...dabsOverlays,
@@ -3751,28 +5634,42 @@ const handleUpdateOverlayInfo = async () => {
 
   await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 
-  if (editOverlayPopup.targetKey === "equipmentFlow") {
-  setMoveOverlayTarget({
-    itemId: editOverlayPopup.itemId,
-    targetKey: "equipmentFlow",
-    mode: "arrow",
+  await writeActivityLog({
+    action: "수정",
+    page: "DAB's회의",
+    target: editOverlayPopup.company.trim(),
+    detail:
+      editOverlayPopup.targetKey === "equipmentFlow"
+        ? `장비동선 / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} → ${editOverlayPopup.company.trim()} / ${editOverlayPopup.note.trim()} / ${getEquipmentLabel(editOverlayPopup.equipmentType)}`
+        : editOverlayPopup.targetKey.startsWith("buildingDetail::")
+        ? `동별 상세도 / ${editOverlayPopup.targetKey.split("::")[1] || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} → ${editOverlayPopup.company.trim()} / ${editOverlayPopup.note.trim()} / ${editOverlayPopup.time}시`
+        : `고위험작업 / ${targetMarker?.building || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} → ${editOverlayPopup.building} / ${editOverlayPopup.company.trim()} / ${editOverlayPopup.note.trim()}`,
   });
 
-  setPendingEquipmentMarker({
-    arrowId: editOverlayPopup.itemId,
-    company: editOverlayPopup.company.trim(),
-    note: editOverlayPopup.note.trim(),
-    equipmentType: editOverlayPopup.equipmentType,
-    createdByUid: currentUser?.uid,
-    createdByName: currentUser?.name,
-  });
-} else {
-  setMoveOverlayTarget({
-    itemId: editOverlayPopup.itemId,
-    targetKey: editOverlayPopup.targetKey,
-    mode: "marker",
-  });
-}
+  if (isLineBasedTarget) {
+    setMoveOverlayTarget({
+      itemId: editOverlayPopup.itemId,
+      targetKey: editOverlayPopup.targetKey,
+      mode: "arrow",
+    });
+
+    setPendingEquipmentMarker({
+      arrowId: editOverlayPopup.itemId,
+      company: editOverlayPopup.company.trim(),
+      note: editOverlayPopup.note.trim(),
+      equipmentType: editOverlayPopup.equipmentType,
+      time: editOverlayPopup.time,
+      logAction: "수정",
+      createdByUid: currentUser?.uid,
+      createdByName: currentUser?.name,
+    });
+  } else {
+    setMoveOverlayTarget({
+      itemId: editOverlayPopup.itemId,
+      targetKey: editOverlayPopup.targetKey,
+      mode: "marker",
+    });
+  }
 
   setEditOverlayPopup({
     open: false,
@@ -3782,16 +5679,17 @@ const handleUpdateOverlayInfo = async () => {
     note: "",
     building: "",
     equipmentType: "concrete_pump_truck",
+    time: "",
   });
 
-  setArrowStart(null);
-  setArrowPreview(null);
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
 
   setDabsMessage(
-  editOverlayPopup.targetKey === "equipmentFlow"
-    ? "수정되었습니다. 새 화살표 시작점과 종료점을 다시 선택하세요."
-    : "수정되었습니다. 새 위치를 선택하세요."
-);
+    isLineBasedTarget
+      ? "수정되었습니다. 새 경로를 클릭으로 다시 그린 뒤 완료를 눌러주세요."
+      : "수정되었습니다. 새 위치를 선택하세요."
+  );
 };
 
 const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey) => {
@@ -3808,6 +5706,7 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
     [selectedDate]: {
       ...(dabsOverlays[selectedDate] || {}),
       [targetKey]: {
+        ...currentValue,
         markers: (currentValue.markers || []).filter((item) => item.id !== itemId),
         arrows: (currentValue.arrows || []).filter((item) => item.id !== itemId),
       },
@@ -3816,7 +5715,19 @@ const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey
 
   setDabsOverlays(nextData);
 
-await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "DAB's회의",
+    target: targetMarker?.company || "",
+    detail:
+      targetKey === "equipmentFlow"
+        ? `장비동선 / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} / ${targetMarker?.equipmentType ? getEquipmentLabel(targetMarker.equipmentType) : ""}`
+        : targetKey.startsWith("buildingDetail::")
+        ? `동별 상세도 / ${targetKey.split("::")[1] || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} / ${targetMarker?.time ? `${targetMarker.time}시` : ""}`
+        : `고위험작업 / ${targetMarker?.building || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""}`,
+  });
 };
 
   const handleHighRiskImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -3875,6 +5786,13 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
       { merge: true }
     );
 
+    await writeActivityLog({
+      action: "수정",
+      page: "DAB's회의",
+      target: "공통 사진",
+      detail: `고위험작업/장비동선 사진 변경 / ${file.name}`,
+    });
+
     setDabsMessage("사진이 저장되었습니다.");
   } catch (error) {
     console.log("IMAGE UPLOAD ERROR:", error);
@@ -3884,14 +5802,73 @@ await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
   event.target.value = "";
 };
 
-  const openMarkerPopup = (event: React.MouseEvent<HTMLDivElement>) => {
+  const handleBuildingDetailImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  if (!canUploadDabsImage) {
+    setDabsMessage("사진 업로드는 마스터, 관리자만 가능합니다.");
+    return;
+  }
+
+  if (!selectedBuildingDetail) return;
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!db || !storage) {
+    setDabsMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const newStoragePath = `dabsImages/buildingDetail-${selectedBuildingDetail}-${Date.now()}-${file.name}`;
+    const imageRef = storageRef(storage, newStoragePath);
+
+    await uploadBytes(imageRef, file);
+
+    const imageUrl = await getDownloadURL(imageRef);
+
+    const nextImages = { ...buildingDetailImages, [selectedBuildingDetail]: imageUrl };
+
+    setBuildingDetailImages(nextImages);
+
+    await setDoc(
+      doc(db, "dabsImages", "buildingDetail"),
+      {
+        [selectedBuildingDetail]: imageUrl,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser?.uid,
+        updatedByName: currentUser?.name,
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action: "수정",
+      page: "DAB's회의",
+      target: selectedBuildingDetail,
+      detail: `동별 상세도 / ${selectedBuildingDetail} 사진 변경 / ${file.name}`,
+    });
+
+    setDabsMessage("사진이 저장되었습니다.");
+  } catch (error) {
+    console.log("BUILDING IMAGE UPLOAD ERROR:", error);
+    setDabsMessage("사진 저장 중 오류가 발생했습니다.");
+  }
+
+  event.target.value = "";
+};
+
+  const openMarkerPopup = async (event: React.MouseEvent<HTMLDivElement>) => {
   if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
 
   const point = getRelativePoint(event.clientX, event.clientY);
-if (!point) return;
+  if (!point) return;
 
-if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
+  if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
     const currentValue = getOverlayBundle("highRisk");
+    const targetMarker = (currentValue.markers || []).find(
+      (marker) => marker.id === moveOverlayTarget.itemId
+    );
 
     const nextMarkers = (currentValue.markers || []).map((marker) =>
       marker.id === moveOverlayTarget.itemId
@@ -3915,7 +5892,15 @@ if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "m
     };
 
     setDabsOverlays(nextData);
-    saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    await writeActivityLog({
+      action: "수정",
+      page: "DAB's회의",
+      target: targetMarker?.company || "",
+      detail: `고위험작업 위치 수정 / ${targetMarker?.building || ""} / ${targetMarker?.note || ""}`,
+    });
 
     setMoveOverlayTarget(null);
     setDabsMessage("위치가 수정되었습니다.");
@@ -3931,6 +5916,7 @@ if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "m
     equipmentType: "concrete_pump_truck",
     building: "",
     targetKey: "highRisk",
+    time: "06",
   });
 };
 
@@ -3938,13 +5924,16 @@ if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "m
   if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
 
   const point = getRelativePoint(touch.clientX, touch.clientY);
-if (!point) return;
+  if (!point) return;
 
-lastTouchTimeRef.current = Date.now();
+  lastTouchTimeRef.current = Date.now();
   vibrateBriefly();
 
   if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
     const currentValue = getOverlayBundle("highRisk");
+    const targetMarker = (currentValue.markers || []).find(
+      (marker) => marker.id === moveOverlayTarget.itemId
+    );
 
     const nextMarkers = (currentValue.markers || []).map((marker) =>
       marker.id === moveOverlayTarget.itemId
@@ -3968,7 +5957,15 @@ lastTouchTimeRef.current = Date.now();
     };
 
     setDabsOverlays(nextData);
+
     await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    await writeActivityLog({
+      action: "수정",
+      page: "DAB's회의",
+      target: targetMarker?.company || "",
+      detail: `고위험작업 위치 수정 / ${targetMarker?.building || ""} / ${targetMarker?.note || ""}`,
+    });
 
     setMoveOverlayTarget(null);
     setDabsMessage("위치가 수정되었습니다.");
@@ -3984,6 +5981,7 @@ lastTouchTimeRef.current = Date.now();
     equipmentType: "concrete_pump_truck",
     building: "",
     targetKey: "highRisk",
+    time: "06",
   });
 };
 
@@ -4009,8 +6007,8 @@ lastTouchTimeRef.current = Date.now();
     await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
   }
 
-  setArrowStart(null);
-  setArrowPreview(null);
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
   setPendingEquipmentMarker(null);
   setImagePopup({
     open: false,
@@ -4021,6 +6019,7 @@ lastTouchTimeRef.current = Date.now();
     equipmentType: "concrete_pump_truck",
     building: "",
     targetKey: "highRisk",
+    time: "06",
   });
 };
 
@@ -4040,8 +6039,9 @@ lastTouchTimeRef.current = Date.now();
 
   const targetKey = imagePopup.targetKey || activeDabsKey;
   const currentValue = getOverlayBundle(targetKey);
+  const isLineBasedTarget = targetKey === "equipmentFlow" || targetKey.startsWith("buildingDetail::");
 
-  if (targetKey === "equipmentFlow") {
+  if (isLineBasedTarget) {
     const lastArrow = currentValue.arrows?.[currentValue.arrows.length - 1];
     if (!lastArrow) return;
 
@@ -4050,20 +6050,23 @@ lastTouchTimeRef.current = Date.now();
       company: companyName,
       note: imagePopup.note.trim(),
       equipmentType: imagePopup.equipmentType,
+      time: imagePopup.time,
+      logAction: "입력",
       createdByUid: currentUser?.uid,
       createdByName: currentUser?.name,
     });
 
     setImagePopup({
-    open: false,
-    x: 0,
-    y: 0,
-    company: "",
-    note: "",
-    equipmentType: "concrete_pump_truck",
-    building: "",
-    targetKey: "highRisk",
-  });
+      open: false,
+      x: 0,
+      y: 0,
+      company: "",
+      note: "",
+      equipmentType: "concrete_pump_truck",
+      building: "",
+      targetKey: "highRisk",
+      time: "06",
+    });
 
     setDabsMessage("상자를 표시할 위치를 한 번 더 클릭하세요.");
     return;
@@ -4093,7 +6096,15 @@ lastTouchTimeRef.current = Date.now();
   };
 
   setDabsOverlays(nextData);
+
   await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "DAB's회의",
+    target: companyName,
+    detail: `고위험작업 / ${imagePopup.building} / ${imagePopup.note.trim()}`,
+  });
 
   setImagePopup({
     open: false,
@@ -4104,26 +6115,52 @@ lastTouchTimeRef.current = Date.now();
     equipmentType: "concrete_pump_truck",
     building: "",
     targetKey: "highRisk",
+    time: "06",
   });
 };
 
- const completeEquipmentArrow = async (endX: number, endY: number) => {
-  if (!arrowStart) return;
+ const handleAddEquipmentArrowPoint = (point: { x: number; y: number }) => {
+  setArrowPoints((prev) => [...prev, point]);
+  setArrowPreviewPoint(point);
+};
 
-  const currentValue = getOverlayBundle("equipmentFlow");
+const handleUndoLastEquipmentArrowPoint = () => {
+  setArrowPoints((prev) => prev.slice(0, -1));
+};
 
-// 화살표는 겹쳐도 입력 가능.
+const handleCancelEquipmentArrowDraw = () => {
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
+};
+
+const completeEquipmentArrow = async () => {
+  if (arrowPoints.length < 2) return;
+  if (activeDabsKey !== "equipmentFlow" && !(activeDabsKey === "buildingDetail" && selectedBuildingDetail)) return;
+
+  const targetKey =
+    activeDabsKey === "buildingDetail" && selectedBuildingDetail
+      ? `buildingDetail::${selectedBuildingDetail}`
+      : "equipmentFlow";
+
+  const points = arrowPoints;
+  const start = points[0];
+  const end = points[points.length - 1];
+
+  const currentValue = getOverlayBundle(targetKey);
+
+// 화살표(라인)는 겹쳐도 입력 가능.
 // 상자 중복 검사는 상자 위치를 클릭하는 단계에서만 처리합니다.
 
-if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow") {
+if (moveOverlayTarget?.targetKey === targetKey && moveOverlayTarget.mode === "arrow") {
   const nextArrows = (currentValue.arrows || []).map((arrow) =>
     arrow.id === moveOverlayTarget.itemId
       ? {
           ...arrow,
-          startX: arrowStart.x,
-          startY: arrowStart.y,
-          endX,
-          endY,
+          startX: start.x,
+          startY: start.y,
+          endX: end.x,
+          endY: end.y,
+          points,
         }
       : arrow
   );
@@ -4132,7 +6169,7 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
     ...dabsOverlays,
     [selectedDate]: {
       ...(dabsOverlays[selectedDate] || {}),
-      equipmentFlow: {
+      [targetKey]: {
         ...currentValue,
         arrows: nextArrows,
       },
@@ -4143,18 +6180,19 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
   await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 
   setMoveOverlayTarget(null);
-  setArrowStart(null);
-  setArrowPreview(null);
-  setDabsMessage("화살표가 수정되었습니다. 상자를 표시할 위치를 한 번 더 클릭하세요.");
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
+  setDabsMessage("경로가 수정되었습니다. 상자를 표시할 위치를 한 번 더 클릭하세요.");
   return;
 }
 
   const arrow = {
     id: createLocalId("arrow"),
-    startX: arrowStart.x,
-    startY: arrowStart.y,
-    endX,
-    endY,
+    startX: start.x,
+    startY: start.y,
+    endX: end.x,
+    endY: end.y,
+    points,
     createdByUid: currentUser?.uid,
     createdByName: currentUser?.name,
   };
@@ -4163,7 +6201,7 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
     ...dabsOverlays,
     [selectedDate]: {
       ...(dabsOverlays[selectedDate] || {}),
-      equipmentFlow: {
+      [targetKey]: {
         ...currentValue,
         arrows: [...(currentValue.arrows || []), arrow],
       },
@@ -4174,8 +6212,8 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
 
   await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 
-  setArrowStart(null);
-  setArrowPreview(null);
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
   setImagePopup({
     open: true,
     x: (arrow.startX + arrow.endX) / 2,
@@ -4184,23 +6222,112 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
     note: "",
     equipmentType: "concrete_pump_truck",
     building: "",
-    targetKey: "equipmentFlow",
+    targetKey,
+    time: "06",
   });
   vibrateBriefly();
 };
 
+const handlePlacePersonMarker = async (point: { x: number; y: number }) => {
+  if (!personPlacementMode || !canEditDabs) return;
+
+  const placedType = personPlacementMode;
+  const currentValue = getOverlayBundle("equipmentFlow");
+
+  const marker: OverlayPersonItem = {
+    id: createLocalId("person"),
+    x: point.x,
+    y: point.y,
+    personType: placedType,
+    createdByUid: currentUser?.uid,
+    createdByName: currentUser?.name,
+  };
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      equipmentFlow: {
+        ...currentValue,
+        people: [...(currentValue.people || []), marker],
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "DAB's회의",
+    target: currentUser?.companyName || "",
+    detail: `장비동선 / ${placedType === "guide" ? "유도자" : "신호수"} 배치`,
+  });
+
+  setPersonPlacementMode(null);
+  setDabsMessage(`${placedType === "guide" ? "유도자" : "신호수"}가 배치되었습니다.`);
+};
+
+const handleDeletePersonMarker = async (itemId: string) => {
+  const currentValue = getOverlayBundle("equipmentFlow");
+  const targetItem = (currentValue.people || []).find((item) => item.id === itemId);
+  if (!canDeleteOwnItem(targetItem)) return;
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      equipmentFlow: {
+        ...currentValue,
+        people: (currentValue.people || []).filter((item) => item.id !== itemId),
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "DAB's회의",
+    target: targetItem?.createdByName || "",
+    detail: `장비동선 / ${targetItem?.personType === "guide" ? "유도자" : "신호수"} 삭제`,
+  });
+};
+
   const handleEquipmentClick = async (event: React.MouseEvent<HTMLDivElement>) => {
   if (Date.now() - lastTouchTimeRef.current < 500) return;
-  if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !canEditDabs) return;
+
+  const targetKey =
+    activeDabsKey === "equipmentFlow"
+      ? "equipmentFlow"
+      : activeDabsKey === "buildingDetail" && selectedBuildingDetail
+      ? `buildingDetail::${selectedBuildingDetail}`
+      : "";
+  const targetImage =
+    activeDabsKey === "equipmentFlow"
+      ? dabsImages?.equipmentFlow
+      : activeDabsKey === "buildingDetail" && selectedBuildingDetail
+      ? buildingDetailImages?.[selectedBuildingDetail]
+      : undefined;
+
+  if (!targetKey || !targetImage || !canEditDabs) return;
 
   const point = getRelativePoint(event.clientX, event.clientY);
   if (!point) return;
 
+  if (personPlacementMode) {
+    await handlePlacePersonMarker(point);
+    return;
+  }
+
   if (
-  pendingEquipmentMarker &&
-  !(moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow")
-) {
-    const currentValue = getOverlayBundle("equipmentFlow");
+    pendingEquipmentMarker &&
+    !(moveOverlayTarget?.targetKey === targetKey && moveOverlayTarget.mode === "arrow")
+  ) {
+    const currentValue = getOverlayBundle(targetKey);
 
     const marker = {
       id: pendingEquipmentMarker.arrowId,
@@ -4209,49 +6336,60 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
       building: "",
       company: pendingEquipmentMarker.company,
       note: pendingEquipmentMarker.note,
-      equipmentType: pendingEquipmentMarker.equipmentType,
+      equipmentType: targetKey === "equipmentFlow" ? pendingEquipmentMarker.equipmentType : "",
+      time: pendingEquipmentMarker.time,
       createdByUid: pendingEquipmentMarker.createdByUid,
       createdByName: pendingEquipmentMarker.createdByName,
     };
+
+    const nextArrows = (currentValue.arrows || []).map((arrow) =>
+      arrow.id === pendingEquipmentMarker.arrowId
+        ? { ...arrow, company: pendingEquipmentMarker.company, note: pendingEquipmentMarker.note, time: pendingEquipmentMarker.time }
+        : arrow
+    );
 
     const nextData = {
       ...dabsOverlays,
       [selectedDate]: {
         ...(dabsOverlays[selectedDate] || {}),
-        equipmentFlow: {
+        [targetKey]: {
           ...currentValue,
           markers: [...(currentValue.markers || []), marker],
+          arrows: nextArrows,
         },
       },
     };
 
     setDabsOverlays(nextData);
+
     await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 
-    setPendingEquipmentMarker(null);
-    setDabsMessage("장비동선이 저장되었습니다.");
-    return;
-  }
-
-  if (!arrowStart) {
-    setArrowStart({ x: point.x, y: point.y });
-    setArrowPreview({
-      startX: point.x,
-      startY: point.y,
-      endX: point.x,
-      endY: point.y,
+    await writeActivityLog({
+      action: pendingEquipmentMarker.logAction || "입력",
+      page: "DAB's회의",
+      target: pendingEquipmentMarker.company,
+      detail:
+        targetKey === "equipmentFlow"
+          ? `장비동선 / ${getEquipmentLabel(pendingEquipmentMarker.equipmentType)} / ${pendingEquipmentMarker.note}`
+          : `동별 상세도 / ${selectedBuildingDetail} / ${pendingEquipmentMarker.company} / ${pendingEquipmentMarker.note} / ${pendingEquipmentMarker.time}시`,
     });
+
+    setPendingEquipmentMarker(null);
+    setDabsMessage(targetKey === "equipmentFlow" ? "장비동선이 저장되었습니다." : "저장되었습니다.");
     return;
   }
 
-  completeEquipmentArrow(point.x, point.y);
+  handleAddEquipmentArrowPoint(point);
 };
 
   const handleEquipmentMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !arrowStart) return;
+    if (
+      !(activeDabsKey === "equipmentFlow" || (activeDabsKey === "buildingDetail" && selectedBuildingDetail)) ||
+      arrowPoints.length === 0
+    ) return;
     const point = getRelativePoint(event.clientX, event.clientY);
     if (!point) return;
-    setArrowPreview({ startX: arrowStart.x, startY: arrowStart.y, endX: point.x, endY: point.y });
+    setArrowPreviewPoint(point);
   };
 
   const handleOverlayTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -4261,18 +6399,14 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
       touchGestureRef.current = { moved: false, startX: touch.clientX, startY: touch.clientY };
       return;
     }
-    if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !canEditDabs) return;
-    const point = getRelativePoint(touch.clientX, touch.clientY);
-    if (!point) return;
+    const targetImage =
+      activeDabsKey === "equipmentFlow"
+        ? dabsImages?.equipmentFlow
+        : activeDabsKey === "buildingDetail" && selectedBuildingDetail
+        ? buildingDetailImages?.[selectedBuildingDetail]
+        : undefined;
+    if (!(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") || !targetImage || !canEditDabs) return;
     lastTouchTimeRef.current = Date.now();
-    if (!arrowStart) {
-      setArrowStart({ x: point.x, y: point.y });
-      setArrowPreview({ startX: point.x, startY: point.y, endX: point.x, endY: point.y });
-      touchGestureRef.current = { moved: false, startX: touch.clientX, startY: touch.clientY };
-      vibrateBriefly();
-      return;
-    }
-    setArrowPreview({ startX: arrowStart.x, startY: arrowStart.y, endX: point.x, endY: point.y });
     touchGestureRef.current = { moved: false, startX: touch.clientX, startY: touch.clientY };
   };
 
@@ -4281,10 +6415,10 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
     if (!touch) return;
     const gesture = touchGestureRef.current;
     if (Math.abs(touch.clientX - gesture.startX) > 6 || Math.abs(touch.clientY - gesture.startY) > 6) touchGestureRef.current.moved = true;
-    if (activeDabsKey !== "equipmentFlow" || !arrowStart) return;
+    if (!(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") || arrowPoints.length === 0) return;
     const point = getRelativePoint(touch.clientX, touch.clientY);
     if (!point) return;
-    setArrowPreview({ startX: arrowStart.x, startY: arrowStart.y, endX: point.x, endY: point.y });
+    setArrowPreviewPoint(point);
   };
 
   const handleOverlayTouchEnd = async (event: React.TouchEvent<HTMLDivElement>) => {
@@ -4297,13 +6431,32 @@ if (moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode =
       if (!touchGestureRef.current.moved) openMarkerPopupByTouch(touch);
       return;
     }
-    if (activeDabsKey !== "equipmentFlow" || !dabsImages?.equipmentFlow || !canEditDabs) return;
+
+    const targetKey =
+      activeDabsKey === "equipmentFlow"
+        ? "equipmentFlow"
+        : activeDabsKey === "buildingDetail" && selectedBuildingDetail
+        ? `buildingDetail::${selectedBuildingDetail}`
+        : "";
+    const targetImage =
+      activeDabsKey === "equipmentFlow"
+        ? dabsImages?.equipmentFlow
+        : activeDabsKey === "buildingDetail" && selectedBuildingDetail
+        ? buildingDetailImages?.[selectedBuildingDetail]
+        : undefined;
+
+    if (!targetKey || !targetImage || !canEditDabs) return;
+
+if (personPlacementMode) {
+  if (!touchGestureRef.current.moved) await handlePlacePersonMarker(point);
+  return;
+}
 
 if (
   pendingEquipmentMarker &&
-  !(moveOverlayTarget?.targetKey === "equipmentFlow" && moveOverlayTarget.mode === "arrow")
+  !(moveOverlayTarget?.targetKey === targetKey && moveOverlayTarget.mode === "arrow")
 ) {
-  const currentValue = getOverlayBundle("equipmentFlow");
+  const currentValue = getOverlayBundle(targetKey);
 
   const marker = {
     id: pendingEquipmentMarker.arrowId,
@@ -4312,18 +6465,26 @@ if (
     building: "",
     company: pendingEquipmentMarker.company,
     note: pendingEquipmentMarker.note,
-    equipmentType: pendingEquipmentMarker.equipmentType,
+    equipmentType: targetKey === "equipmentFlow" ? pendingEquipmentMarker.equipmentType : "",
+    time: pendingEquipmentMarker.time,
     createdByUid: pendingEquipmentMarker.createdByUid,
     createdByName: pendingEquipmentMarker.createdByName,
   };
+
+  const nextArrows = (currentValue.arrows || []).map((arrow) =>
+    arrow.id === pendingEquipmentMarker.arrowId
+      ? { ...arrow, company: pendingEquipmentMarker.company, note: pendingEquipmentMarker.note, time: pendingEquipmentMarker.time }
+      : arrow
+  );
 
   const nextData = {
     ...dabsOverlays,
     [selectedDate]: {
       ...(dabsOverlays[selectedDate] || {}),
-      equipmentFlow: {
+      [targetKey]: {
         ...currentValue,
         markers: [...(currentValue.markers || []), marker],
+        arrows: nextArrows,
       },
     },
   };
@@ -4331,22 +6492,24 @@ if (
   setDabsOverlays(nextData);
   await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
 
-  setPendingEquipmentMarker(null);
-  setDabsMessage("장비동선이 저장되었습니다.");
-  return;
+  await writeActivityLog({
+  action: pendingEquipmentMarker.logAction || "입력",
+  page: "DAB's회의",
+  target: pendingEquipmentMarker.company,
+  detail:
+    targetKey === "equipmentFlow"
+      ? `장비동선 / ${getEquipmentLabel(pendingEquipmentMarker.equipmentType)} / ${pendingEquipmentMarker.note}`
+      : `동별 상세도 / ${selectedBuildingDetail} / ${pendingEquipmentMarker.company} / ${pendingEquipmentMarker.note} / ${pendingEquipmentMarker.time}시`,
+});
+
+setPendingEquipmentMarker(null);
+setDabsMessage(targetKey === "equipmentFlow" ? "장비동선이 저장되었습니다." : "저장되었습니다.");
+return;
 }
 
-if (!arrowStart) return;
+if (touchGestureRef.current.moved) return;
 
-if (touchGestureRef.current.moved) {
-  completeEquipmentArrow(point.x, point.y);
-  return;
-}
-    if (arrowPreview && (Math.abs((arrowPreview.endX || point.x) - arrowStart.x) > 2 || Math.abs((arrowPreview.endY || point.y) - arrowStart.y) > 2)) {
-      completeEquipmentArrow(point.x, point.y);
-      return;
-    }
-    setArrowPreview({ startX: arrowStart.x, startY: arrowStart.y, endX: point.x, endY: point.y });
+handleAddEquipmentArrowPoint(point);
   };
 
   const renderTopBar = () => {
@@ -4401,21 +6564,27 @@ if (touchGestureRef.current.moved) {
   const renderOverlayImage = (
   selectedImage: string | undefined,
   isImageTab: boolean,
-  targetKey = activeDabsKey
+  targetKey = activeDabsKey,
+  fillHeight = false,
+  compactMarkers = false
 ) => {
   const overlayBundle = getOverlayBundle(targetKey);
     const markers = overlayBundle.markers || [];
 const arrows = overlayBundle.arrows || [];
+const people = overlayBundle.people || [];
 const overlayCompanyList = getUniqueCompaniesFromMarkers(markers);
 
 return (
   <div
     ref={imageAreaRef}
-    className="relative h-[260px] overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:h-auto md:rounded-2xl"
-    onClick={activeDabsKey === "highRisk" ? openMarkerPopup : activeDabsKey === "equipmentFlow" ? handleEquipmentClick : undefined}
-        onMouseMove={activeDabsKey === "equipmentFlow" ? handleEquipmentMouseMove : undefined}
+    className={cn(
+      "relative overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:rounded-2xl",
+      fillHeight ? "inline-flex max-h-full max-w-full items-center justify-center" : "w-full"
+    )}
+    onClick={activeDabsKey === "highRisk" ? openMarkerPopup : (activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") ? handleEquipmentClick : undefined}
+        onMouseMove={(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") ? handleEquipmentMouseMove : undefined}
         onTouchStart={isImageTab ? handleOverlayTouchStart : undefined}
-        onTouchMove={activeDabsKey === "equipmentFlow" ? handleOverlayTouchMove : undefined}
+        onTouchMove={(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") ? handleOverlayTouchMove : undefined}
         onTouchEnd={isImageTab ? handleOverlayTouchEnd : undefined}
       >
   {selectedImage ? (
@@ -4423,7 +6592,11 @@ return (
   src={selectedImage}
   alt={activeDabsTab.label}
   crossOrigin="anonymous"
-  className="block h-full w-full object-cover md:h-auto"
+  className={cn(
+    "block select-none",
+    fillHeight ? "max-h-full max-w-full h-auto w-auto object-contain" : "w-full h-auto"
+  )}
+  draggable={false}
 />
 ) : (
   <div className="flex h-64 items-center justify-center text-sm text-slate-400">
@@ -4434,20 +6607,95 @@ return (
           <>
             <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
               <defs>
-                <marker id="arrowhead" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" fill="#ef4444"><polygon points="0 0, 4 2, 0 4" /></marker>
+                <marker id="arrowhead" markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" fill="#f97316"><polygon points="0 0, 4 2, 0 4" /></marker>
+                {COMPANY_STROKE_PALETTE.map((strokeColor, strokeIndex) => (
+                  <marker key={strokeIndex} id={`arrowhead-${targetKey}-${strokeIndex}`} markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" fill={strokeColor}><polygon points="0 0, 4 2, 0 4" /></marker>
+                ))}
               </defs>
-              {arrows.map((arrow) => <line key={arrow.id} x1={arrow.startX} y1={arrow.startY} x2={arrow.endX} y2={arrow.endY} stroke="#ef4444" strokeWidth="0.6" markerEnd="url(#arrowhead)" />)}
-              {activeDabsKey === "equipmentFlow" && arrowPreview && <line x1={arrowPreview.startX} y1={arrowPreview.startY} x2={arrowPreview.endX} y2={arrowPreview.endY} stroke="#f97316" strokeWidth="0.5" strokeDasharray="1.5 1.5" markerEnd="url(#arrowhead)" />}
-              {activeDabsKey === "equipmentFlow" && arrowStart && <circle cx={arrowStart.x} cy={arrowStart.y} r="1.3" fill="#f97316" />}
+              {arrows.map((arrow) => {
+                const pts = arrow.points && arrow.points.length >= 2
+                  ? arrow.points
+                  : [{ x: arrow.startX, y: arrow.startY }, { x: arrow.endX, y: arrow.endY }];
+                const isLineStyle = targetKey.startsWith("buildingDetail::");
+                const strokeIndex = getCompanyStrokeIndex(arrow.company || "-", overlayCompanyList);
+                const strokeColor = isLineStyle ? getTimeStrokeColor(arrow.time || "") : COMPANY_STROKE_PALETTE[strokeIndex];
+                return (
+                  <polyline
+                    key={arrow.id}
+                    points={pts.map((p) => `${p.x},${p.y}`).join(" ")}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth="2.5"
+                    vectorEffect="non-scaling-stroke"
+                    markerEnd={isLineStyle ? undefined : `url(#arrowhead-${targetKey}-${strokeIndex})`}
+                  />
+                );
+              })}
+              {(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") && arrowPoints.length > 0 && (
+                <polyline
+                  points={[...arrowPoints, ...(arrowPreviewPoint ? [arrowPreviewPoint] : [])]
+                    .map((p) => `${p.x},${p.y}`)
+                    .join(" ")}
+                  fill="none"
+                  stroke="#f97316"
+                  strokeWidth="2.2"
+                  strokeDasharray="6 6"
+                  vectorEffect="non-scaling-stroke"
+                  markerEnd={activeDabsKey === "buildingDetail" ? undefined : "url(#arrowhead)"}
+                />
+              )}
+              {(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") &&
+                arrowPoints.map((p, index) => (
+                  <circle key={`arrow-point-${index}`} cx={p.x} cy={p.y} r="1.3" fill="#f97316" />
+                ))}
             </svg>
+            {activeDabsKey === "equipmentFlow" && people.map((person) => (
+              <div
+                key={person.id}
+                className="absolute"
+                style={{
+                  left: `${person.x}%`,
+                  top: `${person.y}%`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <div className="relative">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-12 w-12 drop-shadow lg:h-[4.5rem] lg:w-[4.5rem]"
+                    fill={person.personType === "guide" ? "#eab308" : "#ef4444"}
+                  >
+                    <circle cx="12" cy="5" r="3" />
+                    <path d="M12 9c-3 0-5.5 2-5.5 5v6h3v-5h5v5h3v-6c0-3-2.5-5-5.5-5z" />
+                  </svg>
+
+                  {!isCapturingImage && canDeleteOwnItem(person) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        handleDeletePersonMarker(person.id);
+                      }}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      onTouchEnd={(e) => e.stopPropagation()}
+                      style={{ touchAction: "manipulation" }}
+                      className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow lg:-top-3 lg:-right-3 lg:h-7 lg:w-7"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
             {markers.map((marker) => {
               const markerKey = `${targetKey}-${marker.id}`;
               const adjustedPosition = adjustedOverlayPositions[markerKey];
               const posX = adjustedPosition?.x ?? marker.x;
 const posY = adjustedPosition?.y ?? marker.y;
               const color = getCompanyColorByList(marker.company || "-", overlayCompanyList);
-              const buildingColor = getBuildingColor(marker.building || "");
               const isHighRiskMarker = targetKey === "highRisk";
+              const isBuildingDetailMarker = targetKey.startsWith("buildingDetail::");
               return (
                 <div
   key={marker.id}
@@ -4463,40 +6711,59 @@ const posY = adjustedPosition?.y ?? marker.y;
 >
   <div
     className={cn(
-  "relative origin-center scale-[0.73] rounded-lg border px-[3px] py-[1px] shadow-md backdrop-blur-[1px] lg:scale-100 lg:rounded-2xl lg:px-1 lg:py-1",
+  "relative origin-center rounded-md border shadow-sm backdrop-blur-[1px]",
+  compactMarkers
+    ? "px-[2px] py-[1px] lg:rounded-lg lg:px-1 lg:py-1"
+    : "px-[3px] py-[2px] lg:rounded-xl lg:px-1.5 lg:py-1.5",
   color.bg,
   color.text
 )}
   >
-                  <div className={cn("flex flex-col items-center text-center", isHighRiskMarker
-  ? "min-w-[69px] max-w-[96px] gap-0 lg:min-w-[139px] lg:max-w-[187px] lg:gap-1"
-: "min-w-[85px] max-w-[112px] gap-0 lg:min-w-[200px] lg:max-w-[253px] lg:gap-1")}>
-                    {marker.equipmentType ? <><span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold leading-none shadow-sm lg:text-[11px]">{getEquipmentLabel(marker.equipmentType)}</span><span className="rounded-full bg-white/70 p-0.5 shadow-sm lg:p-1"><EquipmentIcon type={marker.equipmentType} className="h-4 w-4 lg:h-10 lg:w-10" /></span></> : null}
+                  <div className={cn("flex flex-col items-center text-center", (isHighRiskMarker || isBuildingDetailMarker)
+  ? (compactMarkers
+      ? "min-w-[42px] max-w-[62px] gap-0.5 lg:min-w-[85px] lg:max-w-[125px] lg:gap-0.5"
+      : "min-w-[62px] max-w-[90px] gap-0.5 lg:min-w-[128px] lg:max-w-[188px] lg:gap-1")
+  : (compactMarkers
+      ? "min-w-[50px] max-w-[70px] gap-0.5 lg:min-w-[120px] lg:max-w-[170px] lg:gap-0.5"
+      : "min-w-[74px] max-w-[102px] gap-0.5 lg:min-w-[180px] lg:max-w-[255px] lg:gap-1"))}>
+                    {marker.equipmentType ? <span className={cn("rounded-full bg-white/80 font-bold leading-none shadow-sm", compactMarkers ? "px-1 py-0.5 text-[7px] lg:text-[8px]" : "px-1.5 py-0.5 text-[11px] lg:text-[12px]")}>{getEquipmentLabel(marker.equipmentType)}</span> : null}
                     {isHighRiskMarker ? (
-  <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2">
-    <div className={cn("text-[15px] font-bold leading-tight tracking-tight lg:text-[17px]", buildingColor)}>
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[3px] py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
+    <div className={cn("font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[17px] lg:text-[20px]")}>
       {marker.building || "동 미선택"}
     </div>
-    <div className="mt-1 text-[15px] font-bold leading-tight lg:text-[17px]">
-      {marker.company || "업체명 없음"}
-    </div>
-    <div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[17px]">
-      {marker.note || "작업내용 없음"}
-    </div>
+    <div className={cn("mt-1 font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
+  {marker.company || "업체명 없음"}
+</div>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
+  {marker.note || "작업내용 없음"}
+</div>
+  </div>
+) : isBuildingDetailMarker ? (
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[3px] py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
+    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
+  {marker.company || "업체명 없음"}
+</div>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
+  {marker.note || "작업내용 없음"}
+</div>
+    <div className={cn("mt-1 font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[17px] lg:text-[20px]")}>
+  {marker.time ? `${marker.time}시` : ""}
+</div>
   </div>
 ) : (
-  <div className="w-full rounded-md bg-white/65 px-1 py-0.5 shadow-sm lg:rounded-xl lg:px-2 lg:py-2">
-    <div className="text-[15px] font-bold leading-tight lg:text-[17px]">
-      {marker.company || "업체명 없음"}
-    </div>
-    <div className="mt-1 break-words text-[15px] font-bold leading-tight lg:text-[17px]">
-      {marker.note || "작업내용 없음"}
-    </div>
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[3px] py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
+    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
+  {marker.company || "업체명 없음"}
+</div>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
+  {marker.note || "작업내용 없음"}
+</div>
   </div>
 )}
                   </div>
                   {!isCapturingImage && (
-<div className="absolute -top-8 -right-2 z-20 flex gap-1 lg:-top-6 lg:right-1">
+<div className="absolute -top-4 -right-1 z-20 flex gap-1 lg:-top-3 lg:right-0.5">
   {canAdminEditDabsItem && (
     <button
       type="button"
@@ -4511,6 +6778,7 @@ const posY = adjustedPosition?.y ?? marker.y;
           note: marker.note || "",
           building: marker.building || "",
           equipmentType: marker.equipmentType || "concrete_pump_truck",
+          time: marker.time || "06",
         });
       }}
       onTouchStart={(e) => e.stopPropagation()}
@@ -4729,7 +6997,100 @@ const posY = adjustedPosition?.y ?? marker.y;
     </div>
   );
 
-  const renderSectionMobileCards = (
+  const renderBottomCalendar = () => (
+  <Card className="rounded-[24px] border-0 bg-white shadow-sm">
+    <CardHeader className="flex flex-row items-center justify-between">
+      <CardTitle>월간 달력</CardTitle>
+
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() =>
+            setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))
+          }
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+
+        <div className="min-w-28 text-center text-sm font-semibold lg:min-w-36 lg:text-base">
+          {monthLabel}
+        </div>
+
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() =>
+            setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))
+          }
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </CardHeader>
+
+    <CardContent>
+      <div className="grid grid-cols-7 gap-1 lg:gap-2">
+        {weekLabels.map((label) => (
+          <div key={label} className="rounded-xl bg-slate-100 py-2 text-center text-[10px] font-semibold text-slate-600 lg:text-xs">
+            {label}
+          </div>
+        ))}
+
+        {monthGrid.map((date) => {
+          const key = formatDateKey(date);
+          const isCurrentMonth = date.getMonth() === currentDate.getMonth();
+          const isToday = key === todayKey;
+          const isSelected = key === selectedDate;
+          const cellEntries = entries.filter((entry) => entry.date === key);
+
+          return (
+            <button
+              key={key}
+              onClick={() => setSelectedDate(key)}
+              className={cn(
+                "min-h-[72px] rounded-xl border p-1.5 text-left transition sm:min-h-[82px] sm:p-2",
+                isSelected
+                  ? "border-slate-900 bg-slate-100"
+                  : isCurrentMonth
+                    ? "border-slate-200 bg-white shadow-sm"
+                    : "border-slate-100 bg-slate-50 text-slate-400"
+              )}
+            >
+              <div className="mb-1 flex items-center justify-between sm:mb-2">
+                <div
+                  className={cn(
+                    "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold lg:h-6 lg:w-6 lg:text-xs",
+                    isToday ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                  )}
+                >
+                  {date.getDate()}
+                </div>
+
+                <Badge className="px-1.5 py-0">{cellEntries.length}</Badge>
+              </div>
+
+              <div className="space-y-1">
+                {cellEntries.map((entry) => (
+                  <div key={entry.id} className="rounded-lg bg-slate-50 p-1 text-[9px] text-slate-700 lg:p-1.5 lg:text-[10px]">
+                    <div className="font-semibold text-slate-900">
+                      {entry.startTime}
+                    </div>
+                    <div className="whitespace-pre-wrap break-words leading-tight">
+                      {entry.companyName}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </CardContent>
+  </Card>
+);
+
+const renderSectionMobileCards = (
   columns: string[],
   rows: Record<string, DabsRowItem[]>
 ) => (
@@ -4802,115 +7163,71 @@ const posY = adjustedPosition?.y ?? marker.y;
       const row = list.filter((item) => item.time === time);
       const gate1 = row.filter((item) => item.gate === "1");
       const gate7 = row.filter((item) => item.gate === "7");
+      const isYellow = (item: DabsRowItem) => item.workerOnCargo && item.cargoHeight1m;
 
       return (
         <MobileListCard key={time} title={`${time}시`}>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-4">
             <div>
-              <div className="mb-2 text-xs font-semibold text-slate-500">1게이트</div>
-
+              <div className="mb-2 text-2xl font-semibold text-slate-500">1게이트</div>
               {gate1.length === 0 ? (
                 <div className="text-slate-400">입력 없음</div>
               ) : (
                 gate1.map((item) => (
-                  <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3">
+                  <div key={item.id} className={cn("mb-2 rounded-xl p-3", isYellow(item) ? "bg-yellow-100 border border-yellow-300" : "bg-slate-50")}>
                     <div className="text-xs font-medium text-slate-500">{item.company}</div>
                     <div className="mt-1 text-sm">자재명: {item.material}</div>
-                    <div className="text-sm">차종: {item.vehicle}</div>
-
-                    <div className="mt-1 flex items-start justify-between gap-2 text-sm">
-                      <span>하역장소: {item.location}</span>
-
-                      {!isCapturingImage && (
-                        <div className="flex shrink-0 gap-1">
-                          {canAdminEditDabsItem && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setEditMaterialPopup({
-                                  open: true,
-                                  itemId: item.id,
-                                  gate: item.gate || "",
-                                  time: item.time || "",
-                                  company: item.company || "",
-                                  material: item.material || "",
-                                  vehicle: item.vehicle || "",
-                                  location: item.location || "",
-                                })
-                              }
-                              className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
-                            >
-                              수정
-                            </button>
-                          )}
-
-                          {canDeleteOwnItem(item) && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteDabsItem(item.id)}
-                              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <div className="text-sm">차종: {item.vehicle}{item.vehicleCount ? ` (${item.vehicleCount}대)` : ""}</div>
+                    <div className="text-sm">하역장소: {item.location}</div>
+                    {(item.manager || item.phone) && (
+                      <div className="text-sm">
+                        {item.manager && `담당자: ${item.manager}`}
+                        {item.manager && item.phone && " / "}
+                        {item.phone && `연락처: ${item.phone}`}
+                      </div>
+                    )}
+                    {!isCapturingImage && (
+                      <div className="mt-2 flex shrink-0 gap-1">
+                        {canAdminEditDabsItem && (
+                          <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", vehicleCount: item.vehicleCount || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "", workerOnCargo: item.workerOnCargo || false, cargoHeight1m: item.cargoHeight1m || false })} className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100">수정</button>
+                        )}
+                        {canDeleteOwnItem(item) && (
+                          <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
             </div>
-
             <div>
-              <div className="mb-2 text-xs font-semibold text-slate-500">7게이트</div>
-
+              <div className="mb-2 text-2xl font-semibold text-slate-500">7게이트</div>
               {gate7.length === 0 ? (
                 <div className="text-slate-400">입력 없음</div>
               ) : (
                 gate7.map((item) => (
-                  <div key={item.id} className="mb-2 rounded-xl bg-slate-50 p-3">
+                  <div key={item.id} className={cn("mb-2 rounded-xl p-3", isYellow(item) ? "bg-yellow-100 border border-yellow-300" : "bg-slate-50")}>
                     <div className="text-xs font-medium text-slate-500">{item.company}</div>
                     <div className="mt-1 text-sm">자재명: {item.material}</div>
-                    <div className="text-sm">차종: {item.vehicle}</div>
-
-                    <div className="mt-1 flex items-start justify-between gap-2 text-sm">
-                      <span>하역장소: {item.location}</span>
-
-                      {!isCapturingImage && (
-                        <div className="flex shrink-0 gap-1">
-                          {canAdminEditDabsItem && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setEditMaterialPopup({
-                                  open: true,
-                                  itemId: item.id,
-                                  gate: item.gate || "",
-                                  time: item.time || "",
-                                  company: item.company || "",
-                                  material: item.material || "",
-                                  vehicle: item.vehicle || "",
-                                  location: item.location || "",
-                                })
-                              }
-                              className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
-                            >
-                              수정
-                            </button>
-                          )}
-
-                          {canDeleteOwnItem(item) && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteDabsItem(item.id)}
-                              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <div className="text-sm">차종: {item.vehicle}{item.vehicleCount ? ` (${item.vehicleCount}대)` : ""}</div>
+                    <div className="text-sm">하역장소: {item.location}</div>
+                    {(item.manager || item.phone) && (
+                      <div className="text-sm">
+                        {item.manager && `담당자: ${item.manager}`}
+                        {item.manager && item.phone && " / "}
+                        {item.phone && `연락처: ${item.phone}`}
+                      </div>
+                    )}
+                    {!isCapturingImage && (
+                      <div className="mt-2 flex shrink-0 gap-1">
+                        {canAdminEditDabsItem && (
+                          <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", vehicleCount: item.vehicleCount || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "", workerOnCargo: item.workerOnCargo || false, cargoHeight1m: item.cargoHeight1m || false })} className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100">수정</button>
+                        )}
+                        {canDeleteOwnItem(item) && (
+                          <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -5270,6 +7587,93 @@ const renderEditPopups = () => (
       </div>
     )}
 
+    {editHighRiskTablePopup.open && (
+      <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+        <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+          <div className="text-base font-semibold text-slate-900">고위험작업 표 수정</div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">동 선택</label>
+            <select
+              value={editHighRiskTablePopup.building}
+              onChange={(e) =>
+                setEditHighRiskTablePopup((prev) => ({ ...prev, building: e.target.value }))
+              }
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="">동 선택</option>
+              {HIGH_RISK_BUILDINGS.filter((building) => building !== ALL_BUILDING_LABEL).map((building) => (
+                <option key={building} value={building}>
+                  {building}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">업체명</label>
+            {(currentUser?.role === "master" || currentUser?.role === "admin") ? (
+              <Input
+                value={editHighRiskTablePopup.company}
+                onChange={(e) =>
+                  setEditHighRiskTablePopup((prev) => ({ ...prev, company: e.target.value }))
+                }
+                placeholder="업체명 입력"
+              />
+            ) : (
+              <Input value={editHighRiskTablePopup.company} disabled />
+            )}
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">작업내용</label>
+            <Input
+              value={editHighRiskTablePopup.content}
+              onChange={(e) =>
+                setEditHighRiskTablePopup((prev) => ({ ...prev, content: e.target.value }))
+              }
+              placeholder="작업내용 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">안전대책</label>
+            <Input
+              value={editHighRiskTablePopup.safety}
+              onChange={(e) =>
+                setEditHighRiskTablePopup((prev) => ({ ...prev, safety: e.target.value }))
+              }
+              placeholder="안전대책 입력"
+            />
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              className="w-full lg:w-auto"
+              onClick={() =>
+                setEditHighRiskTablePopup({
+                  open: false,
+                  itemId: "",
+                  oldBuilding: "",
+                  building: "",
+                  company: "",
+                  content: "",
+                  safety: "",
+                })
+              }
+            >
+              취소
+            </Button>
+
+            <Button className="w-full lg:w-auto" onClick={handleUpdateHighRiskTableItem}>
+              저장
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+
     {editMaterialPopup.open && (
       <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
         <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
@@ -5340,6 +7744,17 @@ const renderEditPopups = () => (
           </div>
 
           <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">대수</label>
+            <Input
+              value={editMaterialPopup.vehicleCount}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, vehicleCount: e.target.value }))
+              }
+              placeholder="대수 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
             <label className="text-xs font-medium text-slate-600">하역장소</label>
             <Input
               value={editMaterialPopup.location}
@@ -5348,6 +7763,61 @@ const renderEditPopups = () => (
               }
               placeholder="하역장소 입력"
             />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">담당자</label>
+            <Input
+              value={editMaterialPopup.manager}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, manager: e.target.value }))
+              }
+              placeholder="담당자 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">연락처</label>
+            <Input
+              value={editMaterialPopup.phone}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, phone: e.target.value }))
+              }
+              placeholder="연락처 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">안전 체크</label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editMaterialPopup.workerOnCargo}
+                  onChange={(e) =>
+                    setEditMaterialPopup((prev) => ({
+                      ...prev,
+                      workerOnCargo: e.target.checked,
+                      cargoHeight1m: e.target.checked ? prev.cargoHeight1m : false,
+                    }))
+                  }
+                  className="h-4 w-4"
+                />
+                화물칸에 근로자가 올라감
+              </label>
+              <label className={cn("flex items-center gap-2 text-sm cursor-pointer", editMaterialPopup.workerOnCargo ? "text-slate-700" : "text-slate-300 cursor-not-allowed")}>
+                <input
+                  type="checkbox"
+                  checked={editMaterialPopup.cargoHeight1m}
+                  disabled={!editMaterialPopup.workerOnCargo}
+                  onChange={(e) =>
+                    setEditMaterialPopup((prev) => ({ ...prev, cargoHeight1m: e.target.checked }))
+                  }
+                  className="h-4 w-4"
+                />
+                화물칸 높이 1m 이상
+              </label>
+            </div>
           </div>
 
           <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
@@ -5363,7 +7833,12 @@ const renderEditPopups = () => (
                   company: "",
                   material: "",
                   vehicle: "",
+                  vehicleCount: "",
                   location: "",
+                  manager: "",
+                  phone: "",
+                  workerOnCargo: false,
+                  cargoHeight1m: false,
                 })
               }
             >
@@ -5475,18 +7950,65 @@ const renderEditPopups = () => (
         </div>
       </div>
     )}
+
+    {manualPopup && (
+      <div
+        className="fixed inset-0 z-[150] flex items-end justify-center bg-black/50 p-3 sm:items-center sm:p-4"
+        onClick={() => setManualPopup(null)}
+      >
+        <div
+          className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-4">
+            <div className="text-base font-semibold text-slate-900">
+              {manualPopup.label} 사용 매뉴얼
+            </div>
+            <button
+              type="button"
+              onClick={() => setManualPopup(null)}
+              className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto bg-slate-50 p-3">
+            <img
+              src={manualPopup.src}
+              alt={`${manualPopup.label} 사용 매뉴얼`}
+              className="mx-auto w-full max-w-full rounded-xl border border-slate-200"
+            />
+          </div>
+
+          <div className="border-t border-slate-200 p-3 text-center text-xs text-slate-500">
+            움짤이 반복 재생됩니다. 화면을 눌러 입력 방법을 따라해보세요.
+          </div>
+        </div>
+      </div>
+    )}
   </>
 );
 
 const renderDabsPage = () => {
     const selectedTabValue = dabsData[selectedDate]?.[activeDabsKey];
-    const isImageTab = activeDabsKey === "highRisk" || activeDabsKey === "equipmentFlow";
+    const isImageTab =
+      activeDabsKey === "highRisk" ||
+      activeDabsKey === "equipmentFlow" ||
+      (activeDabsKey === "buildingDetail" && !!selectedBuildingDetail);
     const isSectionTab = isSectionWorkTabKey(activeDabsKey);
 
 const isMaterialTab = activeDabsKey === "materialsAfter1" || activeDabsKey === "materialsAfter0";
 
 const activeColumns = getDabsColumnsByTabKey(activeDabsKey);
     const sectionRows = getMergedSectionRows(activeDabsKey);
+    const highRiskTableTabValue = dabsData[selectedDate]?.highRiskTable;
+    const highRiskTableStoredRows =
+      typeof highRiskTableTabValue === "object" && highRiskTableTabValue && "rows" in highRiskTableTabValue
+        ? highRiskTableTabValue.rows || {}
+        : {};
+    const highRiskTableRows = getHighRiskTableRows(highRiskTableStoredRows);
+    const highRiskTableEmptyRowCount = Math.max(0, HIGH_RISK_TABLE_MIN_ROWS - highRiskTableRows.length);
     const materialList =
   typeof selectedTabValue === "object" && selectedTabValue && "list" in selectedTabValue
     ? selectedTabValue.list || []
@@ -5602,6 +8124,25 @@ return (
         </div>
       )}
 
+      {imagePopup.targetKey.startsWith("buildingDetail::") && (
+        <div className="mt-4 space-y-2">
+          <label className="text-xs font-medium text-slate-600">시간</label>
+          <select
+            value={imagePopup.time}
+            onChange={(e) =>
+              setImagePopup((prev) => ({ ...prev, time: e.target.value }))
+            }
+            className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+          >
+            {MATERIAL_TIMES.map((time) => (
+              <option key={time} value={time}>
+                {time}시
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {canAdminEditDabsItem && (
         <div className="mt-4 space-y-2">
           <label className="text-xs font-medium text-slate-600">업체명</label>
@@ -5691,19 +8232,349 @@ return (
   ))}
 </div>
             <Card className="border-slate-200 shadow-none">
-              <CardHeader><CardTitle className="text-base">{activeDabsTab.label}</CardTitle></CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between gap-2">
+                <CardTitle className="text-base">{activeDabsTab.label}</CardTitle>
+                {DABS_MANUAL_GIF[activeDabsKey] && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 text-xs"
+                    onClick={() =>
+                      setManualPopup({
+                        src: DABS_MANUAL_GIF[activeDabsKey],
+                        label: activeDabsTab.label,
+                      })
+                    }
+                  >
+                    <HelpCircle className="h-3.5 w-3.5" />
+                    사용 매뉴얼
+                  </Button>
+                )}
+              </CardHeader>
 <CardContent className="space-y-3 p-2 md:p-6">
   <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
   선택 날짜: {formatMonthDay(selectedDate)}
 </div>
-  {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날짜와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && (
+  {activeDabsKey === "highRisk" && (
+    <div className="text-xs font-semibold text-red-600">고위험작업만 입력! 일반작업 입력 금지</div>
+  )}
+  {activeDabsKey === "buildingDetail" && (
+    <div className="text-xs font-semibold text-red-600">상하 동시작업 위험이 있는 작업만 입력!</div>
+  )}
+  {activeDabsKey === "equipmentFlow" && (
+    <div className="text-xs font-semibold text-red-600">믹서트럭/덤프트럭/수목반입만 입력!</div>
+  )}
+  {(activeDabsKey === "archWork" || activeDabsKey === "mepWork" || activeDabsKey === "fireWork") && (
+    <div className="text-xs font-semibold text-red-600">작업장소 정확히 입력!</div>
+  )}
+  {activeDabsKey === "buildingDetail" && (
+    !selectedBuildingDetail ? (
+      <div className="flex flex-col gap-2">
+        {BUILDING_DETAIL_LIST.map((building) => {
+          const buildingDetailBundle = getOverlayBundle(`buildingDetail::${building}`);
+          const hasBuildingDetailData =
+            (buildingDetailBundle.markers && buildingDetailBundle.markers.length > 0) ||
+            (buildingDetailBundle.arrows && buildingDetailBundle.arrows.length > 0);
+          return (
+            <Button
+              key={building}
+              type="button"
+              variant="outline"
+              className={cn(
+                "w-full justify-between",
+                hasBuildingDetailData && "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+              )}
+              onClick={() => setSelectedBuildingDetail(building)}
+            >
+              <span>{building}</span>
+              {hasBuildingDetailData && (
+                <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  입력됨
+                </span>
+              )}
+            </Button>
+          );
+        })}
+      </div>
+    ) : (
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setSelectedBuildingDetail("");
+            setArrowPoints([]);
+            setArrowPreviewPoint(null);
+          }}
+        >
+          ← 목록으로
+        </Button>
+        <div className="text-sm font-semibold text-slate-700">{selectedBuildingDetail} 상세도</div>
+      </div>
+    )
+  )}
+  {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날짜와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "buildingDetail" && selectedBuildingDetail && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">{selectedBuildingDetail} 사진 업로드</label><Input type="file" accept="image/*" onChange={handleBuildingDetailImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 {selectedBuildingDetail}의 동별 상세도에만 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && (
   <div className="text-xs text-slate-500">
-    첫 번째 클릭은 시작점, 두 번째 클릭은 종료점입니다. 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요. 수정 시에도 화살표를 다시 지정한 뒤 상자 위치를 선택합니다.
+    클릭할 때마다 경로에 점이 추가되며 이어서 화살표를 그릴 수 있습니다. 다 그렸으면 아래 &quot;완료&quot; 버튼을 눌러주세요. 이후 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요. 수정 시에도 화살표를 다시 지정한 뒤 상자 위치를 선택합니다.
   </div>
-)}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}<div ref={dabsCaptureRef} className="-mx-2 bg-white md:mx-0">
-  {renderOverlayImage(
-    activeDabsKey === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow,
-    isImageTab
+)}{activeDabsKey === "buildingDetail" && selectedBuildingDetail && (
+  <div className="text-xs text-slate-500">
+    클릭할 때마다 경로에 점이 추가되며 이어서 라인을 그릴 수 있습니다. 다 그렸으면 아래 &quot;완료&quot; 버튼을 눌러주세요. 이후 시간 선택 및 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요. 수정 시에도 라인을 다시 지정한 뒤 상자 위치를 선택합니다.
+  </div>
+)}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}
+
+{activeDabsKey === "equipmentFlow" && (
+  <div className="flex flex-wrap items-center gap-2">
+    <Button
+      type="button"
+      variant={personPlacementMode === "guide" ? "default" : "outline"}
+      size="sm"
+      disabled={!canEditDabs}
+      onClick={() =>
+        setPersonPlacementMode((prev) => (prev === "guide" ? null : "guide"))
+      }
+    >
+      유도자
+    </Button>
+
+    <Button
+      type="button"
+      variant={personPlacementMode === "signal" ? "default" : "outline"}
+      size="sm"
+      disabled={!canEditDabs}
+      onClick={() =>
+        setPersonPlacementMode((prev) => (prev === "signal" ? null : "signal"))
+      }
+    >
+      신호수
+    </Button>
+
+    {personPlacementMode && (
+      <span className="text-xs text-slate-500">
+        {personPlacementMode === "guide" ? "유도자" : "신호수"} 배치 모드입니다. 표시할 위치를 클릭하세요.
+      </span>
+    )}
+
+    {arrowPoints.length > 0 && (
+      <>
+        <Button
+          type="button"
+          size="sm"
+          disabled={arrowPoints.length < 2}
+          onClick={completeEquipmentArrow}
+        >
+          완료
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleUndoLastEquipmentArrowPoint}
+        >
+          마지막 점 취소
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleCancelEquipmentArrowDraw}
+        >
+          다시 그리기
+        </Button>
+
+        <span className="text-xs text-slate-500">
+          화살표 그리는 중 (점 {arrowPoints.length}개)
+        </span>
+      </>
+    )}
+  </div>
+)}
+
+{activeDabsKey === "buildingDetail" && selectedBuildingDetail && (
+  <div className="flex flex-wrap items-center gap-2">
+    {arrowPoints.length > 0 && (
+      <>
+        <Button
+          type="button"
+          size="sm"
+          disabled={arrowPoints.length < 2}
+          onClick={completeEquipmentArrow}
+        >
+          완료
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleUndoLastEquipmentArrowPoint}
+        >
+          마지막 점 취소
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleCancelEquipmentArrowDraw}
+        >
+          다시 그리기
+        </Button>
+
+        <span className="text-xs text-slate-500">
+          라인 그리는 중 (점 {arrowPoints.length}개)
+        </span>
+      </>
+    )}
+  </div>
+)}
+
+{activeDabsKey === "highRisk" && (
+  <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[140px_160px_1fr_1fr_auto] md:items-end">
+    <div className="space-y-2">
+      <label className="text-xs font-medium text-slate-600 md:hidden">동 선택</label>
+      <select
+        value={highRiskTableInput.building}
+        onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, building: e.target.value })}
+        className="h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+      >
+        <option value="">동 선택</option>
+        {HIGH_RISK_BUILDINGS.filter((building) => building !== ALL_BUILDING_LABEL).map((building) => (
+          <option key={building} value={building}>
+            {building}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    {(currentUser?.role === "master" || currentUser?.role === "admin") ? (
+      <Input
+        value={highRiskTableInput.company}
+        onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, company: e.target.value })}
+        placeholder="업체명 입력"
+      />
+    ) : (
+      <Input value={currentUser?.companyName || ""} disabled placeholder="업체명" />
+    )}
+
+    <Input
+      value={highRiskTableInput.content}
+      onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, content: e.target.value })}
+      placeholder="작업내용 입력"
+    />
+
+    <Input
+      value={highRiskTableInput.safety}
+      onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, safety: e.target.value })}
+      placeholder="안전대책 입력"
+    />
+
+    <Button onClick={handleAddHighRiskTableItem} disabled={!canEditDabs} className="w-full md:w-auto">
+      추가
+    </Button>
+  </div>
+)}
+
+<div ref={dabsCaptureRef} className="-mx-2 bg-white md:mx-0">
+  {activeDabsKey === "highRisk" ? (
+    <div className="flex flex-col gap-3">
+      <div className="w-full">
+        {renderOverlayImage(dabsImages?.highRisk, isImageTab)}
+      </div>
+
+      <div className="w-full">
+        <div className="overflow-x-auto rounded-xl border border-black bg-white md:rounded-2xl">
+          <table className="w-full table-fixed border-collapse text-[22px] md:text-2xl">
+            <colgroup>
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "40%" }} />
+              <col style={{ width: "40%" }} />
+            </colgroup>
+
+            <thead>
+              <tr className="bg-slate-100 text-slate-700">
+                <th className="border border-black px-1 py-1 text-center">위치</th>
+                <th className="border border-black px-1 py-1 text-center">업체명</th>
+                <th className="border border-black px-1 py-1 text-center">작업내용</th>
+                <th className="border border-black px-1 py-1 text-center">안전대책</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {highRiskTableRows.map((item) => (
+                <tr key={item.id}>
+                  <td className="border border-black px-1 py-1 align-top break-all">{item.building}</td>
+                  <td className="border border-black px-1 py-1 align-top break-all">{item.company}</td>
+                  <td className="border border-black px-1 py-1 align-top whitespace-pre-wrap break-all">
+                    {item.content}
+                  </td>
+                  <td className="border border-black px-1 py-1 align-top whitespace-pre-wrap break-all">
+                    <div className="flex items-start justify-between gap-1">
+                      <span className="block w-full whitespace-pre-wrap break-all">{item.safety}</span>
+
+                      {!isCapturingImage && canManageHighRiskTableItem(item) && (
+                        <div className="flex shrink-0 flex-col items-end gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditHighRiskTablePopup({
+                                open: true,
+                                itemId: item.id,
+                                oldBuilding: item.building,
+                                building: item.building,
+                                company: item.company || "",
+                                content: item.content || "",
+                                safety: item.safety || "",
+                              })
+                            }
+                            className="rounded-full border border-slate-300 px-1 text-[10px] leading-4 text-slate-500 hover:bg-slate-100"
+                            title="수정"
+                          >
+                            수정
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHighRiskTableItem(item.id, item.building)}
+                            className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                            title="삭제"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+
+              {Array.from({ length: highRiskTableEmptyRowCount }).map((_, index) => (
+                <tr key={`highrisk-empty-${index}`}>
+                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  ) : activeDabsKey === "buildingDetail" ? (
+    renderOverlayImage(
+      buildingDetailImages?.[selectedBuildingDetail],
+      isImageTab,
+      `buildingDetail::${selectedBuildingDetail}`
+    )
+  ) : (
+    renderOverlayImage(dabsImages?.equipmentFlow, isImageTab)
   )}
 </div></>}
                 {isSectionTab && <>
@@ -5838,9 +8709,9 @@ return (
       
     >
       <colgroup>
-  <col style={{ width: "9%" }} />
-  <col style={{ width: "18%" }} />
-  <col />
+  <col style={{ width: "13%" }} />
+  <col style={{ width: "27%" }} />
+  <col style={{ width: "60%" }} />
 </colgroup>
 
       <thead>
@@ -5948,124 +8819,232 @@ return (
     </table>
   </div>
 </div></>}
-                {isMaterialTab && <><div className="grid gap-3 md:grid-cols-7">
-  <select
-    value={materialsInput.gate}
-    onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })}
-    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
-  >
-    <option value="1">1게이트</option>
-    <option value="7">7게이트</option>
-  </select>
+                {isMaterialTab && <><div className="space-y-3">
+  <div className="grid gap-2 md:grid-cols-[120px_100px_160px_1fr_1fr_70px_1fr_1fr_1fr]">
+    <select
+      value={materialsInput.gate}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })}
+      className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+    >
+      <option value="1">1게이트</option>
+      <option value="7">7게이트</option>
+    </select>
 
-  <select
-    value={materialsInput.time}
-    onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })}
-    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
-  >
-    {MATERIAL_TIMES.map((time) => (
-      <option key={time} value={time}>
-        {time}시
-      </option>
-    ))}
-  </select>
+    <select
+      value={materialsInput.time}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })}
+      className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+    >
+      {MATERIAL_TIMES.map((time) => (
+        <option key={time} value={time}>{time}시</option>
+      ))}
+    </select>
 
-  {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+    {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+      <Input
+        value={materialsInput.company}
+        onChange={(e) => setMaterialsInput({ ...materialsInput, company: e.target.value })}
+        placeholder="업체명"
+      />
+    )}
+
     <Input
-      value={materialsInput.company}
-      onChange={(e) => setMaterialsInput({ ...materialsInput, company: e.target.value })}
-      placeholder="업체명"
+      value={materialsInput.material}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })}
+      placeholder="자재명"
     />
-  )}
 
-  <Input
-    value={materialsInput.material}
-    onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })}
-    placeholder="자재명"
-  />
+    <Input
+      value={materialsInput.vehicle}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })}
+      placeholder="차종"
+    />
 
-  <Input
-    value={materialsInput.vehicle}
-    onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })}
-    placeholder="차종"
-  />
+    <Input
+      value={materialsInput.vehicleCount}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, vehicleCount: e.target.value })}
+      placeholder="대수"
+    />
 
-  <Input
-    value={materialsInput.location}
-    onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })}
-    placeholder="하역장소"
-  />
+    <Input
+      value={materialsInput.location}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })}
+      placeholder="하역장소"
+    />
 
-  <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="w-full md:w-auto">
-    추가
-  </Button>
+    <Input
+      value={materialsInput.manager}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, manager: e.target.value })}
+      placeholder="담당자"
+    />
+
+    <Input
+      value={materialsInput.phone}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, phone: e.target.value })}
+      placeholder="연락처"
+    />
+  </div>
+
+  <div className="flex flex-wrap items-center gap-4">
+    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={materialsInput.workerOnCargo}
+        onChange={(e) =>
+          setMaterialsInput({
+            ...materialsInput,
+            workerOnCargo: e.target.checked,
+            cargoHeight1m: e.target.checked ? materialsInput.cargoHeight1m : false,
+          })
+        }
+        className="h-4 w-4"
+      />
+      화물칸에 근로자가 올라감
+    </label>
+
+    <label className={cn("flex items-center gap-2 text-sm select-none", materialsInput.workerOnCargo ? "text-slate-700 cursor-pointer" : "text-slate-300 cursor-not-allowed")}>
+      <input
+        type="checkbox"
+        checked={materialsInput.cargoHeight1m}
+        disabled={!materialsInput.workerOnCargo}
+        onChange={(e) =>
+          setMaterialsInput({ ...materialsInput, cargoHeight1m: e.target.checked })
+        }
+        className="h-4 w-4"
+      />
+      화물칸 높이 1m 이상
+    </label>
+
+    <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="ml-auto">
+      추가
+    </Button>
+  </div>
 </div><div ref={dabsCaptureRef} className="bg-white">
   {renderMaterialsMobileCards(materialList)}
-  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block"><table className={TABLE_BASE_CLASS}><thead>
-  <tr className="bg-slate-100 text-slate-700">
-    <th rowSpan={2} className="w-[8%] border border-black px-2 py-2 text-left">시간</th>
-    <th colSpan={4} className="border border-black px-2 py-2 text-center">1게이트</th>
-    <th colSpan={4} className="border border-black px-2 py-2 text-center">7게이트</th>
-  </tr>
-  <tr className="bg-slate-100 text-slate-700">
-    <th className="w-[9%] border border-black px-2 py-2 text-left">업체명</th>
-    <th className="w-[10%] border border-black px-2 py-2 text-left">자재명</th>
-    <th className="w-[8%] border border-black px-2 py-2 text-left">차종</th>
-    <th className="w-[13%] border border-black px-2 py-2 text-left">하역장소</th>
-    <th className="w-[9%] border border-black px-2 py-2 text-left">업체명</th>
-    <th className="w-[10%] border border-black px-2 py-2 text-left">자재명</th>
-    <th className="w-[8%] border border-black px-2 py-2 text-left">차종</th>
-    <th className="w-[13%] border border-black px-2 py-2 text-left">하역장소</th>
-  </tr>
-</thead><tbody>{MATERIAL_TIMES.map((time) => { const row = materialList.filter((item) => item.time === time); const gate1 = row.filter((item) => item.gate === "1"); const gate7 = row.filter((item) => item.gate === "7"); const renderCell = (items: DabsRowItem[], field: keyof DabsRowItem) =>
-  items.map((item, index) => (
-    <div
-      key={`${field}-${item.id}`}
-      className={cn(
-        "mb-2 flex items-center justify-between gap-1",
-        dottedRow(index)
-      )}
-    >
-      <span className="whitespace-pre-wrap break-all leading-relaxed">
-        {String(item[field] || "")}
-      </span>
+  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block">
+    <table className={TABLE_BASE_CLASS}>
+      <colgroup>
+        <col style={{ width: "6%" }} />
+        <col style={{ width: "7%" }} />
+        <col style={{ width: "11%" }} />
+        <col style={{ width: "9%" }} />
+        <col style={{ width: "11%" }} />
+        <col style={{ width: "6%" }} />
+        <col style={{ width: "12%" }} />
+        <col style={{ width: "10%" }} />
+        <col style={{ width: "28%" }} />
+      </colgroup>
+      <thead>
+        <tr className="bg-slate-100 text-slate-700">
+          <th className="border border-black px-2 py-2 text-left">시간</th>
+          <th className="border border-black px-2 py-2 text-left">게이트</th>
+          <th className="border border-black px-2 py-2 text-left">업체명</th>
+          <th className="border border-black px-2 py-2 text-left">자재명</th>
+          <th className="border border-black px-2 py-2 text-left">차종</th>
+          <th className="border border-black px-2 py-2 text-left">대수</th>
+          <th className="border border-black px-2 py-2 text-left">하역장소</th>
+          <th className="border border-black px-2 py-2 text-left">담당자</th>
+          <th className="border border-black px-2 py-2 text-left">연락처</th>
+        </tr>
+      </thead>
+      <tbody>
+        {MATERIAL_TIMES.map((time) => {
+          const row = materialList.filter((item) => item.time === time);
+          const gate1 = row.filter((item) => item.gate === "1");
+          const gate7 = row.filter((item) => item.gate === "7");
 
-      {field === "location" && !isCapturingImage && (
-        <div className="flex shrink-0 gap-1">
-          {canAdminEditDabsItem && (
-            <button
-              type="button"
-              onClick={() =>
-                setEditMaterialPopup({
-                  open: true,
-                  itemId: item.id,
-                  gate: item.gate || "",
-                  time: item.time || "",
-                  company: item.company || "",
-                  material: item.material || "",
-                  vehicle: item.vehicle || "",
-                  location: item.location || "",
-                })
-              }
-              className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-            >
-              수정
-            </button>
-          )}
+          const isYellow = (item: DabsRowItem) => item.workerOnCargo && item.cargoHeight1m;
 
-          {canDeleteOwnItem(item) && (
-            <button
-              type="button"
-              onClick={() => handleDeleteDabsItem(item.id)}
-              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  )); return <tr key={time}><td className="border border-black px-3 py-2 font-medium">{time}시</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "company")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "material")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "vehicle")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate1, "location")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "company")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "material")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "vehicle")}</td><td className="border border-black px-3 py-2 align-top">{renderCell(gate7, "location")}</td></tr>; })}</tbody></table></div>
+          const actionBtns = (item: DabsRowItem) => !isCapturingImage ? (
+            <div className="flex shrink-0 gap-1">
+              {canAdminEditDabsItem && (
+                <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", vehicleCount: item.vehicleCount || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "", workerOnCargo: item.workerOnCargo || false, cargoHeight1m: item.cargoHeight1m || false })} className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100">수정</button>
+              )}
+              {canDeleteOwnItem(item) && (
+                <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>
+              )}
+            </div>
+          ) : null;
+
+          // 시간별로 표시할 총 행 수 계산 (각 게이트 최소 1행씩)
+          const gate1Rows = Math.max(gate1.length, 1);
+          const gate7Rows = Math.max(gate7.length, 1);
+          const totalRows = gate1Rows + gate7Rows;
+
+          const renderDataRow = (item: DabsRowItem) => (
+            <>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.company}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.material}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicle}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicleCount}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.location}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.manager || ""}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>
+                <div className="flex items-start justify-between gap-1">
+                  <span>{item.phone || ""}</span>
+                  {actionBtns(item)}
+                </div>
+              </td>
+            </>
+          );
+
+          const emptyDataCells = (
+            <>
+              <td colSpan={7} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>
+            </>
+          );
+
+          // 각 게이트의 행들을 생성
+          const gate1RowEls: React.ReactNode[] = gate1.length === 0
+            ? [<React.Fragment key="g1-empty">{emptyDataCells}</React.Fragment>]
+            : gate1.map((item) => <React.Fragment key={item.id}>{renderDataRow(item)}</React.Fragment>);
+
+          const gate7RowEls: React.ReactNode[] = gate7.length === 0
+            ? [<React.Fragment key="g7-empty">{emptyDataCells}</React.Fragment>]
+            : gate7.map((item) => <React.Fragment key={item.id}>{renderDataRow(item)}</React.Fragment>);
+
+          const rows: React.ReactNode[] = [];
+
+          // 1게이트 행들
+          gate1RowEls.forEach((cells, idx) => {
+            const item = gate1[idx];
+            rows.push(
+              <tr key={`${time}-g1-${idx}`} className={item && isYellow(item) ? "bg-yellow-100" : ""}>
+                {idx === 0 && (
+                  <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">
+                    {time}시
+                  </td>
+                )}
+                {idx === 0 && (
+                  <td rowSpan={gate1Rows} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">
+                    1게이트
+                  </td>
+                )}
+                {cells}
+              </tr>
+            );
+          });
+
+          // 7게이트 행들
+          gate7RowEls.forEach((cells, idx) => {
+            const item = gate7[idx];
+            rows.push(
+              <tr key={`${time}-g7-${idx}`} className={item && isYellow(item) ? "bg-yellow-100" : ""}>
+                {idx === 0 && (
+                  <td rowSpan={gate7Rows} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">
+                    7게이트
+                  </td>
+                )}
+                {cells}
+              </tr>
+            );
+          });
+
+          return <React.Fragment key={time}>{rows}</React.Fragment>;
+        })}
+      </tbody>
+    </table>
+  </div>
 </div></>}
                 {!isImageTab && !isSectionTab && !isMaterialTab && <><TextArea value={dabsDraft} onChange={(e) => setDabsDraft(e.target.value)} placeholder="회의 내용, 작업사항, 확인사항 등을 입력하세요." /><div className="flex justify-end"><Button onClick={handleSaveDabsText} disabled={!canEditDabs} className="w-full lg:w-auto">저장</Button></div></>}
                 {dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
@@ -6180,73 +9159,36 @@ const renderPortfolioInputPanel = () => {
       )}
 
       {isMaterialTab && (
-        <div className="grid gap-2 md:grid-cols-[100px_100px_140px_1fr_1fr_1fr_auto]">
-          <select
-            value={materialsInput.gate}
-            onChange={(e) =>
-              setMaterialsInput({ ...materialsInput, gate: e.target.value })
-            }
-            className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm"
-          >
-            <option value="1">1게이트</option>
-            <option value="7">7게이트</option>
-          </select>
-
-          <select
-            value={materialsInput.time}
-            onChange={(e) =>
-              setMaterialsInput({ ...materialsInput, time: e.target.value })
-            }
-            className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm"
-          >
-            {MATERIAL_TIMES.map((time) => (
-              <option key={time} value={time}>
-                {time}시
-              </option>
-            ))}
-          </select>
-
-          {(currentUser?.role === "master" || currentUser?.role === "admin") && (
-            <Input
-              value={materialsInput.company}
-              onChange={(e) =>
-                setMaterialsInput({ ...materialsInput, company: e.target.value })
-              }
-              placeholder="업체명"
-              className="h-9"
-            />
-          )}
-
-          <Input
-            value={materialsInput.material}
-            onChange={(e) =>
-              setMaterialsInput({ ...materialsInput, material: e.target.value })
-            }
-            placeholder="자재명"
-            className="h-9"
-          />
-
-          <Input
-            value={materialsInput.vehicle}
-            onChange={(e) =>
-              setMaterialsInput({ ...materialsInput, vehicle: e.target.value })
-            }
-            placeholder="차종"
-            className="h-9"
-          />
-
-          <Input
-            value={materialsInput.location}
-            onChange={(e) =>
-              setMaterialsInput({ ...materialsInput, location: e.target.value })
-            }
-            placeholder="하역장소"
-            className="h-9"
-          />
-
-          <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="h-9">
-            추가
-          </Button>
+        <div className="space-y-2">
+          <div className="grid gap-2 md:grid-cols-[100px_100px_140px_1fr_1fr_70px_1fr_1fr_1fr]">
+            <select value={materialsInput.gate} onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })} className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm">
+              <option value="1">1게이트</option>
+              <option value="7">7게이트</option>
+            </select>
+            <select value={materialsInput.time} onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })} className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm">
+              {MATERIAL_TIMES.map((time) => (<option key={time} value={time}>{time}시</option>))}
+            </select>
+            {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+              <Input value={materialsInput.company} onChange={(e) => setMaterialsInput({ ...materialsInput, company: e.target.value })} placeholder="업체명" className="h-9" />
+            )}
+            <Input value={materialsInput.material} onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })} placeholder="자재명" className="h-9" />
+            <Input value={materialsInput.vehicle} onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })} placeholder="차종" className="h-9" />
+            <Input value={materialsInput.vehicleCount} onChange={(e) => setMaterialsInput({ ...materialsInput, vehicleCount: e.target.value })} placeholder="대수" className="h-9" />
+            <Input value={materialsInput.location} onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })} placeholder="하역장소" className="h-9" />
+            <Input value={materialsInput.manager} onChange={(e) => setMaterialsInput({ ...materialsInput, manager: e.target.value })} placeholder="담당자" className="h-9" />
+            <Input value={materialsInput.phone} onChange={(e) => setMaterialsInput({ ...materialsInput, phone: e.target.value })} placeholder="연락처" className="h-9" />
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+              <input type="checkbox" checked={materialsInput.workerOnCargo} onChange={(e) => setMaterialsInput({ ...materialsInput, workerOnCargo: e.target.checked, cargoHeight1m: e.target.checked ? materialsInput.cargoHeight1m : false })} className="h-3.5 w-3.5" />
+              화물칸에 근로자가 올라감
+            </label>
+            <label className={cn("flex items-center gap-2 text-xs select-none", materialsInput.workerOnCargo ? "text-slate-700 cursor-pointer" : "text-slate-300 cursor-not-allowed")}>
+              <input type="checkbox" checked={materialsInput.cargoHeight1m} disabled={!materialsInput.workerOnCargo} onChange={(e) => setMaterialsInput({ ...materialsInput, cargoHeight1m: e.target.checked })} className="h-3.5 w-3.5" />
+              화물칸 높이 1m 이상
+            </label>
+            <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="h-9 ml-auto">추가</Button>
+          </div>
         </div>
       )}
 
@@ -6321,15 +9263,15 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[], title: s
   const rows = getMergedSectionRows(tabKey);
 
   return (
-    <div className="flex h-full w-full items-center justify-center overflow-hidden p-1">
-  <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[17px] xl:text-[18px]">
+    <div className="flex h-full w-full items-start justify-center overflow-auto p-1">
+  <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[26px] xl:text-[27px]">
   <caption className="caption-top pb-1 text-left font-bold text-slate-900">
     {title}
   </caption>
         <colgroup>
-  <col style={{ width: "9%" }} />
-  <col style={{ width: "11%" }} />
-  <col />
+  <col style={{ width: "13%" }} />
+  <col style={{ width: "27%" }} />
+  <col style={{ width: "60%" }} />
 </colgroup>
 
         <thead>
@@ -6419,89 +9361,118 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
       ? tabValue.list || []
       : [];
 
+  const isYellow = (item: DabsRowItem) => item.workerOnCargo && item.cargoHeight1m;
+
   return (
-    <div className="flex h-full w-full items-start justify-center overflow-auto p-6">
-      <table className="w-[88vw] table-fixed border-collapse bg-white text-[20px]">
-  <caption className="caption-top pb-1 text-left font-bold text-slate-900">
-    {title}
-  </caption>
+    <div className="flex h-full w-full items-start justify-center overflow-auto p-4">
+      <table className="w-[96vw] table-fixed border-collapse bg-white text-[26px] xl:text-[27px]">
+        <caption className="caption-top pb-1 text-left font-bold text-slate-900">
+          {title}
+        </caption>
+        <colgroup>
+          <col style={{ width: "5%" }} />
+          <col style={{ width: "6%" }} />
+          <col style={{ width: "11%" }} />
+          <col style={{ width: "9%" }} />
+          <col style={{ width: "11%" }} />
+          <col style={{ width: "6%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "30%" }} />
+        </colgroup>
         <thead>
           <tr className="bg-slate-100 text-slate-800">
-            <th rowSpan={2} className="w-[8%] border border-black px-3 py-3 text-left">
-              시간
-            </th>
-            <th colSpan={4} className="border border-black px-3 py-3 text-center">
-              1게이트
-            </th>
-            <th colSpan={4} className="border border-black px-3 py-3 text-center">
-              7게이트
-            </th>
-          </tr>
-          <tr className="bg-slate-100 text-slate-800">
-            <th className="border border-black px-3 py-3 text-left">업체명</th>
-            <th className="border border-black px-3 py-3 text-left">자재명</th>
-            <th className="border border-black px-3 py-3 text-left">차종</th>
-            <th className="border border-black px-3 py-3 text-left">하역장소</th>
-            <th className="border border-black px-3 py-3 text-left">업체명</th>
-            <th className="border border-black px-3 py-3 text-left">자재명</th>
-            <th className="border border-black px-3 py-3 text-left">차종</th>
-            <th className="border border-black px-3 py-3 text-left">하역장소</th>
+            <th className="border border-black px-2 py-2 text-left">시간</th>
+            <th className="border border-black px-2 py-2 text-left">게이트</th>
+            <th className="border border-black px-2 py-2 text-left">업체명</th>
+            <th className="border border-black px-2 py-2 text-left">자재명</th>
+            <th className="border border-black px-2 py-2 text-left">차종</th>
+            <th className="border border-black px-2 py-2 text-left">대수</th>
+            <th className="border border-black px-2 py-2 text-left">하역장소</th>
+            <th className="border border-black px-2 py-2 text-left">담당자</th>
+            <th className="border border-black px-2 py-2 text-left">연락처</th>
           </tr>
         </thead>
-
         <tbody>
           {MATERIAL_TIMES.map((time) => {
             const row = list.filter((item) => item.time === time);
             const gate1 = row.filter((item) => item.gate === "1");
             const gate7 = row.filter((item) => item.gate === "7");
 
-            const renderCell = (items: DabsRowItem[], field: keyof DabsRowItem) =>
-  items.length === 0
-    ? "-"
-    : items.map((item, index) => (
-        <div
-          key={`${field}-${item.id}`}
-          className={cn(
-            "whitespace-pre-wrap break-all leading-relaxed",
-            index > 0 && "mt-2 border-t border-dashed border-black pt-2"
-          )}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <span>{String(item[field] || "")}</span>
+            const gate1Rows = Math.max(gate1.length, 1);
+            const gate7Rows = Math.max(gate7.length, 1);
+            const totalRows = gate1Rows + gate7Rows;
 
-            {field === "location" &&
+            const renderActionBtns = (item: DabsRowItem) =>
               renderPortfolioActionButtons(
                 item,
-                () =>
-                  setEditMaterialPopup({
-                    open: true,
-                    itemId: item.id,
-                    gate: item.gate || "",
-                    time: item.time || "",
-                    company: item.company || "",
-                    material: item.material || "",
-                    vehicle: item.vehicle || "",
-                    location: item.location || "",
-                  }),
+                () => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", vehicleCount: item.vehicleCount || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "", workerOnCargo: item.workerOnCargo || false, cargoHeight1m: item.cargoHeight1m || false }),
                 () => handleDeleteDabsItem(item.id)
-              )}
-          </div>
-        </div>
-      ));
+              );
 
-            return (
-              <tr key={time}>
-                <td className="border border-black px-3 py-3 font-semibold">{time}시</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "company")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "material")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "vehicle")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate1, "location")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "company")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "material")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "vehicle")}</td>
-                <td className="border border-black px-3 py-3 align-top">{renderCell(gate7, "location")}</td>
-              </tr>
+            const renderDataCells = (item: DabsRowItem) => (
+              <>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.company}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.material}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicle}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicleCount}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.location}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.manager || ""}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>
+                  <div className="flex items-start justify-between gap-1">
+                    <span>{item.phone || ""}</span>
+                    {renderActionBtns(item)}
+                  </div>
+                </td>
+              </>
             );
+
+            const emptyDataCells = <td colSpan={7} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>;
+
+            const rows: React.ReactNode[] = [];
+
+            // 1게이트 행들
+            if (gate1.length === 0) {
+              rows.push(
+                <tr key={`${time}-g1-empty`}>
+                  <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>
+                  <td className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">1게이트</td>
+                  {emptyDataCells}
+                </tr>
+              );
+            } else {
+              gate1.forEach((item, idx) => {
+                rows.push(
+                  <tr key={item.id} className={isYellow(item) ? "bg-yellow-100" : ""}>
+                    {idx === 0 && <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>}
+                    {idx === 0 && <td rowSpan={gate1.length} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">1게이트</td>}
+                    {renderDataCells(item)}
+                  </tr>
+                );
+              });
+            }
+
+            // 7게이트 행들
+            if (gate7.length === 0) {
+              rows.push(
+                <tr key={`${time}-g7-empty`}>
+                  {gate1.length === 0 && <>{/* 시간 셀은 위에서 rowspan으로 이미 처리 */}</>}
+                  <td className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">7게이트</td>
+                  {emptyDataCells}
+                </tr>
+              );
+            } else {
+              gate7.forEach((item, idx) => {
+                rows.push(
+                  <tr key={item.id} className={isYellow(item) ? "bg-yellow-100" : ""}>
+                    {idx === 0 && <td rowSpan={gate7.length} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">7게이트</td>}
+                    {renderDataCells(item)}
+                  </tr>
+                );
+              });
+            }
+
+            return <React.Fragment key={time}>{rows}</React.Fragment>;
           })}
         </tbody>
       </table>
@@ -6524,8 +9495,8 @@ const renderPortfolioSoloWorkerTable = (
   );
 
   return (
-    <div className="flex h-full w-full items-center justify-center overflow-hidden p-1">
-      <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[17px] xl:text-[18px]">
+    <div className="flex h-full w-full items-start justify-center overflow-auto p-1">
+      <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[26px] xl:text-[27px]">
         <caption className="caption-top pb-1 text-left font-bold text-slate-900">
           {title}
         </caption>
@@ -6687,13 +9658,62 @@ const renderPortfolioPage = () => {
 <div className="min-h-0 flex-1 bg-white text-slate-900">
         {slide.type === "overlay" && (
   <div className="flex h-full w-full items-center justify-center overflow-hidden bg-white p-4">
-    <div className="h-full w-full origin-center scale-90">
-      {renderOverlayImage(
-        slide.key === "highRisk" ? dabsImages?.highRisk : dabsImages?.equipmentFlow,
-        true,
-        slide.key
-      )}
+    {renderOverlayImage(dabsImages?.equipmentFlow, true, slide.key, true, true)}
+  </div>
+)}
+
+        {slide.type === "overlayWithTable" && (
+  <div className="flex h-full w-full items-center justify-center overflow-hidden bg-white p-4">
+  <div className="flex w-full max-h-full flex-col gap-3 lg:flex-row lg:items-stretch">
+    <div className="lg:w-3/5">
+      {renderOverlayImage(dabsImages?.highRisk, true, "highRisk", false, true)}
     </div>
+
+    <div className="flex min-h-0 flex-col lg:w-2/5">
+      <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-black">
+        <table className="w-full table-fixed border-collapse text-lg">
+          <colgroup>
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "40%" }} />
+            <col style={{ width: "40%" }} />
+          </colgroup>
+
+          <thead>
+            <tr className="bg-slate-100 text-slate-700">
+              <th className="border border-black px-3 py-2 text-center">위치</th>
+              <th className="border border-black px-3 py-2 text-center">업체명</th>
+              <th className="border border-black px-3 py-2 text-center">작업내용</th>
+              <th className="border border-black px-3 py-2 text-center">안전대책</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {(slide.highRiskTableItems || []).length === 0 ? (
+              <tr>
+                <td colSpan={4} className="border border-black px-3 py-4 text-center text-slate-300">
+                  입력된 내용이 없습니다.
+                </td>
+              </tr>
+            ) : (
+              (slide.highRiskTableItems || []).map((item) => (
+                <tr key={item.id}>
+                  <td className="border border-black px-3 py-2 align-top break-all">{item.building}</td>
+                  <td className="border border-black px-3 py-2 align-top break-all">{item.company}</td>
+                  <td className="border border-black px-3 py-2 align-top whitespace-pre-wrap break-all">
+                    {item.content}
+                  </td>
+                  <td className="border border-black px-3 py-2 align-top whitespace-pre-wrap break-all">
+                    {item.safety}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
   </div>
 )}
 
@@ -6733,31 +9753,13 @@ const renderPortfolioPage = () => {
 };
 const renderHeatwavePage = () => {
   const myCompanyName = String(currentUser?.companyName || "").trim();
-  const myStatus = myCompanyName ? getHeatwaveCompanyStatus(myCompanyName) : null;
+  const myStatus = myCompanyName ? getHeatwaveCompanyStatus(myCompanyName, heatwaveDateKey) : null;
 const myImageTarget = myCompanyName ? heatwaveImageSelectedCompanies.includes(myCompanyName) : false;
-const myExcelTarget = myCompanyName ? heatwaveExcelSelectedCompanies.includes(myCompanyName) : false;
-const myComplete =
-  (!myImageTarget ||
-    ((myStatus?.thermoPhotoCount || 0) >= 4 &&
-      (myStatus?.thermoLedgerCount || 0) >= 1)) &&
-  (!myExcelTarget || (myStatus?.breakTimeLedgerCount || 0) >= 1);
+const myComplete = myImageTarget &&
+  (myStatus?.thermoPhotoCount || 0) >= 4 &&
+  (myStatus?.thermoLedgerCount || 0) >= 1;
 
-  const heatSensitiveList = getSoloWorkerRowsByCompany(
-    heatSensitiveRows,
-    heatSensitiveCompanyFilter
-  );
-
-  const heatSensitiveGrouped = heatSensitiveList.reduce(
-    (acc, item) => {
-      const key = item.company || "-";
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(item);
-      return acc;
-    },
-    {} as Record<string, Array<DabsRowItem & { building: string }>>
-  );
-
-  return (
+    return (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
 {renderEditPopups()}
@@ -6771,7 +9773,7 @@ const myComplete =
             혹서기 업로드 현황
           </div>
           <div className="mt-1 text-xs text-slate-500">
-            기준일: {formatMonthDay(selectedDate)}
+            조회 기준일: {formatMonthDay(heatwaveViewDateKey)}
           </div>
         </div>
 
@@ -6788,26 +9790,21 @@ const myComplete =
         <table className="w-full table-fixed border-collapse text-sm">
           <thead>
             <tr className="bg-slate-100 text-slate-700">
-              <th className="w-[22%] border border-black px-3 py-2 text-left">업체명</th>
-<th className="w-[18%] border border-black px-3 py-2 text-left">온습도계 사진</th>
-<th className="w-[20%] border border-black px-3 py-2 text-left">온습도계 관리대장</th>
-<th className="w-[20%] border border-black px-3 py-2 text-left">휴게시간 관리대장</th>
-<th className="border border-black px-3 py-2 text-left">상태</th>
+              <th className="w-[30%] border border-black px-3 py-2 text-left">업체명</th>
+              <th className="w-[25%] border border-black px-3 py-2 text-left">온습도계 사진</th>
+              <th className="w-[25%] border border-black px-3 py-2 text-left">온습도계 관리대장</th>
+              <th className="border border-black px-3 py-2 text-left">상태</th>
             </tr>
           </thead>
 
           <tbody>
-            {Array.from(new Set([...heatwaveImageSelectedCompanies, ...heatwaveExcelSelectedCompanies]))
+            {heatwaveImageSelectedCompanies
   .filter((companyName) => isHeatwaveAdmin || companyName === myCompanyName)
   .sort((a, b) => a.localeCompare(b, "ko"))
   .map((companyName) => {
                 const status = getHeatwaveCompanyStatus(companyName);
                 const imageTarget = heatwaveImageSelectedCompanies.includes(companyName);
-                const excelTarget = heatwaveExcelSelectedCompanies.includes(companyName);
-
-                const complete =
-  (!imageTarget || (status.thermoPhotoCount >= 4 && status.thermoLedgerCount >= 1)) &&
-  (!excelTarget || status.breakTimeLedgerCount >= 1);
+                const complete = imageTarget && status.thermoPhotoCount >= 4 && status.thermoLedgerCount >= 1;
 
                 return (
                   <tr key={companyName}>
@@ -6815,44 +9812,13 @@ const myComplete =
                       {companyName}
                     </td>
 
-                    <td
-  className={cn(
-    "border border-black px-3 py-2 font-semibold",
-    imageTarget && status.thermoPhotoCount >= 4
-      ? "bg-green-100 text-green-700"
-      : imageTarget
-      ? "bg-red-50 text-red-700"
-      : ""
-  )}
->
-  {imageTarget ? `${Math.min(status.thermoPhotoCount, 4)}/4` : "대상 아님"}
-</td>
+                    <td className={cn("border border-black px-3 py-2 font-semibold", imageTarget && status.thermoPhotoCount >= 4 ? "bg-green-100 text-green-700" : imageTarget ? "bg-red-50 text-red-700" : "")}>
+                      {imageTarget ? `${Math.min(status.thermoPhotoCount, 4)}/4` : "대상 아님"}
+                    </td>
 
-<td
-  className={cn(
-    "border border-black px-3 py-2 font-semibold",
-    imageTarget && status.thermoLedgerCount >= 1
-      ? "bg-green-100 text-green-700"
-      : imageTarget
-      ? "bg-red-50 text-red-700"
-      : ""
-  )}
->
-  {imageTarget ? `${Math.min(status.thermoLedgerCount, 1)}/1` : "대상 아님"}
-</td>
-
-<td
-  className={cn(
-    "border border-black px-3 py-2 font-semibold",
-    excelTarget && status.breakTimeLedgerCount >= 1
-      ? "bg-green-100 text-green-700"
-      : excelTarget
-      ? "bg-red-50 text-red-700"
-      : ""
-  )}
->
-  {excelTarget ? `${Math.min(status.breakTimeLedgerCount, 1)}/1` : "대상 아님"}
-</td>
+                    <td className={cn("border border-black px-3 py-2 font-semibold", imageTarget && status.thermoLedgerCount >= 1 ? "bg-green-100 text-green-700" : imageTarget ? "bg-red-50 text-red-700" : "")}>
+                      {imageTarget ? `${Math.min(status.thermoLedgerCount, 1)}/1` : "대상 아님"}
+                    </td>
 
                     <td className="border border-black px-3 py-2 font-semibold">
                       {complete ? "완료" : "미완료"}
@@ -6893,40 +9859,99 @@ const myComplete =
 </div>
         </CardHeader>
 
-        <CardContent className="space-y-5">
+                <CardContent className="space-y-5">
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setHeatwaveTab("upload")}
-              className={cn(
-                "rounded-2xl px-4 py-2 text-sm font-medium transition",
-                heatwaveTab === "upload"
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              )}
-            >
-              혹서기 업로드
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setHeatwaveTab("heatSensitive")}
-              className={cn(
-                "rounded-2xl px-4 py-2 text-sm font-medium transition",
-                heatwaveTab === "heatSensitive"
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              )}
-            >
-              온열질환 민감군
-            </button>
+            {[
+              { key: "upload", label: "혹서기 업로드" },
+              { key: "sensitive", label: "고령자 관리" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setHeatwaveActiveTab(tab.key as typeof heatwaveActiveTab)}
+                className={cn(
+                  "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                  heatwaveActiveTab === tab.key
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
-          {heatwaveTab === "upload" && (
+          {heatwaveActiveTab === "upload" && (
             <>
               <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-                선택 날짜: {formatMonthDay(selectedDate)} · 온습도계 사진 4개, 온습도계 관리대장 1개, 휴게시간 관리대장 1개 업로드
+                조회 날짜: {formatMonthDay(heatwaveViewDateKey)} · 오늘 업로드 기준일: {formatMonthDay(heatwaveDateKey)} · 온습도계 사진 4개, 온습도계 관리대장 1개 업로드
               </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="mb-2 text-xs font-semibold text-slate-600">
+                  혹서기 업로드 조회 날짜
+                </div>
+                <Input
+                  type="date"
+                  value={heatwaveViewDateKey}
+                  onChange={(e) => setHeatwaveViewDateKey(e.target.value || getTodayKey())}
+                  className="max-w-xs"
+                />
+              </div>
+
+              {/* 마스터/관리자 전용: 기간별 다운로드 */}
+              {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+                <Card className="border-slate-200 shadow-none">
+                  <CardHeader>
+                    <CardTitle className="text-base">기간별 파일 다운로드 (관리자·마스터)</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">시작 날짜</label>
+                        <Input type="date" value={heatwaveDownloadStartDate} onChange={(e) => setHeatwaveDownloadStartDate(e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">종료 날짜</label>
+                        <Input type="date" value={heatwaveDownloadEndDate} onChange={(e) => setHeatwaveDownloadEndDate(e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-slate-600">파일 종류 선택</div>
+                      <div className="flex flex-wrap gap-4">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={heatwaveDownloadTypes.thermoPhoto} onChange={(e) => setHeatwaveDownloadTypes((prev) => ({ ...prev, thermoPhoto: e.target.checked }))} className="h-4 w-4" />
+                          온습도계 사진
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={heatwaveDownloadTypes.thermoLedger} onChange={(e) => setHeatwaveDownloadTypes((prev) => ({ ...prev, thermoLedger: e.target.checked }))} className="h-4 w-4" />
+                          온습도계 관리대장
+                        </label>
+                      </div>
+                    </div>
+                    <Button onClick={handleHeatwaveDownload} disabled={heatwaveDownloadLoading} className="w-full md:w-auto">
+                      {heatwaveDownloadLoading ? "다운로드 중..." : "선택 파일 다운로드"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 마스터 전용: 전체 파일 일괄 삭제 */}
+              {currentUser?.role === "master" && (
+                <Card className="border-red-200 shadow-none">
+                  <CardHeader>
+                    <CardTitle className="text-base text-red-700">전체 파일 일괄 삭제 (마스터 전용)</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="rounded-2xl bg-red-50 p-3 text-xs text-red-700">
+                      업로드된 모든 혹서기 파일을 Firebase Storage에서도 완전히 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+                    </div>
+                    <Button variant="outline" onClick={handleHeatwaveDeleteAll} disabled={heatwaveDeleteAllLoading} className="border-red-300 text-red-700 hover:bg-red-50 w-full md:w-auto">
+                      {heatwaveDeleteAllLoading ? "삭제 중..." : "전체 파일 일괄 삭제"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
               <Card className="border-slate-200 shadow-none">
                 <CardHeader>
@@ -6936,18 +9961,13 @@ const myComplete =
                 <CardContent className="space-y-4">
                   {!myCompanyName ? (
                     <div className="text-sm text-slate-500">업체 정보가 없습니다.</div>
-                  ) : !myImageTarget && !myExcelTarget ? (
+                  ) : !myImageTarget ? (
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                      현재 업체는 온습도계/휴게시간 관리대장 업로드 대상 업체로 체크되어 있지 않습니다.
+                      현재 업체는 온습도계 업로드 대상 업체로 체크되어 있지 않습니다.
                     </div>
                   ) : (
                     <>
-  <div
-  className={cn(
-    "grid gap-3",
-    myImageTarget && myExcelTarget ? "md:grid-cols-2" : "md:grid-cols-1"
-  )}
->
+  <div className="grid gap-3 md:grid-cols-1">
   {myImageTarget && (
     <div className="grid gap-3">
       <div className="rounded-2xl border border-slate-200 p-4">
@@ -6979,22 +9999,6 @@ const myComplete =
       </div>
     </div>
   )}
-
-  {myExcelTarget && (
-    <div className="rounded-2xl border border-slate-200 p-4">
-      <div className="text-sm font-semibold text-slate-900">휴게시간 관리대장 업로드</div>
-      <div className="mt-1 text-xs text-slate-500">
-        현재 {myStatus?.breakTimeLedgerCount || 0}/1개
-      </div>
-      <Input
-        type="file"
-        accept=".xls,.xlsx,.pdf,image/*"
-        onChange={(event) => handleHeatwaveUpload(event, "breakTimeLedger")}
-        className="mt-3 h-auto py-2"
-        disabled={(myStatus?.breakTimeLedgerCount || 0) >= 1}
-      />
-    </div>
-  )}
 </div>
                       <div
                         className={cn(
@@ -7020,6 +10024,34 @@ const myComplete =
                 </CardContent>
               </Card>
 
+                                {isHeatwaveAdmin && (
+                  <Card className="border-slate-200 shadow-none">
+                    <CardHeader>
+                      <CardTitle className="text-base">전체 업체 업로드 파일</CardTitle>
+                    </CardHeader>
+
+                    <CardContent className="space-y-3">
+                      <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+                        조회 날짜: {formatMonthDay(heatwaveViewDateKey)}
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {heatwaveImageSelectedCompanies
+                          .slice()
+                          .sort((a, b) => a.localeCompare(b, "ko"))
+                          .map((companyName) => (
+                            <div key={companyName} className="rounded-2xl border border-slate-200 bg-white p-4">
+                              <div className="mb-3 text-sm font-semibold text-slate-900">
+                                {companyName}
+                              </div>
+                              {renderHeatwaveUploadFileList(companyName)}
+                            </div>
+                          ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {canManageHeatwaveCompanies && (
   <Card className="border-slate-200 shadow-none">
     <CardHeader>
@@ -7030,82 +10062,22 @@ const myComplete =
                     <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
                       {approvedCompanyNames.map((companyName) => {
                         const imageChecked = heatwaveImageSelectedCompanies.includes(companyName);
-const excelChecked = heatwaveExcelSelectedCompanies.includes(companyName);
-const checked = imageChecked || excelChecked;
-const status = getHeatwaveCompanyStatus(companyName);
-const thermoPhotoDone = status.thermoPhotoCount >= 4;
-const thermoLedgerDone = status.thermoLedgerCount >= 1;
-const breakTimeDone = status.breakTimeLedgerCount >= 1;
 
                         return (
                           <label
                             key={companyName}
                             className={cn(
                               "flex cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3 text-sm transition",
-                              checked ? "border-slate-900 bg-white" : "border-slate-200 bg-slate-50",
-                              checked && "border-slate-900 bg-white"
+                              imageChecked ? "border-slate-900 bg-white" : "border-slate-200 bg-slate-50"
                             )}
                           >
-                            <span className="flex min-w-0 items-center gap-2">
-                              <span className="truncate font-semibold">{companyName}</span>
-
-<label className="ml-auto flex items-center gap-1 text-xs">
-  <input
-    type="checkbox"
-    checked={imageChecked}
-    onChange={() => handleToggleHeatwaveCompany(companyName, "image")}
-    className="h-4 w-4"
-  />
-  온습도계
-</label>
-
-<label className="flex items-center gap-1 text-xs">
-  <input
-    type="checkbox"
-    checked={excelChecked}
-    onChange={() => handleToggleHeatwaveCompany(companyName, "excel")}
-    className="h-4 w-4"
-  />
-  휴게시간 관리대장
-</label>
-                            </span>
-
-                            {checked && (
-  <div className="flex shrink-0 flex-wrap gap-2 text-xs font-semibold">
-    <span
-      className={cn(
-        "rounded px-2 py-1",
-        thermoPhotoDone
-          ? "bg-green-100 text-green-700"
-          : "bg-red-50 text-red-700"
-      )}
-    >
-      온습도계 사진 {Math.min(status.thermoPhotoCount, 4)}/4
-    </span>
-
-    <span
-      className={cn(
-        "rounded px-2 py-1",
-        thermoLedgerDone
-          ? "bg-green-100 text-green-700"
-          : "bg-red-50 text-red-700"
-      )}
-    >
-      온습도계 관리대장 {Math.min(status.thermoLedgerCount, 1)}/1
-    </span>
-
-    <span
-      className={cn(
-        "rounded px-2 py-1",
-        breakTimeDone
-          ? "bg-green-100 text-green-700"
-          : "bg-red-50 text-red-700"
-      )}
-    >
-      휴게시간 관리대장 {Math.min(status.breakTimeLedgerCount, 1)}/1
-    </span>
-  </div>
-)}
+                            <span className="truncate font-semibold">{companyName}</span>
+                            <input
+                              type="checkbox"
+                              checked={imageChecked}
+                              onChange={() => handleToggleHeatwaveCompany(companyName, "image")}
+                              className="h-4 w-4 shrink-0"
+                            />
                           </label>
                         );
                       })}
@@ -7114,119 +10086,20 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
 </Card>
 )}
 
-              <Card className="border-slate-200 shadow-none">
-                <CardHeader>
-                  <CardTitle className="text-base">업체별 업로드 현황</CardTitle>
-                </CardHeader>
-
-                <CardContent>
-                  <div className="overflow-x-auto rounded-2xl border border-black">
-                    <table className="w-full table-fixed border-collapse text-sm">
-                      <thead>
-                        <tr className="bg-slate-100 text-slate-700">
-                          <th className="w-[22%] border border-black px-3 py-2 text-left">업체명</th>
-<th className="w-[18%] border border-black px-3 py-2 text-left">온습도계 사진</th>
-<th className="w-[20%] border border-black px-3 py-2 text-left">온습도계 관리대장</th>
-<th className="w-[20%] border border-black px-3 py-2 text-left">휴게시간 관리대장</th>
-<th className="border border-black px-3 py-2 text-left">상태</th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {Array.from(new Set([...heatwaveImageSelectedCompanies, ...heatwaveExcelSelectedCompanies]))
-  .filter((companyName) => isHeatwaveAdmin || companyName === myCompanyName)
-  .sort((a, b) => a.localeCompare(b, "ko"))
-  .map((companyName) => {
-                          const status = getHeatwaveCompanyStatus(companyName);
-
-                          return (
-                            <tr key={companyName}>
-  <td className="border border-black px-3 py-2 font-semibold">{companyName}</td>
-
-  <td
-  className={cn(
-    "border border-black px-3 py-2 font-semibold",
-    heatwaveImageSelectedCompanies.includes(companyName) &&
-      status.thermoPhotoCount >= 4
-      ? "bg-green-100 text-green-700"
-      : heatwaveImageSelectedCompanies.includes(companyName)
-      ? "bg-red-50 text-red-700"
-      : ""
-  )}
->
-  {heatwaveImageSelectedCompanies.includes(companyName)
-    ? `${Math.min(status.thermoPhotoCount, 4)}/4`
-    : "대상 아님"}
-</td>
-
-  <td
-  className={cn(
-    "border border-black px-3 py-2 font-semibold",
-    heatwaveImageSelectedCompanies.includes(companyName) &&
-      status.thermoLedgerCount >= 1
-      ? "bg-green-100 text-green-700"
-      : heatwaveImageSelectedCompanies.includes(companyName)
-      ? "bg-red-50 text-red-700"
-      : ""
-  )}
->
-  {heatwaveImageSelectedCompanies.includes(companyName)
-    ? `${Math.min(status.thermoLedgerCount, 1)}/1`
-    : "대상 아님"}
-</td>
-
-  <td
-  className={cn(
-    "border border-black px-3 py-2 font-semibold",
-    heatwaveExcelSelectedCompanies.includes(companyName) &&
-      status.breakTimeLedgerCount >= 1
-      ? "bg-green-100 text-green-700"
-      : heatwaveExcelSelectedCompanies.includes(companyName)
-      ? "bg-red-50 text-red-700"
-      : ""
-  )}
->
-  {heatwaveExcelSelectedCompanies.includes(companyName)
-    ? `${Math.min(status.breakTimeLedgerCount, 1)}/1`
-    : "대상 아님"}
-</td>
-
-  <td className="border border-black px-3 py-2 font-semibold">
-    <div>
-      {(!heatwaveImageSelectedCompanies.includes(companyName) ||
-  (status.thermoPhotoCount >= 4 && status.thermoLedgerCount >= 1)) &&
-(!heatwaveExcelSelectedCompanies.includes(companyName) ||
-  status.breakTimeLedgerCount >= 1)
-  ? "완료"
-  : "미완료"}
-    </div>
-
-    <div className="mt-2">
-      {renderHeatwaveUploadFileList(companyName)}
-    </div>
-  </td>
-</tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-            </>
+                    </>
           )}
 
-          {heatwaveTab === "heatSensitive" && (
+          {heatwaveActiveTab === "sensitive" && (
             <Card className="border-slate-200 shadow-none">
               <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <CardTitle className="text-base">온열질환 민감군</CardTitle>
+                <CardTitle className="text-base">고령자 관리</CardTitle>
 
                 <Button
                   variant="outline"
                   onClick={() =>
                     handleDownloadCaptureImage(
                       heatSensitiveCaptureRef,
-                      `온열질환민감군-${selectedDate}`
+                      `고령자관리-${selectedDate}`
                     )
                   }
                 >
@@ -7239,7 +10112,7 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
                   선택 날짜: {formatMonthDay(selectedDate)}
                 </div>
 
-                <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
+                <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_auto]">
                   <select
                     value={heatSensitiveInput.building}
                     onChange={(e) =>
@@ -7282,34 +10155,7 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
     placeholder="작업 내용 입력"
   />
 
-  <div className="ml-auto w-1/2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-  <div className="font-semibold text-amber-900">민감군 작성 기준</div>
-
-  <div className="mt-1">
-    <span className="font-semibold">건설업신규자</span>
-    {" : "}
-    2주내 건설현장 근무이력 X
-  </div>
-
-  <div>
-    <span className="font-semibold">유질환자</span>
-    {" : "}
-    고혈압 등 개인지병 유질환자, 특정(정신질환)약물 복용자, 과거 온열질환 병력자
-  </div>
-</div>
-</div>
-
-<select
-  value={heatSensitiveInput.elderly}
-                    onChange={(e) =>
-                      setHeatSensitiveInput({ ...heatSensitiveInput, elderly: e.target.value })
-                    }
-                    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
-                  >
-                    <option value="유질환자">유질환자</option>
-<option value="고령자">고령자</option>
-<option value="건설업신규자">건설업신규자</option>
-                  </select>
+                  </div>
 
                   <Button onClick={handleAddHeatSensitive} disabled={!canEditDabs} className="w-full xl:w-auto">
                     추가
@@ -7327,7 +10173,7 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
                     />
                   </div>
                   <div className="text-xs text-slate-500">
-                    민감군 o는 강조 표시되며, 업체별 색상이 자동 적용됩니다.
+                    업체별 색상이 자동 적용됩니다.
                   </div>
                 </div>
 
@@ -7337,7 +10183,7 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
                   <div className="space-y-3 lg:hidden">
                     {heatSensitiveList.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
-                        조건에 맞는 온열질환 민감군이 없습니다.
+                        조건에 맞는 고령자 관리이 없습니다.
                       </div>
                     ) : (
                       heatSensitiveList.map((item) => {
@@ -7374,7 +10220,6 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
                                           company: item.company || "",
                                           name: item.name || "",
                                           content: item.content || "",
-                                          elderly: item.elderly || "x",
                                         })
                                       }
                                       className="rounded-full border border-slate-300 px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
@@ -7407,19 +10252,7 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
                                 <span className="text-slate-900">{item.content}</span>
                               </div>
 
-                              <div>
-                                <span className="mr-2 font-medium text-slate-500">민감군</span>
-                                <span
-                                  className={cn(
-                                    "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
-                                    item.elderly
-  ? "bg-amber-100 text-amber-700"
-  : "bg-slate-100 text-slate-600"
-                                  )}
-                                >
-                                  {item.elderly}
-                                </span>
-                              </div>
+                              
                             </div>
                           </div>
                         );
@@ -7435,14 +10268,14 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
                           <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
                           <th className="border border-black px-3 py-2 text-left w-[16%]">성명</th>
                           <th className="border border-black px-3 py-2 text-left">작업 내용</th>
-                          <th className="border border-black px-3 py-2 text-left w-[10%]">민감군</th>
+                          
                         </tr>
                       </thead>
 
                       <tbody>
                         {heatSensitiveList.length === 0 ? (
                           <tr>
-                            <td className="border border-black px-3 py-2 text-center text-slate-300" colSpan={5}>
+                            <td className="border border-black px-3 py-2 text-center text-slate-300" colSpan={4}>
                               입력 없음
                             </td>
                           </tr>
@@ -7450,10 +10283,7 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
                           Object.entries(heatSensitiveGrouped).map(([company, list]) =>
                             list.map((item, index) => {
                               const color = getCompanyColorByList(company, heatSensitiveCompanyColorList);
-                              const sensitiveHighlight =
-  item.elderly
-    ? "bg-amber-50 text-amber-700 font-semibold"
-    : "text-slate-600";
+                              
 
                               return (
                                 <tr key={`${item.building}-${item.id}`}>
@@ -7498,7 +10328,6 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
                                                   company: item.company || "",
                                                   name: item.name || "",
                                                   content: item.content || "",
-                                                  elderly: item.elderly || "x",
                                                 })
                                               }
                                               className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
@@ -7523,9 +10352,7 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
                                     </div>
                                   </td>
 
-                                  <td className={cn("border border-black px-3 py-2 align-top", sensitiveHighlight)}>
-                                    {item.elderly}
-                                  </td>
+                                  
                                 </tr>
                               );
                             })
@@ -7535,9 +10362,30 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
                     </table>
                   </div>
                 </div>
-              </CardContent>
+                            </CardContent>
             </Card>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-200 shadow-none">
+        <CardHeader>
+          <CardTitle className="text-base">하단 달력</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between mb-3">
+            <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="text-sm font-semibold">{monthLabel}</div>
+            <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="grid grid-cols-7 gap-1 text-xs">
+            {weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}
+            {monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -7646,19 +10494,8 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
   </div>
 </div>
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr] lg:gap-6"><div className="space-y-6"><div ref={educationCaptureRef} className="bg-white">
-  <Card className="rounded-[24px] border-0 bg-white shadow-sm"><CardHeader className="flex flex-row items-center justify-between"><CardTitle>월간 달력</CardTitle><div className="flex items-center gap-2"><Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}><ChevronLeft className="h-4 w-4" /></Button><div className="min-w-28 text-center text-sm font-semibold lg:min-w-36 lg:text-base">{monthLabel}</div><Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}><ChevronRight className="h-4 w-4" /></Button></div></CardHeader><CardContent><div className="grid grid-cols-7 gap-1 lg:gap-2">{weekLabels.map((label) => <div key={label} className="rounded-xl bg-slate-100 py-2 text-center text-[10px] font-semibold text-slate-600 lg:text-xs">{label}</div>)}{monthGrid.map((date) => { const key = formatDateKey(date); const isCurrentMonth = date.getMonth() === currentDate.getMonth(); const isToday = key === todayKey; const isSelected = key === selectedDate; const cellEntries = entries.filter((entry) => entry.date === key); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("min-h-[72px] rounded-xl border p-1.5 text-left transition sm:min-h-[82px] sm:p-2", isSelected ? "border-slate-900 bg-slate-100" : isCurrentMonth ? "border-slate-200 bg-white shadow-sm" : "border-slate-100 bg-slate-50 text-slate-400")}><div className="mb-1 flex items-center justify-between sm:mb-2"><div className={cn("flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold lg:h-6 lg:w-6 lg:text-xs", isToday ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700")}>{date.getDate()}</div><Badge className="px-1.5 py-0">{cellEntries.length}</Badge></div><div className="space-y-1">{cellEntries.map((entry) => (
-  <div
-    key={entry.id}
-    className="rounded-lg bg-slate-50 p-1 text-[9px] text-slate-700 lg:p-1.5 lg:text-[10px]"
-  >
-    <div className="font-semibold text-slate-900">
-  {entry.startTime}
-</div>
-<div className="whitespace-pre-wrap break-words leading-tight">
-  {entry.companyName}
-</div>
-  </div>
-))}</div></button>; })}</div></CardContent></Card></div></div><div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>일정 입력</CardTitle></CardHeader><CardContent className="space-y-4">{!currentUser ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">일정 등록은 승인된 계정으로 로그인한 뒤 사용할 수 있습니다.</div> : <><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><label className="text-xs font-medium text-slate-600">일자 선택</label><Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9" /></div><div className="space-y-2"><label className="text-xs font-medium text-slate-600">시간 선택</label><select value={effectiveSelectedTime} onChange={(e) => setSelectedTime(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100" disabled={availableTimes.length === 0}>{availableTimes.length === 0 ? <option value="">선택 가능한 시간이 없습니다</option> : availableTimes.map((time) => <option key={time} value={time}>{time}</option>)}</select><div className="text-xs text-slate-500">{availableTimes.length === 0 ? "해당 일자는 선택 가능한 시간이 없습니다" : `자동 표기 시간: ${effectiveSelectedTime} ~ ${effectiveEndTime}`}</div></div></div><div className="flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-slate-500">작성자: {currentUser.name} · {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}</div><Button className="w-full lg:w-auto" onClick={addEntry} disabled={availableTimes.length === 0}>일정 등록</Button></div></>}{entryMessage && (
+  {renderBottomCalendar()}
+</div></div><div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>일정 입력</CardTitle></CardHeader><CardContent className="space-y-4">{!currentUser ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">일정 등록은 승인된 계정으로 로그인한 뒤 사용할 수 있습니다.</div> : <><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><label className="text-xs font-medium text-slate-600">일자 선택</label><Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9" /></div><div className="space-y-2"><label className="text-xs font-medium text-slate-600">시간 선택</label><select value={effectiveSelectedTime} onChange={(e) => setSelectedTime(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100" disabled={availableTimes.length === 0}>{availableTimes.length === 0 ? <option value="">선택 가능한 시간이 없습니다</option> : availableTimes.map((time) => <option key={time} value={time}>{time}</option>)}</select><div className="text-xs text-slate-500">{availableTimes.length === 0 ? "해당 일자는 선택 가능한 시간이 없습니다" : `자동 표기 시간: ${effectiveSelectedTime} ~ ${effectiveEndTime}`}</div></div></div><div className="flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-slate-500">작성자: {currentUser.name} · {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}</div><Button className="w-full lg:w-auto" onClick={addEntry} disabled={availableTimes.length === 0}>일정 등록</Button></div></>}{entryMessage && (
   <div className="text-sm text-slate-600">{entryMessage}</div>
 )}
 
@@ -7700,7 +10537,103 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
     </div>
   );
 
-  const renderApprovalPage = () => (
+  const formatActivityLogTime = (value: any) => {
+  if (!value) return "-";
+
+  const date =
+    typeof value?.toDate === "function"
+      ? value.toDate()
+      : new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes()
+  ).padStart(2, "0")}`;
+};
+
+const renderActivityLogPage = () => (
+  <div className="space-y-4 sm:space-y-6">
+    {renderTopBar()}
+
+    <div className="flex flex-wrap justify-between gap-3">
+      <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+        메뉴로 돌아가기
+      </Button>
+    </div>
+
+    <Card className="rounded-[24px] border-0 shadow-sm">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <LayoutGrid className="h-5 w-5" />
+          활동 로그
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent>
+        {!canViewActivityLogs ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+            활동 로그는 마스터만 볼 수 있습니다.
+          </div>
+        ) : activityLogs.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+            기록된 로그가 없습니다.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-black">
+            <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-100 text-slate-700">
+                  <th className="w-[17%] border border-black px-3 py-2 text-left">시간</th>
+                  <th className="w-[10%] border border-black px-3 py-2 text-left">구분</th>
+                  <th className="w-[14%] border border-black px-3 py-2 text-left">페이지</th>
+                  <th className="w-[18%] border border-black px-3 py-2 text-left">작성자</th>
+                  <th className="border border-black px-3 py-2 text-left">내용</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {activityLogs.map((log) => (
+                  <tr key={log.id}>
+                    <td className="border border-black px-3 py-2 align-top">
+                      {formatActivityLogTime(log.createdAt)}
+                    </td>
+
+                    <td className="border border-black px-3 py-2 align-top font-semibold">
+                      {log.action}
+                    </td>
+
+                    <td className="border border-black px-3 py-2 align-top">
+                      {log.page || "-"}
+                    </td>
+
+                    <td className="border border-black px-3 py-2 align-top">
+                      <div className="font-medium">{log.actorName || "-"}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {log.actorCompany || "-"} · {getRoleLabel(log.actorRole || "general")}
+                      </div>
+                    </td>
+
+                    <td className="border border-black px-3 py-2 align-top">
+                      <div className="font-medium">{log.target || "-"}</div>
+                      <div className="mt-1 whitespace-pre-wrap break-all text-xs text-slate-600">
+                        {log.detail || "-"}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  </div>
+);
+
+const renderApprovalPage = () => (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
 
@@ -7834,6 +10767,666 @@ const breakTimeDone = status.breakTimeLedgerCount >= 1;
     </div>
   );
 
+const renderSupplementWorkPage = () => (
+  <div className="space-y-4 sm:space-y-6">
+    {renderTopBar()}
+
+    {editSupplementNightMorningPopup.open && (
+  <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-2xl rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="text-base font-semibold text-slate-900">
+        금일야간/명일조출 수정
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <Input
+          value={editSupplementNightMorningPopup.company}
+          onChange={(e) =>
+            setEditSupplementNightMorningPopup((prev) => ({ ...prev, company: e.target.value }))
+          }
+          placeholder="업체명"
+        />
+
+        <TextArea
+          value={editSupplementNightMorningPopup.nightText}
+          onChange={(e) =>
+            setEditSupplementNightMorningPopup((prev) => ({ ...prev, nightText: e.target.value }))
+          }
+          placeholder="금일 야간"
+        />
+
+        <TextArea
+          value={editSupplementNightMorningPopup.morningText}
+          onChange={(e) =>
+            setEditSupplementNightMorningPopup((prev) => ({ ...prev, morningText: e.target.value }))
+          }
+          placeholder="명일 조출"
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button
+          variant="outline"
+          className="w-full lg:w-auto"
+          onClick={() =>
+            setEditSupplementNightMorningPopup({
+              open: false,
+              id: "",
+              company: "",
+              nightText: "",
+              morningText: "",
+            })
+          }
+        >
+          취소
+        </Button>
+
+        <Button className="w-full lg:w-auto" onClick={handleUpdateSupplementNightMorningRow}>
+          저장
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+
+{editSupplementWeekendPopup.open && (
+  <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-2xl rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="text-base font-semibold text-slate-900">
+        주말 보충작업 수정
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <Input value="주말" disabled />
+
+        <Input
+          value={editSupplementWeekendPopup.company}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, company: e.target.value }))
+          }
+          placeholder="업체명"
+        />
+
+        <Input
+          value={editSupplementWeekendPopup.location}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, location: e.target.value }))
+          }
+          placeholder="작업위치"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={editSupplementWeekendPopup.workerCount}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, workerCount: e.target.value }))
+          }
+          placeholder="작업인원"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={editSupplementWeekendPopup.supervisorCount}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, supervisorCount: e.target.value }))
+          }
+          placeholder="관리감독자"
+        />
+
+        <Input
+          value={editSupplementWeekendPopup.content}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, content: e.target.value }))
+          }
+          placeholder="작업내용"
+        />
+
+        <Input
+          value={editSupplementWeekendPopup.safetyAction}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, safetyAction: e.target.value }))
+          }
+          placeholder="안전대책, 조치사항"
+          className="md:col-span-2"
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button
+          variant="outline"
+          className="w-full lg:w-auto"
+          onClick={() =>
+            setEditSupplementWeekendPopup({
+              open: false,
+              id: "",
+              company: "",
+              location: "",
+              workerCount: "",
+              supervisorCount: "",
+              content: "",
+              safetyAction: "",
+            })
+          }
+        >
+          취소
+        </Button>
+
+        <Button className="w-full lg:w-auto" onClick={handleUpdateSupplementWeekendRow}>
+          저장
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+
+    <Card>
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <CalendarDays className="h-5 w-5" />
+          보충작업
+        </CardTitle>
+
+        <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+          메뉴로 돌아가기
+        </Button>
+      </CardHeader>
+
+      <CardContent className="space-y-5">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: "nightMorning", label: "금일야간/명일조출" },
+            { key: "tomorrow", label: "명일 보충작업" },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setSupplementTab(tab.key as typeof supplementTab)}
+              className={cn(
+                "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                supplementTab === tab.key
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {supplementTab === "nightMorning" && (
+          <Card className="border-slate-200 shadow-none">
+            <CardHeader>
+              <CardTitle className="text-base">금일야간/명일조출</CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-5">
+              <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+                선택 날짜: {formatMonthDay(selectedDate)}
+              </div>
+
+              {canManageSupplementNotice && (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-sm font-semibold text-slate-900">
+                    관리자 공지 입력
+                  </div>
+
+                  <TextArea
+                    value={supplementNoticeText}
+                    onChange={(e) => setSupplementNoticeText(e.target.value)}
+                    placeholder="공지 내용을 입력하세요."
+                  />
+
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleSupplementNoticeImageUpload}
+                    className="h-auto py-2"
+                  />
+
+                  <Button onClick={handleSaveSupplementNotice}>
+                    공지 저장
+                  </Button>
+                </div>
+              )}
+
+              {(supplementNoticeText || supplementNoticeImage) && (
+                <div className="space-y-3 rounded-2xl border border-black bg-white p-4">
+                  <div className="text-sm font-semibold text-slate-900">
+                    공지
+                  </div>
+
+                  {supplementNoticeText && (
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+                      {supplementNoticeText}
+                    </div>
+                  )}
+
+                  {supplementNoticeImage && (
+                    <img
+                      src={supplementNoticeImage}
+                      alt="보충작업 공지 이미지"
+                      className="max-h-80 rounded-2xl border border-slate-200 object-contain"
+                    />
+                  )}
+                </div>
+              )}
+
+              <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+  이 탭은 선택 날짜({formatMonthDay(selectedDate)}) 기준으로 저장됩니다.
+</div>
+
+<div className="grid gap-4 lg:grid-cols-2">
+  <div className="space-y-2">
+    <label className="text-xs font-medium text-slate-600">
+      금일 야간
+    </label>
+    <TextArea
+  value={supplementNightText}
+  onChange={(e) => setSupplementNightText(e.target.value)}
+  className="min-h-[260px]"
+/>
+  </div>
+
+  <div className="space-y-2">
+    <label className="text-xs font-medium text-slate-600">
+      명일 조출
+    </label>
+    <TextArea
+  value={supplementMorningText}
+  onChange={(e) => setSupplementMorningText(e.target.value)}
+  className="min-h-[260px]"
+/>
+  </div>
+</div>
+
+<div className="flex flex-wrap gap-2">
+  <Button onClick={handleSaveSupplementNightMorning}>
+    입력
+  </Button>
+
+  <Button variant="outline" onClick={handleCopySupplementNightMorning}>
+    표 내용 복사
+  </Button>
+</div>
+
+{supplementMessage && (
+  <div className="text-sm text-slate-600">
+    {supplementMessage}
+  </div>
+)}
+
+<div className="overflow-x-auto rounded-2xl border border-black">
+  <table className="w-full min-w-[900px] table-fixed border-collapse text-sm">
+    <thead>
+      <tr className="bg-slate-100 text-slate-700">
+        <th className="w-[150px] border border-black px-3 py-2 text-left">업체명</th>
+        <th className="border border-black px-3 py-2 text-left">금일 야간</th>
+        <th className="border border-black px-3 py-2 text-left">명일 조출</th>
+        <th className="w-[100px] border border-black px-3 py-2 text-left">관리</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {supplementNightMorningRows.length === 0 ? (
+        <tr>
+          <td className="border border-black px-3 py-3 text-center text-slate-400" colSpan={4}>
+            입력 없음
+          </td>
+        </tr>
+      ) : (
+        supplementNightMorningRows.map((row) => (
+          <tr key={row.id}>
+            <td className="border border-black px-3 py-2 align-top font-semibold">
+              {row.company}
+            </td>
+
+            <td className="border border-black px-3 py-2 align-top">
+              <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+                {row.nightText || "입력 없음"}
+              </pre>
+            </td>
+
+            <td className="border border-black px-3 py-2 align-top">
+              <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+                {row.morningText || "입력 없음"}
+              </pre>
+            </td>
+
+            <td className="border border-black px-3 py-2 align-top">
+              <div className="flex flex-wrap gap-1">
+                {canAdminEditDabsItem && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditSupplementNightMorningPopup({
+                        open: true,
+                        id: row.id,
+                        company: row.company || "",
+                        nightText: row.nightText || "",
+                        morningText: row.morningText || "",
+                      })
+                    }
+                    className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                  >
+                    수정
+                  </button>
+                )}
+
+                {canDeleteOwnItem(row) && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSupplementNightMorningRow(row.id)}
+                    className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                  >
+                    삭제
+                  </button>
+                )}
+              </div>
+            </td>
+          </tr>
+        ))
+      )}
+    </tbody>
+  </table>
+</div>
+            </CardContent>
+          </Card>
+        )}
+
+        {supplementTab === "tomorrow" && (
+  <Card className="border-slate-200 shadow-none">
+    <CardHeader>
+      <CardTitle className="text-base">명일 보충작업</CardTitle>
+    </CardHeader>
+
+    <CardContent className="space-y-5">
+      <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+        선택 날짜: {formatMonthDay(selectedDate)}
+      </div>
+
+      {canManageSupplementNotice && (
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-sm font-semibold text-slate-900">
+            관리자 공지 입력
+          </div>
+
+          <TextArea
+            value={supplementTomorrowNoticeText}
+            onChange={(e) => setSupplementTomorrowNoticeText(e.target.value)}
+            placeholder="명일 보충작업 공지 내용을 입력하세요."
+          />
+
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={handleSupplementTomorrowNoticeImageUpload}
+            className="h-auto py-2"
+          />
+
+          <Button onClick={handleSaveSupplementTomorrowNotice}>
+            공지 저장
+          </Button>
+        </div>
+      )}
+
+      {(supplementTomorrowNoticeText || supplementTomorrowNoticeImage) && (
+        <div className="space-y-3 rounded-2xl border border-black bg-white p-4">
+          <div className="text-sm font-semibold text-slate-900">
+            공지
+          </div>
+
+          {supplementTomorrowNoticeText && (
+            <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+              {supplementTomorrowNoticeText}
+            </div>
+          )}
+
+          {supplementTomorrowNoticeImage && (
+            <img
+              src={supplementTomorrowNoticeImage}
+              alt="명일 보충작업 공지 이미지"
+              className="max-h-80 rounded-2xl border border-slate-200 object-contain"
+            />
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-2 xl:grid-cols-[110px_1fr_100px_110px_1fr_1fr_auto]">
+        <select
+          value={supplementTomorrowInput.workType}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, workType: e.target.value }))
+          }
+          className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+        >
+          <option value="조출">조출</option>
+          <option value="점심">점심</option>
+          <option value="야간">야간</option>
+          <option value="주말">주말</option>
+        </select>
+
+        <Input
+          value={supplementTomorrowInput.location}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, location: e.target.value }))
+          }
+          placeholder="작업위치"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={supplementTomorrowInput.workerCount}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, workerCount: e.target.value }))
+          }
+          placeholder="작업인원"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={supplementTomorrowInput.supervisorCount}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, supervisorCount: e.target.value }))
+          }
+          placeholder="관리감독자"
+        />
+
+        <Input
+          value={supplementTomorrowInput.content}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, content: e.target.value }))
+          }
+          placeholder="작업내용"
+        />
+
+        <Input
+          value={supplementTomorrowInput.safetyAction}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, safetyAction: e.target.value }))
+          }
+          placeholder="안전대책, 조치사항"
+        />
+
+        <Button onClick={handleAddSupplementTomorrowRow}>
+  입력
+</Button>
+
+<Button variant="outline" onClick={handleDownloadSupplementTomorrowExcel}>
+  엑셀 다운로드
+</Button>
+      </div>
+
+      {supplementMessage && (
+        <div className="text-sm text-slate-600">
+          {supplementMessage}
+        </div>
+      )}
+
+      <div className="overflow-x-auto rounded-2xl border border-black">
+        <table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
+          <thead>
+            <tr className="bg-slate-100 text-slate-700">
+              <th className="w-[90px] border border-black px-2 py-2 text-left">작업구분</th>
+              <th className="w-[140px] border border-black px-2 py-2 text-left">업체명</th>
+              <th className="w-[150px] border border-black px-2 py-2 text-left">작업위치</th>
+              <th className="w-[90px] border border-black px-2 py-2 text-left">작업인원</th>
+              <th className="w-[100px] border border-black px-2 py-2 text-left">관리감독자</th>
+              <th className="border border-black px-2 py-2 text-left">작업내용</th>
+              <th className="border border-black px-2 py-2 text-left">안전대책, 조치사항</th>
+              <th className="w-[100px] border border-black px-2 py-2 text-left">관리</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {supplementTomorrowRows.length === 0 ? (
+              <tr>
+                <td className="border border-black px-3 py-3 text-center text-slate-400" colSpan={8}>
+                  입력 없음
+                </td>
+              </tr>
+            ) : (
+              supplementTomorrowRows.map((row) => (
+                <tr key={row.id}>
+                  <td className="border border-black px-2 py-2 align-top">{row.workType}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.company}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.location}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.workerCount}</td>
+                  <td className="border border-black px-2 py-2 align-top">{row.supervisorCount}</td>
+                  <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.content}</td>
+                  <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.safetyAction}</td>
+                  <td className="border border-black px-2 py-2 align-top">
+                    <div className="flex flex-wrap gap-1">
+                      {canAdminEditDabsItem && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditSupplementTomorrowPopup({
+                              open: true,
+                              id: row.id,
+                              workType: row.workType || "조출",
+                              company: row.company || "",
+                              location: row.location || "",
+                              workerCount: row.workerCount || "",
+                              supervisorCount: row.supervisorCount || "",
+                              content: row.content || "",
+                              safetyAction: row.safetyAction || "",
+                            })
+                          }
+                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                        >
+                          수정
+                        </button>
+                      )}
+
+                      {canDeleteOwnItem(row) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSupplementTomorrowRow(row.id)}
+                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </CardContent>
+  </Card>
+)}
+
+        {/* 불러오기 기능 */}
+        <Card className="border-slate-200 shadow-none">
+          <CardContent className="p-4 space-y-3">
+            <div className="text-sm font-semibold text-slate-900">이전 날짜 데이터 불러오기</div>
+            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-600">불러올 날짜 선택</label>
+                <Input
+                  type="date"
+                  value={loadSourceDate}
+                  onChange={(e) => setLoadSourceDate(e.target.value)}
+                  className="h-9 bg-white"
+                />
+              </div>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  if (!currentUser?.companyName) return;
+                  if (!loadSourceDate || loadSourceDate === selectedDate) {
+                    setSupplementMessage("불러올 날짜를 확인하세요.");
+                    return;
+                  }
+                  if (!db) {
+                    setSupplementMessage("Firebase 연결이 없습니다.");
+                    return;
+                  }
+                  try {
+                    const sourceSnap = await getDoc(doc(db, "supplementWorks", loadSourceDate));
+                    if (!sourceSnap.exists()) {
+                      setSupplementMessage("해당 날짜의 데이터가 없습니다.");
+                      return;
+                    }
+                    const sourceData = sourceSnap.data();
+                    const companyName = String(currentUser.companyName || "").trim();
+                    if (supplementTab === "nightMorning") {
+                      const rows = Array.isArray(sourceData.nightMorningRows) ? sourceData.nightMorningRows : [];
+                      const myRows = rows.filter((r: any) => r.company === companyName);
+                      if (myRows.length === 0) { setSupplementMessage("해당 날짜에 내 업체 데이터가 없습니다."); return; }
+                      const nextRows = [...supplementNightMorningRows, ...myRows.map((r: any) => ({ ...r, id: createLocalId("supplement-night-morning"), createdByUid: currentUser.uid, createdByName: currentUser.name }))];
+                      await saveSupplementNightMorningRows(nextRows, "불러오기", companyName, `${formatMonthDay(loadSourceDate)} 금일야간/명일조출 불러오기`);
+                    } else {
+                      const rows = Array.isArray(sourceData.tomorrowRows) ? sourceData.tomorrowRows : [];
+                      const myRows = rows.filter((r: any) => r.company === companyName);
+                      if (myRows.length === 0) { setSupplementMessage("해당 날짜에 내 업체 데이터가 없습니다."); return; }
+                      const nextRows = [...supplementTomorrowRows, ...myRows.map((r: any) => ({ ...r, id: createLocalId("supplement-tomorrow"), createdByUid: currentUser.uid, createdByName: currentUser.name }))];
+                      await saveSupplementTomorrowRows(nextRows, "불러오기", companyName, `${formatMonthDay(loadSourceDate)} 명일보충작업 불러오기`);
+                    }
+                    setSupplementMessage(`${formatMonthDay(loadSourceDate)} 데이터를 불러왔습니다.`);
+                  } catch {
+                    setSupplementMessage("데이터 불러오기 중 오류가 발생했습니다.");
+                  }
+                }}
+              >
+                내 업체 데이터 불러오기
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 하단 달력 - DAB's 회의와 동일 */}
+        <Card className="border-slate-200 shadow-none">
+          <CardHeader>
+            <CardTitle className="text-base">하단 달력</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between mb-3">
+              <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="text-sm font-semibold">{monthLabel}</div>
+              <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-xs">
+              {weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}
+              {monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}
+            </div>
+          </CardContent>
+        </Card>
+      </CardContent>
+    </Card>
+  </div>
+);
+
 const renderSoloWorkerPage = () => (
   <div className="space-y-4 sm:space-y-6">
     {renderTopBar()}
@@ -7847,6 +11440,21 @@ const renderSoloWorkerPage = () => (
         </CardTitle>
 
         <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-1 text-xs"
+            onClick={() =>
+              setManualPopup({
+                src: SOLO_WORKER_MANUAL_GIF,
+                label: "단독작업자",
+              })
+            }
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+            사용 매뉴얼
+          </Button>
+
           <Button
             variant="outline"
             onClick={() =>
@@ -7875,6 +11483,8 @@ const renderSoloWorkerPage = () => (
             <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
               선택 날짜: {formatMonthDay(selectedDate)}
             </div>
+
+            <div className="text-xs font-semibold text-red-600">작업장소 정확히 입력!</div>
 
             <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
               <div className="space-y-2">
@@ -7999,6 +11609,8 @@ return (
           <div className="text-base font-semibold text-slate-900">
             {editOverlayPopup.targetKey === "equipmentFlow"
               ? "장비동선 수정"
+              : editOverlayPopup.targetKey.startsWith("buildingDetail::")
+              ? "동별 상세도 수정"
               : "고위험작업 수정"}
           </div>
 
@@ -8047,6 +11659,28 @@ return (
             </div>
           )}
 
+          {editOverlayPopup.targetKey.startsWith("buildingDetail::") && (
+            <div className="mt-4 space-y-2">
+              <label className="text-xs font-medium text-slate-600">시간</label>
+              <select
+                value={editOverlayPopup.time}
+                onChange={(e) =>
+                  setEditOverlayPopup((prev) => ({
+                    ...prev,
+                    time: e.target.value,
+                  }))
+                }
+                className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              >
+                {MATERIAL_TIMES.map((time) => (
+                  <option key={time} value={time}>
+                    {time}시
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="mt-4 space-y-2">
             <label className="text-xs font-medium text-slate-600">업체명</label>
             <Input
@@ -8088,6 +11722,7 @@ return (
                   note: "",
                   building: "",
                   equipmentType: "concrete_pump_truck",
+                  time: "",
                 })
               }
             >
@@ -8114,8 +11749,12 @@ return (
   renderSoloWorkerPage()
 ) : currentPage === "heatwave" ? (
   renderHeatwavePage()
+) : currentPage === "supplementWork" ? (
+  renderSupplementWorkPage()
 ) : currentPage === "approval" ? (
   renderApprovalPage()
+) : currentPage === "activityLog" ? (
+  renderActivityLogPage()
 ) : (
   renderEducationPage()
 )}
