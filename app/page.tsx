@@ -1435,6 +1435,10 @@ const portfolioCaptureRef = useRef<HTMLDivElement | null>(null);const educationC
 
   const [overlayZoom, setOverlayZoom] = useState(1);
   const [overlayPan, setOverlayPan] = useState({ x: 0, y: 0 });
+  const overlayZoomRef = useRef(overlayZoom);
+  useEffect(() => {
+    overlayZoomRef.current = overlayZoom;
+  }, [overlayZoom]);
   const panMouseStateRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
   const panTouchStateRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const pinchDistRef = useRef<number | null>(null);
@@ -3947,8 +3951,9 @@ useLayoutEffect(() => {
       if (!markerElement) return;
 
       const markerRect = markerElement.getBoundingClientRect();
-      const width = markerRect.width / overlayZoom;
-      const height = markerRect.height / overlayZoom;
+      const currentOverlayZoom = overlayZoomRef.current;
+      const width = markerRect.width / currentOverlayZoom;
+      const height = markerRect.height / currentOverlayZoom;
 
       const originalX = (marker.x / 100) * areaRect.width;
       const originalY = (marker.y / 100) * areaRect.height;
