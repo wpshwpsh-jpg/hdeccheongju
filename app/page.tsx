@@ -6909,7 +6909,7 @@ const posY = adjustedPosition?.y ?? marker.y;
   "relative origin-center rounded-md border shadow-sm backdrop-blur-[1px]",
   compactMarkers
     ? "px-[2px] py-[1px] lg:rounded-lg lg:px-1 lg:py-1"
-    : "px-[2px] py-[1px] md:px-[3px] md:py-[2px] lg:rounded-xl lg:px-1.5 lg:py-1.5",
+    : "px-[3px] py-[2px] lg:rounded-xl lg:px-1.5 lg:py-1.5",
   color.bg,
   color.text
 )}
@@ -6917,41 +6917,41 @@ const posY = adjustedPosition?.y ?? marker.y;
                   <div className={cn("flex flex-col items-center text-center", (isHighRiskMarker || isBuildingDetailMarker)
   ? (compactMarkers
       ? "min-w-[42px] max-w-[62px] gap-0.5 lg:min-w-[85px] lg:max-w-[125px] lg:gap-0.5"
-      : "min-w-[42px] max-w-[62px] gap-0.5 md:min-w-[62px] md:max-w-[90px] lg:min-w-[128px] lg:max-w-[188px] lg:gap-1")
+      : "min-w-[62px] max-w-[90px] gap-0.5 lg:min-w-[128px] lg:max-w-[188px] lg:gap-1")
   : (compactMarkers
       ? "min-w-[50px] max-w-[70px] gap-0.5 lg:min-w-[120px] lg:max-w-[170px] lg:gap-0.5"
-      : "min-w-[50px] max-w-[70px] gap-0.5 md:min-w-[74px] md:max-w-[102px] lg:min-w-[180px] lg:max-w-[255px] lg:gap-1"))}>
-                    {marker.equipmentType ? <span className={cn("rounded-full bg-white/80 font-bold leading-none shadow-sm", compactMarkers ? "px-1 py-0.5 text-[7px] lg:text-[8px]" : "px-1 py-0.5 text-[7px] md:px-1.5 md:text-[11px] lg:text-[12px]")}>{getEquipmentLabel(marker.equipmentType)}</span> : null}
+      : "min-w-[74px] max-w-[102px] gap-0.5 lg:min-w-[180px] lg:max-w-[255px] lg:gap-1"))}>
+                    {marker.equipmentType ? <span className={cn("rounded-full bg-white/80 font-bold leading-none shadow-sm", compactMarkers ? "px-1 py-0.5 text-[7px] lg:text-[8px]" : "px-1.5 py-0.5 text-[11px] lg:text-[12px]")}>{getEquipmentLabel(marker.equipmentType)}</span> : null}
                     {isHighRiskMarker ? (
-  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[2px] py-[1px] md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
-    <div className={cn("font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[11px] md:text-[17px] lg:text-[20px]")}>
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[3px] py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
+    <div className={cn("font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[17px] lg:text-[20px]")}>
       {marker.building || "동 미선택"}
     </div>
-    <div className={cn("mt-1 font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[10px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("mt-1 font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
   {marker.company || "업체명 없음"}
 </div>
-    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[10px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
   {marker.note || "작업내용 없음"}
 </div>
   </div>
 ) : isBuildingDetailMarker ? (
-  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[2px] py-[1px] md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
-    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[10px] md:text-[15px] lg:text-[16px]")}>
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[3px] py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
+    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
   {marker.company || "업체명 없음"}
 </div>
-    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[10px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
   {marker.note || "작업내용 없음"}
 </div>
-    <div className={cn("mt-1 font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[11px] md:text-[17px] lg:text-[20px]")}>
+    <div className={cn("mt-1 font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[17px] lg:text-[20px]")}>
   {marker.time ? `${marker.time}시~${marker.endTime || ""}시` : ""}
 </div>
   </div>
 ) : (
-  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[2px] py-[1px] md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
-    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[10px] md:text-[15px] lg:text-[16px]")}>
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[3px] py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
+    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
   {marker.company || "업체명 없음"}
 </div>
-    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[10px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[15px] lg:text-[16px]")}>
   {marker.note || "작업내용 없음"}
 </div>
   </div>
