@@ -6912,6 +6912,19 @@ const activePan = isFullscreenViewer ? fsPan : overlayPan;
 const activeApplyZoom = isFullscreenViewer ? applyFsZoom : applyOverlayZoom;
 const activeResetZoom = isFullscreenViewer ? resetFsZoom : resetOverlayZoom;
 
+// 확대(전체화면) 팝업은 가로모드로 돌아가면 화면 너비가 md(768px) 기준을 넘어서버려서
+// 모바일용 축소 스타일이 아니라 태블릿용 스타일이 적용되는 문제가 있었다.
+// 전체화면 뷰어에서는 항상 가장 작은(모바일) 크기를 고정으로 쓰도록, md:/lg: 반응형 접두사를 제거한다.
+const mobileMarkerClass = (responsiveClassName: string) => {
+  const isMobileFullscreen =
+    isFullscreenViewer && typeof window !== "undefined" && window.innerWidth < 1024;
+  if (!isMobileFullscreen) return responsiveClassName;
+  return responsiveClassName
+    .split(/\s+/)
+    .filter((cls) => cls && !cls.startsWith("md:") && !cls.startsWith("lg:"))
+    .join(" ");
+};
+
 const renderZoomControls = (wide: boolean) => (
   <>
     <button
@@ -7143,7 +7156,7 @@ const posY = adjustedPosition?.y ?? marker.y;
   "relative origin-center rounded-md border shadow-sm backdrop-blur-[1px]",
   compactMarkers
     ? "px-[2px] py-[1px] lg:rounded-lg lg:px-1 lg:py-1"
-    : "px-[1px] py-0 md:px-[3px] md:py-[2px] lg:rounded-xl lg:px-1.5 lg:py-1.5",
+    : mobileMarkerClass("px-[1px] py-0 md:px-[3px] md:py-[2px] lg:rounded-xl lg:px-1.5 lg:py-1.5"),
   color.bg,
   color.text
 )}
@@ -7151,48 +7164,48 @@ const posY = adjustedPosition?.y ?? marker.y;
                   <div className={cn("flex flex-col items-center text-center", (isHighRiskMarker || isBuildingDetailMarker)
   ? (compactMarkers
       ? "min-w-[42px] max-w-[62px] gap-0.5 lg:min-w-[85px] lg:max-w-[125px] lg:gap-0.5"
-      : "min-w-[19px] max-w-[28px] gap-0 md:min-w-[62px] md:max-w-[90px] md:gap-0.5 lg:min-w-[128px] lg:max-w-[188px] lg:gap-1")
+      : mobileMarkerClass("min-w-[19px] max-w-[28px] gap-0 md:min-w-[62px] md:max-w-[90px] md:gap-0.5 lg:min-w-[128px] lg:max-w-[188px] lg:gap-1"))
   : (compactMarkers
       ? "min-w-[50px] max-w-[70px] gap-0.5 lg:min-w-[120px] lg:max-w-[170px] lg:gap-0.5"
-      : "min-w-[23px] max-w-[32px] gap-0 md:min-w-[74px] md:max-w-[102px] md:gap-0.5 lg:min-w-[180px] lg:max-w-[255px] lg:gap-1"))}>
-                    {marker.equipmentType ? <span className={cn("rounded-full bg-white/80 font-bold leading-none shadow-sm", compactMarkers ? "px-1 py-0.5 text-[7px] lg:text-[8px]" : "px-0.5 py-0 text-[4px] md:px-1.5 md:py-0.5 md:text-[11px] lg:text-[12px]")}>{getEquipmentLabel(marker.equipmentType)}</span> : null}
+      : mobileMarkerClass("min-w-[23px] max-w-[32px] gap-0 md:min-w-[74px] md:max-w-[102px] md:gap-0.5 lg:min-w-[180px] lg:max-w-[255px] lg:gap-1")))}>
+                    {marker.equipmentType ? <span className={cn("rounded-full bg-white/80 font-bold leading-none shadow-sm", compactMarkers ? "px-1 py-0.5 text-[7px] lg:text-[8px]" : mobileMarkerClass("px-0.5 py-0 text-[4px] md:px-1.5 md:py-0.5 md:text-[11px] lg:text-[12px]"))}>{getEquipmentLabel(marker.equipmentType)}</span> : null}
                     {isHighRiskMarker ? (
-  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[1px] py-0 md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
-    <div className={cn("font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[6px] md:text-[17px] lg:text-[20px]")}>
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : mobileMarkerClass("px-[1px] py-0 md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5"))}>
+    <div className={cn("font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : mobileMarkerClass("text-[6px] md:text-[17px] lg:text-[20px]"))}>
       {marker.building || "동 미선택"}
     </div>
-    <div className={cn("mt-1 font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[5px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("mt-1 font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : mobileMarkerClass("text-[5px] md:text-[15px] lg:text-[16px]"))}>
   {marker.company || "업체명 없음"}
 </div>
-    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[5px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : mobileMarkerClass("text-[5px] md:text-[15px] lg:text-[16px]"))}>
   {marker.note || "작업내용 없음"}
 </div>
   </div>
 ) : isBuildingDetailMarker ? (
-  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[1px] py-0 md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
-    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[5px] md:text-[15px] lg:text-[16px]")}>
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : mobileMarkerClass("px-[1px] py-0 md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5"))}>
+    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : mobileMarkerClass("text-[5px] md:text-[15px] lg:text-[16px]"))}>
   {marker.company || "업체명 없음"}
 </div>
-    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[5px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : mobileMarkerClass("text-[5px] md:text-[15px] lg:text-[16px]"))}>
   {marker.note || "작업내용 없음"}
 </div>
-    <div className={cn("mt-1 font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[6px] md:text-[17px] lg:text-[20px]")}>
+    <div className={cn("mt-1 font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : mobileMarkerClass("text-[6px] md:text-[17px] lg:text-[20px]"))}>
   {marker.time ? `${marker.time}시~${marker.endTime || ""}시` : ""}
 </div>
   </div>
 ) : (
-  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[1px] py-0 md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
-    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[5px] md:text-[15px] lg:text-[16px]")}>
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : mobileMarkerClass("px-[1px] py-0 md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5"))}>
+    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : mobileMarkerClass("text-[5px] md:text-[15px] lg:text-[16px]"))}>
   {marker.company || "업체명 없음"}
 </div>
-    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[5px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : mobileMarkerClass("text-[5px] md:text-[15px] lg:text-[16px]"))}>
   {marker.note || "작업내용 없음"}
 </div>
   </div>
 )}
                   </div>
                   {!isCapturingImage && !isFullscreenViewer && (
-<div className="absolute -top-4 -right-1 z-20 flex gap-1 lg:-top-3 lg:right-0.5">
+<div className="absolute -top-2 -right-0.5 z-20 flex gap-0.5 md:-top-4 md:-right-1 md:gap-1 lg:-top-3 lg:right-0.5">
   {canAdminEditDabsItem && (
     <button
       type="button"
@@ -7214,7 +7227,7 @@ const posY = adjustedPosition?.y ?? marker.y;
       onTouchStart={(e) => e.stopPropagation()}
       onTouchEnd={(e) => e.stopPropagation()}
       style={{ touchAction: "manipulation" }}
-      className="flex h-8 min-w-8 items-center justify-center rounded-full bg-white px-2 text-[10px] font-semibold text-slate-600 shadow lg:h-5 lg:min-w-5 lg:px-1 lg:text-[9px]"
+      className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[5px] font-semibold text-slate-600 shadow md:h-8 md:min-w-8 md:px-2 md:text-[10px] lg:h-5 lg:min-w-5 lg:px-1 lg:text-[9px]"
     >
       수정
     </button>
@@ -7231,9 +7244,9 @@ const posY = adjustedPosition?.y ?? marker.y;
       onTouchStart={(e) => e.stopPropagation()}
       onTouchEnd={(e) => e.stopPropagation()}
       style={{ touchAction: "manipulation" }}
-      className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow lg:h-5 lg:w-5"
+      className="flex h-4 w-4 items-center justify-center rounded-full bg-white shadow md:h-8 md:w-8 lg:h-5 lg:w-5"
     >
-      <X className="h-4 w-4 lg:h-3 lg:w-3" />
+      <X className="h-2 w-2 md:h-4 md:w-4 lg:h-3 lg:w-3" />
     </button>
   )}
 </div>
