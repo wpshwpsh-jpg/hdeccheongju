@@ -1458,6 +1458,52 @@ const portfolioCaptureRef = useRef<HTMLDivElement | null>(null);const educationC
   const fsPanTouchStateRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const fsPinchDistRef = useRef<number | null>(null);
 
+  // 확대 팝업을 열 때 모바일/태블릿 화면에서는 전체화면 + 가로모드로 전환을 시도한다.
+  // 지원하지 않는 브라우저(예: iOS Safari)에서는 조용히 무시되고 팝업만 정상적으로 열린다.
+  const enterFullscreenLandscape = () => {
+    try {
+      if (typeof window === "undefined" || window.innerWidth >= 1024) return;
+      const attempt = async () => {
+        try {
+          if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+            await document.documentElement.requestFullscreen();
+          }
+        } catch {
+          // 전체화면 전환 실패 시에도 가로모드 잠금은 시도해본다.
+        }
+        try {
+          const orientation = (screen as unknown as { orientation?: { lock?: (o: string) => Promise<void> } }).orientation;
+          if (orientation && typeof orientation.lock === "function") {
+            await orientation.lock("landscape");
+          }
+        } catch {
+          // 가로모드 잠금을 지원하지 않는 브라우저는 무시한다.
+        }
+      };
+      attempt();
+    } catch {
+      // no-op
+    }
+  };
+
+  const exitFullscreenLandscape = () => {
+    try {
+      const orientation = (screen as unknown as { orientation?: { unlock?: () => void } }).orientation;
+      if (orientation && typeof orientation.unlock === "function") {
+        orientation.unlock();
+      }
+    } catch {
+      // no-op
+    }
+    try {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch {
+      // no-op
+    }
+  };
+
   useEffect(() => {
   if (isDemoMode || !db || !currentUser) return;
 
@@ -3841,7 +3887,12 @@ useEffect(() => {
 useEffect(() => {
   setOverlayZoom(1);
   setOverlayPan({ x: 0, y: 0 });
-  setFullscreenOverlay(null);
+  setFullscreenOverlay((prev) => {
+    if (prev) {
+      exitFullscreenLandscape();
+    }
+    return null;
+  });
   setFsZoom(1);
   setFsPan({ x: 0, y: 0 });
 }, [activeDabsKey, selectedBuildingDetail, selectedDate]);
@@ -7100,41 +7151,41 @@ const posY = adjustedPosition?.y ?? marker.y;
                   <div className={cn("flex flex-col items-center text-center", (isHighRiskMarker || isBuildingDetailMarker)
   ? (compactMarkers
       ? "min-w-[42px] max-w-[62px] gap-0.5 lg:min-w-[85px] lg:max-w-[125px] lg:gap-0.5"
-      : "min-w-[48px] max-w-[70px] gap-0.5 md:min-w-[62px] md:max-w-[90px] lg:min-w-[128px] lg:max-w-[188px] lg:gap-1")
+      : "min-w-[38px] max-w-[55px] gap-0.5 md:min-w-[62px] md:max-w-[90px] lg:min-w-[128px] lg:max-w-[188px] lg:gap-1")
   : (compactMarkers
       ? "min-w-[50px] max-w-[70px] gap-0.5 lg:min-w-[120px] lg:max-w-[170px] lg:gap-0.5"
-      : "min-w-[58px] max-w-[80px] gap-0.5 md:min-w-[74px] md:max-w-[102px] lg:min-w-[180px] lg:max-w-[255px] lg:gap-1"))}>
-                    {marker.equipmentType ? <span className={cn("rounded-full bg-white/80 font-bold leading-none shadow-sm", compactMarkers ? "px-1 py-0.5 text-[7px] lg:text-[8px]" : "px-1 py-0.5 text-[9px] md:px-1.5 md:py-0.5 md:text-[11px] lg:text-[12px]")}>{getEquipmentLabel(marker.equipmentType)}</span> : null}
+      : "min-w-[46px] max-w-[64px] gap-0.5 md:min-w-[74px] md:max-w-[102px] lg:min-w-[180px] lg:max-w-[255px] lg:gap-1"))}>
+                    {marker.equipmentType ? <span className={cn("rounded-full bg-white/80 font-bold leading-none shadow-sm", compactMarkers ? "px-1 py-0.5 text-[7px] lg:text-[8px]" : "px-1 py-0.5 text-[8px] md:px-1.5 md:py-0.5 md:text-[11px] lg:text-[12px]")}>{getEquipmentLabel(marker.equipmentType)}</span> : null}
                     {isHighRiskMarker ? (
   <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[2px] py-[1px] md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
-    <div className={cn("font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[14px] md:text-[17px] lg:text-[20px]")}>
+    <div className={cn("font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[12px] md:text-[17px] lg:text-[20px]")}>
       {marker.building || "동 미선택"}
     </div>
-    <div className={cn("mt-1 font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[12px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("mt-1 font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[10px] md:text-[15px] lg:text-[16px]")}>
   {marker.company || "업체명 없음"}
 </div>
-    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[12px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[10px] md:text-[15px] lg:text-[16px]")}>
   {marker.note || "작업내용 없음"}
 </div>
   </div>
 ) : isBuildingDetailMarker ? (
   <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[2px] py-[1px] md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
-    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[12px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[10px] md:text-[15px] lg:text-[16px]")}>
   {marker.company || "업체명 없음"}
 </div>
-    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[12px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[10px] md:text-[15px] lg:text-[16px]")}>
   {marker.note || "작업내용 없음"}
 </div>
-    <div className={cn("mt-1 font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[14px] md:text-[17px] lg:text-[20px]")}>
+    <div className={cn("mt-1 font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : "text-[12px] md:text-[17px] lg:text-[20px]")}>
   {marker.time ? `${marker.time}시~${marker.endTime || ""}시` : ""}
 </div>
   </div>
 ) : (
   <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : "px-[2px] py-[1px] md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5")}>
-    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[12px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[10px] md:text-[15px] lg:text-[16px]")}>
   {marker.company || "업체명 없음"}
 </div>
-    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[12px] md:text-[15px] lg:text-[16px]")}>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : "text-[10px] md:text-[15px] lg:text-[16px]")}>
   {marker.note || "작업내용 없음"}
 </div>
   </div>
@@ -7209,7 +7260,10 @@ const posY = adjustedPosition?.y ?? marker.y;
           {!isFullscreenViewer && (
             <button
               type="button"
-              onClick={() => setFullscreenOverlay({ selectedImage, targetKey, isImageTab })}
+              onClick={() => {
+                enterFullscreenLandscape();
+                setFullscreenOverlay({ selectedImage, targetKey, isImageTab });
+              }}
               className="flex h-9 items-center gap-1 rounded-full bg-white px-3 text-[12px] font-semibold text-slate-700 shadow-lg ring-1 ring-black/10 hover:bg-slate-50 lg:h-8 lg:text-[11px]"
             >
               <Search className="h-3.5 w-3.5" />
@@ -8493,7 +8547,10 @@ return (
               <div className="text-sm font-semibold text-white">사진 확대 보기</div>
               <button
                 type="button"
-                onClick={() => setFullscreenOverlay(null)}
+                onClick={() => {
+                  exitFullscreenLandscape();
+                  setFullscreenOverlay(null);
+                }}
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow hover:bg-white"
               >
                 <X className="h-5 w-5" />
