@@ -8624,7 +8624,7 @@ return (
 )}
 
         {fullscreenOverlay && (
-          <div className="fixed inset-0 z-[60] flex flex-col bg-black/90">
+          <div className="fixed inset-0 z-[60] flex flex-col bg-black">
             <div className="flex items-center justify-between px-3 py-2">
               <div className="text-sm font-semibold text-white">사진 확대 보기</div>
               <button
