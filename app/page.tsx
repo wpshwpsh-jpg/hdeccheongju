@@ -1458,6 +1458,63 @@ const portfolioCaptureRef = useRef<HTMLDivElement | null>(null);const educationC
   const fsPanTouchStateRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const fsPinchDistRef = useRef<number | null>(null);
 
+  // 확대(전체화면) 팝업에서 사진을 "가능한 한 크게, 비율은 유지한 채" 보여주기 위한 치수 계산.
+  // object-contain은 이미지의 실제 렌더링만 줄여 보여줄 뿐, 그 박스(div) 자체의 크기는 못 줄인다.
+  // 그런데 말풍선은 이 박스 크기를 기준으로 %좌표로 위치가 잡히기 때문에, 박스 크기가 사진이
+  // 실제로 보이는 영역과 정확히 같아야 한다. 그래서 바깥 여백(fsOuterRef) 크기와 사진의 원본
+  // 가로세로 비율을 직접 계산해 박스의 가로/세로 픽셀 값을 구해서 적용한다.
+  const fsOuterRef = useRef<HTMLDivElement | null>(null);
+  const fsNaturalSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const [fsFitSize, setFsFitSize] = useState<{ width: number; height: number } | null>(null);
+
+  const recomputeFsFitSize = () => {
+    const el = fsOuterRef.current;
+    const natural = fsNaturalSizeRef.current;
+    if (!el || !natural || natural.width <= 0 || natural.height <= 0) return;
+    const availW = el.clientWidth;
+    const availH = el.clientHeight;
+    if (availW <= 0 || availH <= 0) return;
+    const scale = Math.min(availW / natural.width, availH / natural.height);
+    if (!isFinite(scale) || scale <= 0) return;
+    setFsFitSize({
+      width: Math.floor(natural.width * scale),
+      height: Math.floor(natural.height * scale),
+    });
+  };
+
+  useEffect(() => {
+    if (!fullscreenOverlay?.selectedImage) {
+      fsNaturalSizeRef.current = null;
+      setFsFitSize(null);
+      return;
+    }
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      fsNaturalSizeRef.current = { width: img.naturalWidth, height: img.naturalHeight };
+      recomputeFsFitSize();
+    };
+    img.src = fullscreenOverlay.selectedImage;
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullscreenOverlay?.selectedImage]);
+
+  useEffect(() => {
+    if (!fullscreenOverlay) return;
+    const el = fsOuterRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      recomputeFsFitSize();
+    });
+    observer.observe(el);
+    recomputeFsFitSize();
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullscreenOverlay]);
+
   // 확대 팝업을 열 때 모바일/태블릿 화면에서는 전체화면 + 가로모드로 전환을 시도한다.
   // 지원하지 않는 브라우저(예: iOS Safari)에서는 조용히 무시되고 팝업만 정상적으로 열린다.
   const enterFullscreenLandscape = () => {
@@ -6986,18 +7043,23 @@ const renderZoomControls = (wide: boolean) => (
 
 return (
   <>
-  {/* 확대(전체화면) 보기에서는 바깥에 실제 크기를 가진 div를 하나 더 둬서, 사진 비율을 유지하는
-     안쪽 박스(아래 ref가 걸린 div)가 그 공간을 최대한 채우도록 한다. 안쪽 박스는 사진 비율 그대로
-     유지돼야 말풍선(절대 위치, % 좌표)이 사진 위 정확한 자리에 표시된다 — 바깥 div까지 늘려버리면
-     사진 바깥 여백에도 % 좌표가 매핑되어 말풍선 위치가 틀어진다. 일반 화면에서는 레이아웃에
-     영향이 없도록 display:contents로 둔다. */}
-  <div className={isFullscreenViewer ? "flex min-h-0 w-full flex-1 items-center justify-center" : "contents"}>
+  {/* 확대(전체화면) 보기: 바깥 div(fsOuterRef)는 남는 공간 전체를 차지하고, 안쪽 박스(ref가 걸린
+     div)는 그 공간과 사진의 원본 가로세로 비율을 기준으로 JS에서 계산한 정확한 px 크기로 그려서
+     "최대한 크게 + 비율 유지"를 동시에 만족시킨다. 말풍선은 이 안쪽 박스 크기를 기준으로 %좌표로
+     위치가 잡히므로, 박스 크기가 사진이 실제로 보이는 영역과 정확히 같아야 한다 — 바깥 div 크기를
+     그대로 쓰면 사진과 박스 비율이 달라져 여백에도 %좌표가 매핑되며 말풍선 위치가 틀어진다.
+     일반 화면에서는 레이아웃에 영향이 없도록 display:contents로 둔다. */}
+  <div
+    ref={isFullscreenViewer ? fsOuterRef : undefined}
+    className={isFullscreenViewer ? "flex min-h-0 w-full flex-1 items-center justify-center" : "contents"}
+  >
   <div
     ref={isFullscreenViewer ? fsImageAreaRef : imageAreaRef}
     className={cn(
       "relative overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:rounded-2xl",
       fillHeight ? "inline-flex max-h-full max-w-full items-center justify-center" : "w-full"
     )}
+    style={isFullscreenViewer && fsFitSize ? { width: fsFitSize.width, height: fsFitSize.height } : undefined}
     onClick={
       isFullscreenViewer
         ? undefined
