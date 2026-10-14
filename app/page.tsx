@@ -6990,7 +6990,11 @@ return (
     ref={isFullscreenViewer ? fsImageAreaRef : imageAreaRef}
     className={cn(
       "relative overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:rounded-2xl",
-      fillHeight ? "inline-flex max-h-full max-w-full items-center justify-center" : "w-full"
+      isFullscreenViewer
+        ? "flex min-h-0 w-full flex-1 items-center justify-center"
+        : fillHeight
+          ? "inline-flex max-h-full max-w-full items-center justify-center"
+          : "w-full"
     )}
     onClick={
       isFullscreenViewer
@@ -8569,7 +8573,7 @@ return (
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex flex-1 flex-col items-center justify-center overflow-hidden px-2 pb-4">
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-2 pb-4">
               {renderOverlayImage(
                 fullscreenOverlay.selectedImage,
                 fullscreenOverlay.isImageTab,
