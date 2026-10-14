@@ -6986,15 +6986,17 @@ const renderZoomControls = (wide: boolean) => (
 
 return (
   <>
+  {/* 확대(전체화면) 보기에서는 바깥에 실제 크기를 가진 div를 하나 더 둬서, 사진 비율을 유지하는
+     안쪽 박스(아래 ref가 걸린 div)가 그 공간을 최대한 채우도록 한다. 안쪽 박스는 사진 비율 그대로
+     유지돼야 말풍선(절대 위치, % 좌표)이 사진 위 정확한 자리에 표시된다 — 바깥 div까지 늘려버리면
+     사진 바깥 여백에도 % 좌표가 매핑되어 말풍선 위치가 틀어진다. 일반 화면에서는 레이아웃에
+     영향이 없도록 display:contents로 둔다. */}
+  <div className={isFullscreenViewer ? "flex min-h-0 w-full flex-1 items-center justify-center" : "contents"}>
   <div
     ref={isFullscreenViewer ? fsImageAreaRef : imageAreaRef}
     className={cn(
       "relative overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:rounded-2xl",
-      isFullscreenViewer
-        ? "flex min-h-0 w-full flex-1 items-center justify-center"
-        : fillHeight
-          ? "inline-flex max-h-full max-w-full items-center justify-center"
-          : "w-full"
+      fillHeight ? "inline-flex max-h-full max-w-full items-center justify-center" : "w-full"
     )}
     onClick={
       isFullscreenViewer
@@ -7271,6 +7273,7 @@ const posY = adjustedPosition?.y ?? marker.y;
             </div>
           </div>
         )}
+      </div>
       </div>
       {selectedImage && isImageTab && !compactMarkers && (
         <div className="mt-3 flex items-center justify-center gap-2 lg:mt-4">
