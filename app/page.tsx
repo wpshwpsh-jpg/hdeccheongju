@@ -93,6 +93,7 @@ const DABS_MANUAL_GIF: Record<string, string> = {
   fireWork: "/manuals/manual-sectionwork.gif",
   materialsAfter0: "/manuals/manual-materials.gif",
   materialsAfter1: "/manuals/manual-materials.gif",
+  soloWorker: "/manuals/manual-soloworker.gif",
 };
 const SOLO_WORKER_MANUAL_GIF = "/manuals/manual-soloworker.gif";
 
@@ -3694,7 +3695,6 @@ const handleDownloadSupplementWeekendExcel = () => {
   const menuItems = [
   { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
   { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
-  { key: "soloWorker", title: "단독작업자", description: "단독작업자 관리 페이지로 이동", icon: Users },
 { key: "heatwave", title: "혹서기", description: "혹서기 온습도계 업로드 현황 관리", icon: CalendarDays },
 { key: "supplementWork", title: "보충작업", description: "금일야간/명일조출, 명일·주말 보충작업 관리", icon: CalendarDays },
   ...(canManageApprovals
@@ -3727,6 +3727,7 @@ const selectedDatePlusOne = useMemo(() => {
   { key: "fireWork", label: "화기작업" },
   { key: "materialsAfter0", label: `${formatShortDate(selectedDatePlusZero)} 자재반입` },
   { key: "materialsAfter1", label: `${formatShortDate(selectedDatePlusOne)} 자재반입` },
+  { key: "soloWorker", label: "단독작업자" },
 ], [selectedDatePlusZero, selectedDatePlusOne]);
 
   const activeDabsTab = dabsTabs[dabsTabIndex] || dabsTabs[0];
@@ -7326,17 +7327,15 @@ const posY = adjustedPosition?.y ?? marker.y;
                       </>
       </div>
         )}
-        {selectedImage && isImageTab && compactMarkers && (
-          <div
-            className="pointer-events-none absolute inset-x-0 bottom-2 z-40 flex items-center justify-center gap-1 lg:bottom-3"
-          >
-            <div className="pointer-events-auto flex items-center gap-0.5 rounded-full bg-white/95 p-1 shadow-lg ring-1 ring-black/10 backdrop-blur">
-              {renderZoomControls(false)}
-            </div>
+      </div>
+      </div>
+      {selectedImage && isImageTab && compactMarkers && (
+        <div className="mt-3 flex items-center justify-center gap-2 lg:mt-4">
+          <div className="flex items-center gap-0.5 rounded-full bg-white/95 p-1 shadow-lg ring-1 ring-black/10 backdrop-blur">
+            {renderZoomControls(false)}
           </div>
-        )}
-      </div>
-      </div>
+        </div>
+      )}
       {selectedImage && isImageTab && !compactMarkers && (
         <div className="mt-3 flex items-center justify-center gap-2 lg:mt-4">
           {!isFullscreenViewer && (
@@ -8542,6 +8541,7 @@ const renderDabsPage = () => {
     const isSectionTab = isSectionWorkTabKey(activeDabsKey);
 
 const isMaterialTab = activeDabsKey === "materialsAfter1" || activeDabsKey === "materialsAfter0";
+const isSoloWorkerTab = activeDabsKey === "soloWorker";
 
 const activeColumns = getDabsColumnsByTabKey(activeDabsKey);
     const sectionRows = getMergedSectionRows(activeDabsKey);
@@ -8863,7 +8863,7 @@ return (
   {activeDabsKey === "equipmentFlow" && (
     <div className="text-xs font-semibold text-red-600">믹서트럭/덤프트럭/수목반입만 입력!</div>
   )}
-  {(activeDabsKey === "archWork" || activeDabsKey === "mepWork" || activeDabsKey === "fireWork") && (
+  {(activeDabsKey === "archWork" || activeDabsKey === "mepWork" || activeDabsKey === "fireWork" || isSoloWorkerTab) && (
     <div className="text-xs font-semibold text-red-600">작업장소 정확히 입력!</div>
   )}
   {activeDabsKey === "buildingDetail" && (
@@ -9646,7 +9646,117 @@ return (
     </table>
   </div>
 </div></>}
-                {!isImageTab && !isSectionTab && !isMaterialTab && <><TextArea value={dabsDraft} onChange={(e) => setDabsDraft(e.target.value)} placeholder="회의 내용, 작업사항, 확인사항 등을 입력하세요." /><div className="flex justify-end"><Button onClick={handleSaveDabsText} disabled={!canEditDabs} className="w-full lg:w-auto">저장</Button></div></>}
+                {isSoloWorkerTab && (
+                  <>
+                    <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-slate-600">
+                          이전 날짜 선택
+                        </label>
+                        <Input
+                          type="date"
+                          value={loadSourceDate}
+                          onChange={(e) => setLoadSourceDate(e.target.value)}
+                          className="h-9"
+                        />
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        onClick={() => handleLoadPreviousCompanyData("soloWorker")}
+                      >
+                        내 업체 단독작업자 불러오기
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
+                      <select
+                        value={soloWorkerInput.building}
+                        onChange={(e) =>
+                          setSoloWorkerInput({
+                            ...soloWorkerInput,
+                            building: e.target.value,
+                          })
+                        }
+                        className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+                      >
+                        <option value="">동 선택</option>
+                        {SOLO_WORKER_COLUMNS.map((column) => (
+                          <option key={column} value={column}>
+                            {column}
+                          </option>
+                        ))}
+                      </select>
+
+                      {(currentUser?.role === "master" ||
+                        currentUser?.role === "admin") && (
+                        <Input
+                          value={soloWorkerInput.company}
+                          onChange={(e) =>
+                            setSoloWorkerInput({
+                              ...soloWorkerInput,
+                              company: e.target.value,
+                            })
+                          }
+                          placeholder="업체명 입력"
+                        />
+                      )}
+
+                      <Input
+                        value={soloWorkerInput.name}
+                        onChange={(e) =>
+                          setSoloWorkerInput({
+                            ...soloWorkerInput,
+                            name: e.target.value,
+                          })
+                        }
+                        placeholder="성명 입력"
+                      />
+
+                      <Input
+                        value={soloWorkerInput.content}
+                        onChange={(e) =>
+                          setSoloWorkerInput({
+                            ...soloWorkerInput,
+                            content: e.target.value,
+                          })
+                        }
+                        placeholder="작업내용 입력"
+                      />
+
+                      <select
+                        value={soloWorkerInput.elderly}
+                        onChange={(e) =>
+                          setSoloWorkerInput({
+                            ...soloWorkerInput,
+                            elderly: e.target.value,
+                          })
+                        }
+                        className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+                      >
+                        <option value="x">고령자 x</option>
+                        <option value="o">고령자 o</option>
+                      </select>
+
+                      <Button onClick={handleAddSoloWorker} disabled={!canEditDabs}>
+                        추가
+                      </Button>
+                    </div>
+
+                    <Input
+                      value={soloCompanyFilter}
+                      onChange={(e) => setSoloCompanyFilter(e.target.value)}
+                      placeholder="업체명 검색"
+                      className="max-w-sm"
+                    />
+
+                    <div ref={dabsCaptureRef} className="bg-white">
+                      {renderSoloWorkerMobileCards()}
+                      {renderSoloWorkerDesktopTable()}
+                    </div>
+                  </>
+                )}
+                {!isImageTab && !isSectionTab && !isMaterialTab && !isSoloWorkerTab && <><TextArea value={dabsDraft} onChange={(e) => setDabsDraft(e.target.value)} placeholder="회의 내용, 작업사항, 확인사항 등을 입력하세요." /><div className="flex justify-end"><Button onClick={handleSaveDabsText} disabled={!canEditDabs} className="w-full lg:w-auto">저장</Button></div></>}
                 {dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
               </CardContent>
             </Card>
@@ -12027,177 +12137,6 @@ const renderSupplementWorkPage = () => (
   </div>
 );
 
-const renderSoloWorkerPage = () => (
-  <div className="space-y-4 sm:space-y-6">
-    {renderTopBar()}
-    {renderEditPopups()}
-
-    <Card>
-      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5" />
-          단독작업자
-        </CardTitle>
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="gap-1 text-xs"
-            onClick={() =>
-              setManualPopup({
-                src: SOLO_WORKER_MANUAL_GIF,
-                label: "단독작업자",
-              })
-            }
-          >
-            <HelpCircle className="h-3.5 w-3.5" />
-            사용 매뉴얼
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={() =>
-              handleDownloadCaptureImage(
-                soloWorkerCaptureRef,
-                `단독작업자-${selectedDate}`
-              )
-            }
-          >
-            이미지 다운로드
-          </Button>
-
-          <Button variant="outline" onClick={() => setCurrentPage("menu")}>
-            메뉴로 돌아가기
-          </Button>
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-6">
-        <Card className="border-slate-200 shadow-none">
-          <CardHeader>
-            <CardTitle className="text-base">단독작업자</CardTitle>
-          </CardHeader>
-
-          <CardContent className="space-y-4">
-            <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
-              선택 날짜: {formatMonthDay(selectedDate)}
-            </div>
-
-            <div className="text-xs font-semibold text-red-600">작업장소 정확히 입력!</div>
-
-            <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-slate-600">
-                  이전 날짜 선택
-                </label>
-                <Input
-                  type="date"
-                  value={loadSourceDate}
-                  onChange={(e) => setLoadSourceDate(e.target.value)}
-                  className="h-9"
-                />
-              </div>
-
-              <Button
-                variant="outline"
-                onClick={() => handleLoadPreviousCompanyData("soloWorker")}
-              >
-                내 업체 단독작업자 불러오기
-              </Button>
-            </div>
-
-            <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
-              <select
-                value={soloWorkerInput.building}
-                onChange={(e) =>
-                  setSoloWorkerInput({
-                    ...soloWorkerInput,
-                    building: e.target.value,
-                  })
-                }
-                className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
-              >
-                <option value="">동 선택</option>
-                {SOLO_WORKER_COLUMNS.map((column) => (
-                  <option key={column} value={column}>
-                    {column}
-                  </option>
-                ))}
-              </select>
-
-              {(currentUser?.role === "master" ||
-                currentUser?.role === "admin") && (
-                <Input
-                  value={soloWorkerInput.company}
-                  onChange={(e) =>
-                    setSoloWorkerInput({
-                      ...soloWorkerInput,
-                      company: e.target.value,
-                    })
-                  }
-                  placeholder="업체명 입력"
-                />
-              )}
-
-              <Input
-                value={soloWorkerInput.name}
-                onChange={(e) =>
-                  setSoloWorkerInput({
-                    ...soloWorkerInput,
-                    name: e.target.value,
-                  })
-                }
-                placeholder="성명 입력"
-              />
-
-              <Input
-                value={soloWorkerInput.content}
-                onChange={(e) =>
-                  setSoloWorkerInput({
-                    ...soloWorkerInput,
-                    content: e.target.value,
-                  })
-                }
-                placeholder="작업내용 입력"
-              />
-
-              <select
-                value={soloWorkerInput.elderly}
-                onChange={(e) =>
-                  setSoloWorkerInput({
-                    ...soloWorkerInput,
-                    elderly: e.target.value,
-                  })
-                }
-                className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
-              >
-                <option value="x">고령자 x</option>
-                <option value="o">고령자 o</option>
-              </select>
-
-              <Button onClick={handleAddSoloWorker} disabled={!canEditDabs}>
-                추가
-              </Button>
-            </div>
-
-            <Input
-              value={soloCompanyFilter}
-              onChange={(e) => setSoloCompanyFilter(e.target.value)}
-              placeholder="업체명 검색"
-              className="max-w-sm"
-            />
-
-            <div ref={soloWorkerCaptureRef} className="bg-white">
-              {renderSoloWorkerMobileCards()}
-              {renderSoloWorkerDesktopTable()}
-            </div>
-          </CardContent>
-        </Card>
-      </CardContent>
-    </Card>
-  </div>
-);
   
   if (!mounted) return null;
 
@@ -12373,8 +12312,6 @@ return (
   renderDabsPage()
 ) : currentPage === "portfolio" ? (
   renderPortfolioPage()
-) : currentPage === "soloWorker" ? (
-  renderSoloWorkerPage()
 ) : currentPage === "heatwave" ? (
   renderHeatwavePage()
 ) : currentPage === "supplementWork" ? (
