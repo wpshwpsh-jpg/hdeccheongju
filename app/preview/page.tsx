@@ -1,0 +1,12477 @@
+"use client";
+
+import { getFirebaseServices } from "@/lib/firebase";
+
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { motion } from "framer-motion";
+import { toJpeg } from "html-to-image";
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  HelpCircle,
+  LayoutGrid,
+  LogOut,
+  MessageSquare,
+  Search,
+  ShieldCheck,
+  Trash2,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
+import {
+  createUserWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut,
+} from "firebase/auth";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
+
+import {
+  deleteObject,
+  getDownloadURL,
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+} from "firebase/storage";
+
+const weekLabels = ["일", "월", "화", "수", "목", "금", "토"];
+const DEMO_MASTER_ID = "GH45";
+const DEMO_MASTER_PASSWORD = "2706";
+const DEMO_USERS_KEY = "demo-calendar-users";
+const DEMO_ENTRIES_KEY = "demo-calendar-entries";
+const ALL_BUILDING_LABEL = "전체";
+
+const SECTION1_COLUMNS = [ALL_BUILDING_LABEL, "101동", "102동", "103동", "104동", "114동", "115동", "116동", "117동", "상가"];
+const SECTION2_COLUMNS = [ALL_BUILDING_LABEL, "105동", "106동", "107동", "108동", "109동", "110동", "111동", "112동", "113동"];
+
+const FIRE_WORK_COLUMNS = [
+  ALL_BUILDING_LABEL,
+  ...Array.from({ length: 17 }, (_, i) => `${101 + i}동`),
+  "상가",
+];
+const HIGH_RISK_BUILDINGS = [
+  ALL_BUILDING_LABEL,
+  "101동", "102동", "103동", "104동", "105동", "106동", "107동", "108동", "109동",
+  "110동", "111동", "112동", "113동", "114동", "115동", "116동", "117동", "상가",
+];
+const SOLO_WORKER_COLUMNS = [ALL_BUILDING_LABEL, ...Array.from({ length: 17 }, (_, i) => `${101 + i}동`), "상가"];
+const MATERIAL_TIMES = Array.from({ length: 12 }, (_, i) => String(i + 6).padStart(2, "0"));
+// 동별 상세도 종료시간 선택지 (07~18시, 시작시간보다 한 시간 뒤부터)
+const MATERIAL_END_TIMES = Array.from({ length: 12 }, (_, i) => String(i + 7).padStart(2, "0"));
+function getDefaultEndTime(startTime: string) {
+  const startNum = parseInt(startTime || "06", 10);
+  const endNum = Math.min((Number.isNaN(startNum) ? 6 : startNum) + 1, 18);
+  return String(endNum).padStart(2, "0");
+}
+const MAX_HEATWAVE_IMAGE_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_HEATWAVE_EXCEL_FILE_SIZE = 10 * 1024 * 1024;
+
+const DABS_MANUAL_GIF: Record<string, string> = {
+  highRisk: "/manuals/manual-highrisk.gif",
+  buildingDetail: "/manuals/manual-buildingdetail.gif",
+  equipmentFlow: "/manuals/manual-equipmentflow.gif",
+  archWork: "/manuals/manual-sectionwork.gif",
+  mepWork: "/manuals/manual-sectionwork.gif",
+  fireWork: "/manuals/manual-sectionwork.gif",
+  materialsAfter0: "/manuals/manual-materials.gif",
+  materialsAfter1: "/manuals/manual-materials.gif",
+  soloWorker: "/manuals/manual-soloworker.gif",
+};
+const SOLO_WORKER_MANUAL_GIF = "/manuals/manual-soloworker.gif";
+
+const EQUIPMENT_OPTIONS = [  { value: "concrete_pump_truck", label: "콘크리트 펌프카" },
+  { value: "concrete_mixer_truck", label: "콘크리트 믹서트럭" },
+  { value: "excavator", label: "굴착기" },
+  { value: "roller", label: "롤러" },
+  { value: "boom_lift_truck", label: "차량형 고소작업대" },
+  { value: "scissor_lift", label: "시저형 고소작업대" },
+  { value: "forklift", label: "지게차" },
+  { value: "mobile_crane", label: "이동식 크레인" },
+];
+
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
+function Card({ className = "", children }: { className?: string; children?: ReactNode }) {
+  return <div className={cn("rounded-[24px] border border-black bg-white shadow-sm", className)}>{children}</div>;
+}
+
+function CardHeader({ className = "", children }: { className?: string; children?: ReactNode }) {
+  return <div className={cn("px-4 pt-4 lg:px-5 sm:pt-5", className)}>{children}</div>;
+}
+
+function CardContent({ className = "", children }: { className?: string; children?: ReactNode }) {
+  return <div className={cn("px-4 pb-4 lg:px-5 sm:pb-5", className)}>{children}</div>;
+}
+
+function CardTitle({ className = "", children }: { className?: string; children?: ReactNode }) {
+  return <div className={cn("text-base font-semibold text-slate-900 lg:text-lg", className)}>{children}</div>;
+}
+
+function Button({
+  className = "",
+  variant = "default",
+  size = "default",
+  type = "button",
+  children,
+  ...props
+}: {
+  className?: string;
+  variant?: "default" | "outline" | "ghost" | "secondary";
+  size?: "default" | "icon" | "sm";
+  type?: "button" | "submit" | "reset";
+  children?: ReactNode;
+} & ButtonHTMLAttributes<HTMLButtonElement>) {
+  const variantClass = {
+    default: "bg-slate-900 text-white hover:bg-slate-800 border-slate-900",
+    outline: "bg-white text-slate-700 hover:bg-slate-50 border-slate-300",
+    ghost: "bg-transparent text-slate-600 hover:bg-slate-100 border-transparent",
+    secondary: "bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200",
+  }[variant];
+
+  const sizeClass = {
+    default: "h-10 px-4",
+    icon: "h-10 w-10 p-0",
+    sm: "h-8 px-2",
+  }[size];
+
+  return (
+    <button
+      type={type}
+      className={cn(
+        "inline-flex items-center justify-center rounded-2xl border text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+        variantClass,
+        sizeClass,
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Input({
+  className = "",
+  ...props
+}: {
+  className?: string;
+} & InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      className={cn(
+        "h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200 [font-family:inherit]",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+function TextArea({
+  className = "",
+  ...props
+}: {
+  className?: string;
+} & TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      className={cn(
+        "min-h-[140px] w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200",
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+function Badge({ className = "", children }: { className?: string; children?: ReactNode }) {
+  return <span className={cn("inline-flex items-center rounded-full bg-slate-100 px-2 py-0 text-[10px] font-medium text-slate-700", className)}>{children}</span>;
+}
+
+function formatDateKey(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatMonthDay(dateKey: string) {
+  if (!dateKey) return "-";
+  const [, month, day] = dateKey.split("-");
+  return `${Number(month)}월 ${Number(day)}일`;
+}
+
+function formatShortDate(date: Date) {
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+function getDefaultSelectedDateKey() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+
+  if (d.getDay() === 0) {
+    d.setDate(d.getDate() + 1);
+  }
+
+  return formatDateKey(d);
+}
+
+function getTodayKey() {
+  return formatDateKey(new Date());
+}
+
+function getSaturdayKeyFromDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const d = new Date(year, month - 1, day);
+  const daysUntilSaturday = (6 - d.getDay() + 7) % 7;
+
+  d.setDate(d.getDate() + daysUntilSaturday);
+
+  return formatDateKey(d);
+}
+
+function getMonthGrid(currentDate: Date) {
+  const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  const start = new Date(firstDay);
+  start.setDate(start.getDate() - start.getDay());
+  return Array.from({ length: 42 }, (_, i) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + i);
+    return date;
+  });
+}
+
+function getTimeOptions() {
+  const options = [];
+  for (let hour = 0; hour < 24; hour += 1) {
+    const excluded = (hour >= 0 && hour < 9) || (hour >= 11 && hour < 13) || (hour >= 15 && hour < 16) || (hour >= 18 && hour < 24);
+    if (!excluded) options.push(`${String(hour).padStart(2, "0")}:00`);
+  }
+  return options;
+}
+
+function getEndTime(startTime: string) {
+  const [hour, minute] = startTime.split(":").map(Number);
+  const totalMinutes = hour * 60 + minute + 120;
+  const endHour = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const endMinute = totalMinutes % 60;
+  return `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
+}
+
+function isTimeOverlapping(startA: string, endA: string, startB: string, endB: string) {
+  const toMinutes = (time: string) => {
+    const [hour, minute] = time.split(":").map(Number);
+    return hour * 60 + minute;
+  };
+  return toMinutes(startA) < toMinutes(endB) && toMinutes(startB) < toMinutes(endA);
+}
+
+function getRoleLabel(role: string) {
+  if (role === "master") return "마스터";
+  if (role === "admin") return "관리자";
+  return "일반";
+}
+
+function getStatusLabel(status: string) {
+  if (status === "approved") return "승인완료";
+  if (status === "rejected") return "반려";
+  return "승인대기";
+}
+
+function getDemoMasterUser(): UserItem {
+  return {
+    uid: "demo-master",
+    email: DEMO_MASTER_ID,
+    password: DEMO_MASTER_PASSWORD,
+    companyName: "마스터",
+    name: "최고관리자",
+    role: "master",
+    status: "approved",
+  };
+}
+
+function loadDemoUsers(): UserItem[] {
+  if (typeof window === "undefined") return [getDemoMasterUser()];
+  try {
+    const raw = window.localStorage.getItem(DEMO_USERS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const filtered = Array.isArray(parsed) ? parsed.filter((user) => String(user.uid) !== "demo-master") : [];
+    return [getDemoMasterUser(), ...filtered];
+  } catch {
+    return [getDemoMasterUser()];
+  }
+}
+
+function saveDemoUsers(users: Array<{ uid: string } & Record<string, unknown>>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    DEMO_USERS_KEY,
+    JSON.stringify(users.filter((user) => String(user.uid) !== "demo-master"))
+  );
+}
+
+function loadDemoEntries(): EntryItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(DEMO_ENTRIES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDemoEntries(entries: Array<Record<string, unknown>>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(DEMO_ENTRIES_KEY, JSON.stringify(entries));
+}
+
+function createLocalId(prefix: string) {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+type UserItem = {
+  uid: string;
+  email?: string;
+  password?: string;
+  companyName?: string;
+  name?: string;
+  role?: string;
+  status?: string;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  createdAt?: string | null;
+};
+
+type EntryItem = {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  companyName?: string;
+  createdByUid?: string;
+  createdByName?: string;
+  createdByRole?: string;
+  createdAt?: string | null;
+};
+
+type ActivityLogItem = {
+  id: string;
+  action: string;
+  page?: string;
+  target?: string;
+  detail?: string;
+  actorUid?: string;
+  actorName?: string;
+  actorCompany?: string;
+  actorRole?: string;
+  createdAt?: any;
+};
+
+type HeatwaveUploadItem = {
+  id: string;
+  fileName: string;
+  fileUrl: string;
+  fileType: "image" | "thermoPhoto" | "thermoLedger";
+  storagePath?: string;
+  companyName?: string;
+  uploadedByUid?: string;
+  uploadedByName?: string;
+  createdAt?: string | null;
+};
+
+type HeatwaveDateValue = {
+  date?: string;
+  uploads?: Record<string, HeatwaveUploadItem[]>;
+};
+
+type HeatwaveSharedFileItem = {
+  fileName: string;
+  fileUrl: string;
+  storagePath?: string;
+  uploadedByUid?: string;
+  uploadedByName?: string;
+  createdAt?: string | null;
+};
+
+type HeatwaveSharedDateValue = {
+  date?: string;
+  thermoHygrometerImage?: HeatwaveSharedFileItem | null;
+};
+
+type DabsRowItem = {
+  id: string;
+  company?: string;
+  createdByUid?: string;
+  createdByName?: string;
+  content?: string;
+  contentRedRanges?: TextColorRange[];
+  safety?: string;
+  name?: string;
+  elderly?: string;
+  gate?: string;
+  material?: string;
+  vehicle?: string;
+  vehicleCount?: string;
+  location?: string;
+  manager?: string;
+  phone?: string;
+  workerOnCargo?: boolean;
+  cargoHeight1m?: boolean;
+  time?: string;
+};
+
+type OverlayMarkerItem = {
+  id: string;
+  createdByUid?: string;
+  createdByName?: string;
+  x: number;
+  y: number;
+  building?: string;
+  company?: string;
+  note?: string;
+  equipmentType?: string;
+  time?: string;
+  endTime?: string;
+};
+
+type OverlayArrowItem = {
+  id: string;
+  createdByUid?: string;
+  createdByName?: string;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  points?: { x: number; y: number }[];
+  company?: string;
+  note?: string;
+  time?: string;
+  endTime?: string;
+};
+
+type OverlayPersonItem = {
+  id: string;
+  createdByUid?: string;
+  createdByName?: string;
+  x: number;
+  y: number;
+  personType: "guide" | "signal";
+};
+
+type DabsTabValue =
+  | string
+  | {
+      rows?: Record<string, DabsRowItem[]>;
+      list?: DabsRowItem[];
+    };
+
+type DabsDateValue = {
+  soloWorker?: {
+    rows?: Record<string, DabsRowItem[]>;
+  };
+  [key: string]: DabsTabValue | { rows?: Record<string, DabsRowItem[]> } | undefined;
+};
+
+const COMPANY_COLOR_PALETTE = [
+  { bg: "bg-rose-50/95", border: "border-rose-300", text: "text-rose-800" },
+  { bg: "bg-blue-50/95", border: "border-blue-300", text: "text-blue-800" },
+  { bg: "bg-emerald-50/95", border: "border-emerald-300", text: "text-emerald-800" },
+  { bg: "bg-amber-50/95", border: "border-amber-300", text: "text-amber-800" },
+  { bg: "bg-violet-50/95", border: "border-violet-300", text: "text-violet-800" },
+  { bg: "bg-cyan-50/95", border: "border-cyan-300", text: "text-cyan-800" },
+  { bg: "bg-pink-50/95", border: "border-pink-300", text: "text-pink-800" },
+  { bg: "bg-lime-50/95", border: "border-lime-300", text: "text-lime-800" },
+];
+
+// COMPANY_COLOR_PALETTE와 동일한 순서/인덱스로 매칭되는 SVG stroke용 hex 색상 (화살표/라인 등)
+const COMPANY_STROKE_PALETTE = [
+  "#e11d48", // rose-600
+  "#2563eb", // blue-600
+  "#059669", // emerald-600
+  "#d97706", // amber-600
+  "#7c3aed", // violet-600
+  "#0891b2", // cyan-600
+  "#db2777", // pink-600
+  "#65a30d", // lime-600
+];
+
+function getCompanyStrokeIndex(company: string, companyList: string[]) {
+  const safeCompany = String(company || "-").trim() || "-";
+  const index = companyList.indexOf(safeCompany);
+  return index >= 0 ? index % COMPANY_STROKE_PALETTE.length : 0;
+}
+
+function getCompanyStrokeColor(company: string, companyList: string[]) {
+  return COMPANY_STROKE_PALETTE[getCompanyStrokeIndex(company, companyList)];
+}
+
+// MATERIAL_TIMES(06~17시)의 각 시간대와 1:1로 매칭되는 라인 색상 (동별 상세도)
+const TIME_STROKE_PALETTE = [
+  "#ef4444", "#f97316", "#f59e0b", "#84cc16", "#10b981", "#06b6d4",
+  "#3b82f6", "#6366f1", "#8b5cf6", "#d946ef", "#ec4899", "#14b8a6",
+];
+
+function getTimeStrokeColor(time: string) {
+  const index = MATERIAL_TIMES.indexOf(String(time || ""));
+  return TIME_STROKE_PALETTE[index >= 0 ? index % TIME_STROKE_PALETTE.length : 0];
+}
+
+const BUILDING_DETAIL_LIST = HIGH_RISK_BUILDINGS.filter(
+  (building) => building !== ALL_BUILDING_LABEL && building !== "상가"
+);
+
+function getUniqueCompaniesFromMarkers(markers: OverlayMarkerItem[]) {
+  return Array.from(
+    new Set(
+      markers
+        .map((marker) => String(marker.company || "-").trim() || "-")
+        .sort((a, b) => a.localeCompare(b, "ko"))
+    )
+  );
+}
+
+function getUniqueCompaniesFromRows(rows: Record<string, DabsRowItem[]>) {
+  return Array.from(
+    new Set(
+      Object.values(rows)
+        .flat()
+        .map((item) => String(item.company || "-").trim() || "-")
+        .sort((a, b) => a.localeCompare(b, "ko"))
+    )
+  );
+}
+
+function getCompanyColorByList(company: string, companyList: string[]) {
+  const safeCompany = String(company || "-").trim() || "-";
+  const index = companyList.indexOf(safeCompany);
+
+  return COMPANY_COLOR_PALETTE[
+    index >= 0 ? index % COMPANY_COLOR_PALETTE.length : 0
+  ];
+}
+
+function getBuildingColor(building: string) {
+  const buildingColorMap: Record<string, string> = {
+  "전체": "text-black",
+  "101동": "text-red-700",
+    "102동": "text-blue-700",
+    "103동": "text-emerald-700",
+    "104동": "text-amber-700",
+    "105동": "text-violet-700",
+    "106동": "text-cyan-700",
+    "107동": "text-pink-700",
+    "108동": "text-lime-700",
+    "109동": "text-orange-700",
+    "110동": "text-indigo-700",
+    "111동": "text-teal-700",
+    "112동": "text-rose-700",
+    "113동": "text-sky-700",
+    "114동": "text-fuchsia-700",
+    "115동": "text-green-700",
+    "116동": "text-purple-700",
+    "117동": "text-slate-800",
+    "상가": "text-stone-800",
+  };
+
+  return buildingColorMap[building] || "text-slate-800";
+}
+
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+
+  return chunks;
+}
+
+function getTextVisualLineCount(text: string, charsPerLine: number) {
+  const normalizedText = String(text || "").trim();
+
+  if (!normalizedText) return 1;
+
+  return normalizedText.split("\n").reduce((sum, line) => {
+    const safeLine = line.trim();
+
+    if (!safeLine) return sum + 1;
+
+    return sum + Math.max(1, Math.ceil(safeLine.length / charsPerLine));
+  }, 0);
+}
+
+function getItemVisualRowCount(item: DabsRowItem, mode: "section" | "solo" = "section") {
+  const content = String(item.content || "");
+
+  const charsPerLine = mode === "solo" ? 120 : 160;
+
+  return Math.max(getTextVisualLineCount(content, charsPerLine), 1);
+}
+
+function getRowCountByColumns(
+  columns: string[],
+  rows: Record<string, DabsRowItem[]>
+) {
+  return columns.reduce((sum, column) => {
+    const list = rows[column] || [];
+
+    if (list.length === 0) return sum + 1;
+
+    const visualRows = list.reduce(
+      (acc, item) => acc + getItemVisualRowCount(item),
+      0
+    );
+
+    return sum + visualRows;
+  }, 0);
+}
+
+function splitColumnsByMaxRows(
+  columns: string[],
+  rows: Record<string, DabsRowItem[]>,
+  maxRows: number
+) {
+  const chunks: string[][] = [];
+  let currentChunk: string[] = [];
+  let currentRows = 0;
+
+  columns.forEach((column) => {
+    const list = rows[column] || [];
+
+const rowCount =
+  list.length === 0
+    ? 1
+    : list.reduce(
+        (sum, item) => sum + getItemVisualRowCount(item, "section"),
+        0
+      );
+
+    if (currentChunk.length > 0 && currentRows + rowCount > maxRows) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+      currentRows = 0;
+    }
+
+    currentChunk.push(column);
+    currentRows += rowCount;
+  });
+
+  if (currentChunk.length > 0) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks;
+}
+
+function uniqueColumns(columns: string[]) {
+  return Array.from(new Set(columns));
+}
+
+function isSectionWorkTabKey(tabKey: string) {
+  return [
+    "archWork",
+    "mepWork",
+    "section1_arch",
+    "section1_mep",
+    "section2_arch",
+    "section2_mep",
+    "fireWork",
+  ].includes(tabKey);
+}
+
+function getMergedSectionKeys(tabKey: string) {
+  if (tabKey === "archWork") return ["section1_arch", "section2_arch"];
+  if (tabKey === "mepWork") return ["section1_mep", "section2_mep"];
+  return [tabKey];
+}
+
+function getSectionStorageKey(tabKey: string, building: string) {
+  if (tabKey === "archWork") {
+    if (building !== ALL_BUILDING_LABEL && SECTION2_COLUMNS.includes(building)) return "section2_arch";
+    return "section1_arch";
+  }
+
+  if (tabKey === "mepWork") {
+    if (building !== ALL_BUILDING_LABEL && SECTION2_COLUMNS.includes(building)) return "section2_mep";
+    return "section1_mep";
+  }
+
+  return tabKey;
+}
+
+function getDabsColumnsByTabKey(tabKey: string) {
+  if (tabKey === "archWork" || tabKey === "mepWork") {
+    return uniqueColumns([...SECTION1_COLUMNS, ...SECTION2_COLUMNS]);
+  }
+
+  if (tabKey === "section1_arch" || tabKey === "section1_mep") return SECTION1_COLUMNS;
+  if (tabKey === "section2_arch" || tabKey === "section2_mep") return SECTION2_COLUMNS;
+  if (tabKey === "fireWork") return FIRE_WORK_COLUMNS;
+  return [];
+}
+
+const HIGH_RISK_TABLE_MIN_ROWS = 14;
+
+function getHighRiskTableRows(
+  rows: Record<string, DabsRowItem[]>
+): Array<DabsRowItem & { building: string }> {
+  const buildingOrder = HIGH_RISK_BUILDINGS.filter((building) => building !== ALL_BUILDING_LABEL);
+  const buildingIndex = (building: string) => {
+    const index = buildingOrder.indexOf(building);
+    return index === -1 ? buildingOrder.length : index;
+  };
+
+  const flat: Array<DabsRowItem & { building: string }> = [];
+  Object.entries(rows || {}).forEach(([building, items]) => {
+    (items || []).forEach((item) => flat.push({ ...item, building }));
+  });
+
+  const companyMap = new Map<string, Array<DabsRowItem & { building: string }>>();
+  flat.forEach((item) => {
+    const key = item.company || "-";
+    if (!companyMap.has(key)) companyMap.set(key, []);
+    companyMap.get(key)?.push(item);
+  });
+
+  const groups = Array.from(companyMap.entries()).map(([company, items]) => {
+    const sortedItems = [...items].sort(
+      (a, b) => buildingIndex(a.building) - buildingIndex(b.building)
+    );
+    const minIndex = Math.min(...sortedItems.map((item) => buildingIndex(item.building)));
+    return { company, items: sortedItems, minIndex };
+  });
+
+  groups.sort((a, b) => {
+    if (a.minIndex !== b.minIndex) return a.minIndex - b.minIndex;
+    return a.company.localeCompare(b.company, "ko");
+  });
+
+  return groups.flatMap((group) => group.items);
+}
+
+const HIGH_RISK_PORTFOLIO_MAX_ROWS = 8;
+
+function splitHighRiskRowsByCompany(
+  rows: Array<DabsRowItem & { building: string }>,
+  maxRows: number
+) {
+  const chunks: Array<Array<DabsRowItem & { building: string }>> = [];
+  let currentChunk: Array<DabsRowItem & { building: string }> = [];
+
+  rows.forEach((item) => {
+    const lastItem = currentChunk[currentChunk.length - 1];
+    const isNewCompany = !lastItem || lastItem.company !== item.company;
+
+    if (isNewCompany && currentChunk.length > 0 && currentChunk.length >= maxRows) {
+      chunks.push(currentChunk);
+      currentChunk = [];
+    }
+
+    currentChunk.push(item);
+  });
+
+  if (currentChunk.length > 0) chunks.push(currentChunk);
+
+  return chunks.length > 0 ? chunks : [[]];
+}
+
+function groupSoloWorkersByCompany(list: DabsRowItem[]): Array<[string, DabsRowItem[]]> {
+  const sorted = [...list].sort((a, b) => {
+    const companyCompare = String(a.company || "").localeCompare(String(b.company || ""), "ko");
+    if (companyCompare !== 0) return companyCompare;
+    return String(a.name || "").localeCompare(String(b.name || ""), "ko");
+  });
+
+  const map = new Map<string, DabsRowItem[]>();
+
+  sorted.forEach((item) => {
+    const key = item.company || "-";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)?.push(item);
+  });
+
+  return Array.from(map.entries());
+}
+
+function getSoloWorkerRowsByCompany(
+  rows: Record<string, DabsRowItem[]>,
+  companyFilter = ""
+) {
+  const keyword = companyFilter.trim().toLowerCase();
+
+  return Object.entries(rows)
+    .flatMap(([building, list]) =>
+      (list || []).map((item) => ({
+        ...item,
+        building,
+      }))
+    )
+    .filter((item) =>
+      String(item.company || "").toLowerCase().includes(keyword)
+    )
+    .sort((a, b) => {
+      const companyCompare = String(a.company || "").localeCompare(
+        String(b.company || ""),
+        "ko"
+      );
+
+      if (companyCompare !== 0) return companyCompare;
+
+      const buildingCompare = String(a.building || "").localeCompare(
+        String(b.building || ""),
+        "ko"
+      );
+
+      if (buildingCompare !== 0) return buildingCompare;
+
+      return String(a.name || "").localeCompare(String(b.name || ""), "ko");
+    });
+}
+
+function splitSoloWorkersByMaxRows(
+  rows: Array<DabsRowItem & { building: string }>,
+  maxRows: number
+) {
+  const chunks: Array<Array<DabsRowItem & { building: string }>> = [];
+
+  let currentChunk: Array<DabsRowItem & { building: string }> = [];
+let currentRows = 0;
+
+rows.forEach((item) => {
+  const rowCount = getItemVisualRowCount(item, "solo");
+
+  if (currentChunk.length > 0 && currentRows + rowCount > maxRows) {
+    chunks.push(currentChunk);
+    currentChunk = [];
+    currentRows = 0;
+  }
+
+  currentChunk.push(item);
+  currentRows += rowCount;
+});
+
+if (currentChunk.length > 0) {
+  chunks.push(currentChunk);
+}
+
+  return chunks.length > 0 ? chunks : [[]];
+}
+
+function getEquipmentLabel(type: string) {
+  return EQUIPMENT_OPTIONS.find((item) => item.value === type)?.label || "장비";
+}
+
+function EquipmentIcon({
+  type,
+  className = "h-6 w-6",
+}: {
+  type: string;
+  className?: string;
+}) {
+  const common = {
+    fill: "none" as const,
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+
+  const wrap = (children: ReactNode) => (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      {children}
+    </svg>
+  );
+
+  switch (type) {
+    case "concrete_pump_truck":
+      return wrap(
+        <>
+          <path {...common} d="M2 16h13M4 16V9h4v7M8 11l5-4 2 1-3 3m2-2 2 8" />
+          <circle cx="6" cy="18" r="2" fill="currentColor" />
+          <circle cx="15" cy="18" r="2" fill="currentColor" />
+        </>
+      );
+    case "concrete_mixer_truck":
+      return wrap(
+        <>
+          <path {...common} d="M2 16h15M4 16V10h4v6M10 10h5l2 3v3" />
+          <circle cx="6" cy="18" r="2" fill="currentColor" />
+          <circle cx="14" cy="18" r="2" fill="currentColor" />
+          <path {...common} d="M10.5 9.5 14 8l2 3-3.5 1.5Z" />
+        </>
+      );
+    case "excavator":
+      return wrap(
+        <>
+          <path {...common} d="M13 14h5v2h-5m-8 0h6M7 16v-2l3-2 2-5 3 1-1 4" />
+          <path {...common} d="M14 7l3 2-2 4" />
+          <path {...common} d="M8 12l-2 3 2 1" />
+          <circle cx="7" cy="18" r="2" fill="currentColor" />
+          <circle cx="11" cy="18" r="2" fill="currentColor" />
+        </>
+      );
+    case "roller":
+      return wrap(
+        <>
+          <circle cx="7" cy="15" r="4" {...common} />
+          <path {...common} d="M11 15h4m0 0v-4h4v6h-3" />
+          <circle cx="18" cy="17" r="2" fill="currentColor" />
+        </>
+      );
+    case "boom_lift_truck":
+      return wrap(
+        <>
+          <path {...common} d="M2 16h11M4 16v-3h5v3M6 13l7-5 2 2" />
+          <path {...common} d="M15 10l3-3h2v2l-3 3" />
+          <circle cx="6" cy="18" r="2" fill="currentColor" />
+          <circle cx="13" cy="18" r="2" fill="currentColor" />
+        </>
+      );
+    case "scissor_lift":
+      return wrap(
+        <>
+          <path {...common} d="M5 18h10M6 6h8v3H6Z" />
+          <path {...common} d="m7 15 6-6m-6 0 6 6" />
+          <path {...common} d="M6 18v-2h8v2" />
+          <circle cx="7" cy="20" r="1" fill="currentColor" />
+          <circle cx="13" cy="20" r="1" fill="currentColor" />
+        </>
+      );
+    case "forklift":
+      return wrap(
+        <>
+          <path {...common} d="M5 6v8m0 0h4m-4 0v4m10-8v6" />
+          <path {...common} d="M9 10h4a3 3 0 0 1 3 3v1H9Z" />
+          <circle cx="10" cy="18" r="2" fill="currentColor" />
+          <circle cx="16" cy="18" r="2" fill="currentColor" />
+        </>
+      );
+    case "mobile_crane":
+      return wrap(
+        <>
+          <path {...common} d="M3 16h11M5 16v-3h4v3M9 13l6-5 3 2" />
+          <path {...common} d="M18 10v5m0 0-1.5 2M18 15l1.5 2" />
+          <circle cx="6" cy="18" r="2" fill="currentColor" />
+          <circle cx="13" cy="18" r="2" fill="currentColor" />
+        </>
+      );
+    default:
+      return wrap(<rect x="5" y="5" width="14" height="14" {...common} />);
+  }
+}
+
+function MobileListCard({ title, children, action }: { title: ReactNode; children?: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-black bg-white p-4 shadow-sm lg:hidden">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="text-sm font-semibold text-slate-900">{title}</div>
+        {action}
+      </div>
+      <div className="space-y-2 text-sm">{children}</div>
+    </div>
+  );
+}
+
+const TABLE_BASE_CLASS = "w-full table-fixed border-collapse text-[32px]";
+
+const dottedRow = (index: number) =>
+  index > 0 ? "border-t border-dashed border-black pt-2" : "";
+
+type TextColorRange = {
+  start: number;
+  end: number;
+};
+
+const normalizeTextColorRanges = (ranges: TextColorRange[], textLength: number) =>
+  ranges
+    .map((range) => ({
+      start: Math.max(0, Math.min(range.start, textLength)),
+      end: Math.max(0, Math.min(range.end, textLength)),
+    }))
+    .filter((range) => range.start < range.end)
+    .sort((a, b) => a.start - b.start);
+
+const addRedTextRange = (ranges: TextColorRange[], start: number, end: number, textLength: number) => {
+  if (start === end) return ranges;
+
+  const nextRange = {
+    start: Math.min(start, end),
+    end: Math.max(start, end),
+  };
+
+  return normalizeTextColorRanges([...ranges, nextRange], textLength);
+};
+
+const removeRedTextRange = (ranges: TextColorRange[], start: number, end: number) => {
+  if (start === end) return ranges;
+
+  const removeStart = Math.min(start, end);
+  const removeEnd = Math.max(start, end);
+
+  return ranges.flatMap((range) => {
+    if (range.end <= removeStart || range.start >= removeEnd) return [range];
+
+    const next: TextColorRange[] = [];
+
+    if (range.start < removeStart) {
+      next.push({ start: range.start, end: removeStart });
+    }
+
+    if (range.end > removeEnd) {
+      next.push({ start: removeEnd, end: range.end });
+    }
+
+    return next;
+  });
+};
+
+const renderTextWithRedRanges = (text = "", ranges: TextColorRange[] = []) => {
+  const safeRanges = normalizeTextColorRanges(ranges, text.length);
+
+  if (safeRanges.length === 0) return text;
+
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+
+  safeRanges.forEach((range, index) => {
+    if (cursor < range.start) {
+      nodes.push(text.slice(cursor, range.start));
+    }
+
+    nodes.push(
+      <span key={`red-${index}`} className="text-red-600">
+        {text.slice(range.start, range.end)}
+      </span>
+    );
+
+    cursor = range.end;
+  });
+
+  if (cursor < text.length) {
+    nodes.push(text.slice(cursor));
+  }
+
+  return nodes;
+};
+
+export default function MonthlyCalendarTextEntrySite() {
+  const { auth, db, isConfigured } = getFirebaseServices();
+const isDemoMode = false;
+const storage = isConfigured ? getStorage() : null;
+
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentUser, setCurrentUser] = useState<UserItem | null>(null);
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const [entries, setEntries] = useState<EntryItem[]>([]);
+const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([]);
+const [heatwaveImageSelectedCompanies, setHeatwaveImageSelectedCompanies] = useState<string[]>([]);
+const [heatwaveExcelSelectedCompanies, setHeatwaveExcelSelectedCompanies] = useState<string[]>([]);
+const [heatwaveUploads, setHeatwaveUploads] = useState<Record<string, HeatwaveDateValue>>({});
+const [heatwaveMessage, setHeatwaveMessage] = useState("");
+const [heatwaveStatusPopupOpen, setHeatwaveStatusPopupOpen] = useState(false);
+const [heatwaveActiveTab, setHeatwaveActiveTab] = useState<"upload" | "sensitive">("upload");
+const [heatwaveDownloadStartDate, setHeatwaveDownloadStartDate] = useState(() => getTodayKey());
+const [heatwaveDownloadEndDate, setHeatwaveDownloadEndDate] = useState(() => getTodayKey());
+const [heatwaveDownloadTypes, setHeatwaveDownloadTypes] = useState({ thermoPhoto: true, thermoLedger: true });
+const [heatwaveDownloadLoading, setHeatwaveDownloadLoading] = useState(false);
+const [heatwaveDeleteAllLoading, setHeatwaveDeleteAllLoading] = useState(false);
+const [heatwaveSharedFiles, setHeatwaveSharedFiles] = useState<Record<string, HeatwaveSharedDateValue>>({});
+  const [selectedDate, setSelectedDate] = useState(() => getDefaultSelectedDateKey());
+const heatwaveDateKey = getTodayKey();
+const [heatwaveViewDateKey, setHeatwaveViewDateKey] = useState(() => getTodayKey());
+const [manualSelectedDate, setManualSelectedDate] = useState("");
+const [manualSelectedDateSavedToday, setManualSelectedDateSavedToday] = useState("");
+  const [selectedTime, setSelectedTime] = useState("09:00");
+  const [loginId, setLoginId] = useState("");
+const [loginPassword, setLoginPassword] = useState("");
+const [loginMessage, setLoginMessage] = useState("");
+const [loginLoading, setLoginLoading] = useState(false);
+  const [signupId, setSignupId] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupCompanyName, setSignupCompanyName] = useState("");
+  const [signupName, setSignupName] = useState("");
+  const [signupRole, setSignupRole] = useState("general");
+  const [signupMessage, setSignupMessage] = useState("");
+  const [deleteNoticeOpen, setDeleteNoticeOpen] = useState(false);
+const [entryMessage, setEntryMessage] = useState("");
+
+const [editEntryPopup, setEditEntryPopup] = useState({
+  open: false,
+  entryId: "",
+  date: "",
+  startTime: "09:00",
+  companyName: "",
+});
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [currentPage, setCurrentPage] = useState("menu");
+const [portfolioSlideIndex, setPortfolioSlideIndex] = useState(0);
+const [isExportingPortfolioImages, setIsExportingPortfolioImages] = useState(false);
+  const [dabsTabIndex, setDabsTabIndex] = useState(0);
+  const [dabsData, setDabsData] = useState<Record<string, DabsDateValue>>({});
+  const [dabsImages, setDabsImages] = useState<Record<string, string>>({});
+  const [buildingDetailImages, setBuildingDetailImages] = useState<Record<string, string>>({});
+  const [selectedBuildingDetail, setSelectedBuildingDetail] = useState<string>("");
+  const [dabsOverlays, setDabsOverlays] = useState<
+  Record<
+    string,
+    Record<
+      string,
+      {
+        markers?: OverlayMarkerItem[];
+        arrows?: OverlayArrowItem[];
+        people?: OverlayPersonItem[];
+      }
+    >
+  >
+>({});
+  const [personPlacementMode, setPersonPlacementMode] = useState<"guide" | "signal" | null>(null);
+  const [dabsDraft, setDabsDraft] = useState("");
+  const [dabsMessage, setDabsMessage] = useState("");
+  const [sectionInput, setSectionInput] = useState<{
+  building: string;
+  company: string;
+  content: string;
+  contentRedRanges: TextColorRange[];
+}>({
+  building: "",
+  company: "",
+  content: "",
+  contentRedRanges: [],
+});
+
+const [sectionTextSelection, setSectionTextSelection] = useState({ start: 0, end: 0 });
+
+const [editSectionPopup, setEditSectionPopup] = useState<{
+  open: boolean;
+  itemId: string;
+  oldBuilding: string;
+  building: string;
+  company: string;
+  content: string;
+  contentRedRanges: TextColorRange[];
+}>({
+  open: false,
+  itemId: "",
+  oldBuilding: "",
+  building: "",
+  company: "",
+  content: "",
+  contentRedRanges: [],
+});
+
+const [editSectionTextSelection, setEditSectionTextSelection] = useState({ start: 0, end: 0 });
+
+const [highRiskTableInput, setHighRiskTableInput] = useState<{
+  building: string;
+  company: string;
+  content: string;
+  safety: string;
+}>({
+  building: "",
+  company: "",
+  content: "",
+  safety: "",
+});
+
+const [editHighRiskTablePopup, setEditHighRiskTablePopup] = useState<{
+  open: boolean;
+  itemId: string;
+  oldBuilding: string;
+  building: string;
+  company: string;
+  content: string;
+  safety: string;
+}>({
+  open: false,
+  itemId: "",
+  oldBuilding: "",
+  building: "",
+  company: "",
+  content: "",
+  safety: "",
+});
+
+  const [materialsInput, setMaterialsInput] = useState({ gate: "1", company: "", material: "", vehicle: "", vehicleCount: "", location: "", manager: "", phone: "", workerOnCargo: false, cargoHeight1m: false, time: "06" });
+  const [imagePopup, setImagePopup] = useState({
+  open: false,
+  x: 0,
+  y: 0,
+  company: "",
+  note: "",
+  equipmentType: "concrete_pump_truck",
+  building: "",
+  targetKey: "highRisk",
+  time: "06",
+  endTime: "07",
+});
+
+const [editOverlayPopup, setEditOverlayPopup] = useState({
+  open: false,
+  itemId: "",
+  targetKey: "highRisk",
+  company: "",
+  note: "",
+  building: "",
+  equipmentType: "concrete_pump_truck",
+  time: "",
+  endTime: "",
+});
+
+const [moveOverlayTarget, setMoveOverlayTarget] = useState<{
+  itemId: string;
+  targetKey: string;
+  mode: "marker" | "arrow";
+} | null>(null);
+
+const [arrowPoints, setArrowPoints] = useState<{ x: number; y: number }[]>([]);
+const [arrowPreviewPoint, setArrowPreviewPoint] = useState<{ x: number; y: number } | null>(null);
+
+const [pendingEquipmentMarker, setPendingEquipmentMarker] = useState<{
+  arrowId: string;
+  company: string;
+  note: string;
+  equipmentType: string;
+  time?: string;
+  endTime?: string;
+  logAction?: "입력" | "수정";
+  createdByUid?: string;
+  createdByName?: string;
+} | null>(null);
+  const [soloWorkerInput, setSoloWorkerInput] = useState({ building: "", company: "", name: "", content: "", elderly: "x" });
+const [heatSensitiveInput, setHeatSensitiveInput] = useState({ building: "", company: "", name: "", content: "" });
+
+const [supplementTab, setSupplementTab] = useState<"nightMorning" | "tomorrow">("nightMorning");
+const [supplementNoticeText, setSupplementNoticeText] = useState("");
+const [supplementNoticeImage, setSupplementNoticeImage] = useState("");
+const [supplementNightText, setSupplementNightText] = useState("");
+const [supplementMorningText, setSupplementMorningText] = useState("");
+const [supplementMessage, setSupplementMessage] = useState("");
+
+const supplementNightMorningDateKey = selectedDate;
+
+const [supplementNightMorningRows, setSupplementNightMorningRows] = useState<Array<{
+  id: string;
+  company: string;
+  nightText: string;
+  morningText: string;
+  createdByUid?: string;
+  createdByName?: string;
+}>>([]);
+
+const [editSupplementNightMorningPopup, setEditSupplementNightMorningPopup] = useState({
+  open: false,
+  id: "",
+  company: "",
+  nightText: "",
+  morningText: "",
+});
+
+const [supplementTomorrowNoticeText, setSupplementTomorrowNoticeText] = useState("");
+const [supplementTomorrowNoticeImage, setSupplementTomorrowNoticeImage] = useState("");
+const [supplementTomorrowRows, setSupplementTomorrowRows] = useState<Array<{
+  id: string;
+  workType: string;
+  company: string;
+  location: string;
+  workerCount: string;
+  supervisorCount: string;
+  content: string;
+  safetyAction: string;
+  createdByUid?: string;
+  createdByName?: string;
+}>>([]);
+
+const [supplementTomorrowInput, setSupplementTomorrowInput] = useState({
+  workType: "조출",
+  location: "",
+  workerCount: "",
+  supervisorCount: "",
+  content: "",
+  safetyAction: "",
+});
+
+const [editSupplementTomorrowPopup, setEditSupplementTomorrowPopup] = useState({
+  open: false,
+  id: "",
+  workType: "조출",
+  company: "",
+  location: "",
+  workerCount: "",
+  supervisorCount: "",
+  content: "",
+  safetyAction: "",
+});
+
+const [manualSupplementWeekendDate, setManualSupplementWeekendDate] = useState("");
+const [manualSupplementWeekendDateSavedToday, setManualSupplementWeekendDateSavedToday] = useState("");
+
+const supplementWeekendDefaultDateKey = getSaturdayKeyFromDateKey(selectedDate);
+
+const supplementWeekendDateKey =
+  manualSupplementWeekendDate && manualSupplementWeekendDateSavedToday === getTodayKey()
+    ? manualSupplementWeekendDate
+    : supplementWeekendDefaultDateKey;
+
+const [supplementWeekendNoticeText, setSupplementWeekendNoticeText] = useState("");
+const [supplementWeekendNoticeImage, setSupplementWeekendNoticeImage] = useState("");
+const [supplementWeekendRows, setSupplementWeekendRows] = useState<Array<{
+  id: string;
+  workType: string;
+  company: string;
+  location: string;
+  workerCount: string;
+  supervisorCount: string;
+  content: string;
+  safetyAction: string;
+  createdByUid?: string;
+  createdByName?: string;
+}>>([]);
+
+const [supplementWeekendInput, setSupplementWeekendInput] = useState({
+  location: "",
+  workerCount: "",
+  supervisorCount: "",
+  content: "",
+  safetyAction: "",
+});
+
+const [editSupplementWeekendPopup, setEditSupplementWeekendPopup] = useState({
+  open: false,
+  id: "",
+  company: "",
+  location: "",
+  workerCount: "",
+  supervisorCount: "",
+  content: "",
+  safetyAction: "",
+});
+  const [editSoloPopup, setEditSoloPopup] = useState({
+  open: false,
+  itemId: "",
+  oldBuilding: "",
+  building: "",
+  company: "",
+  name: "",
+  content: "",
+  elderly: "x",
+});
+
+const [editHeatSensitivePopup, setEditHeatSensitivePopup] = useState({
+  open: false,
+  itemId: "",
+  oldBuilding: "",
+  building: "",
+  company: "",
+  name: "",
+  content: "",
+});
+
+const [editMaterialPopup, setEditMaterialPopup] = useState({
+  open: false,
+  itemId: "",
+  gate: "",
+  time: "",
+  company: "",
+  material: "",
+  vehicle: "",
+  vehicleCount: "",
+  location: "",
+  manager: "",
+  phone: "",
+  workerOnCargo: false,
+  cargoHeight1m: false,
+});
+  const [loadSourceDate, setLoadSourceDate] = useState(() => {
+  const d = new Date();
+  return formatDateKey(d);
+});
+
+const [soloCompanyFilter, setSoloCompanyFilter] = useState("");
+const [heatSensitiveCompanyFilter, setHeatSensitiveCompanyFilter] = useState("");
+const [isCapturingImage, setIsCapturingImage] = useState(false);
+const [companyListPopupOpen, setCompanyListPopupOpen] = useState(false);
+const [manualPopup, setManualPopup] = useState<{ src: string; label: string } | null>(null);
+
+const [adjustedOverlayPositions, setAdjustedOverlayPositions] = useState<
+  Record<string, { x: number; y: number }>
+>({});
+
+const overlayMarkerRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const imageAreaRef = useRef<HTMLDivElement | null>(null);
+const dabsCaptureRef = useRef<HTMLDivElement | null>(null);
+const soloWorkerCaptureRef = useRef<HTMLDivElement | null>(null);
+const heatSensitiveCaptureRef = useRef<HTMLDivElement | null>(null);
+const portfolioCaptureRef = useRef<HTMLDivElement | null>(null);const educationCaptureRef = useRef<HTMLDivElement | null>(null);
+  const lastTouchTimeRef = useRef(0);
+  const touchGestureRef = useRef({ moved: false, startX: 0, startY: 0 });
+
+  const [overlayZoom, setOverlayZoom] = useState(1);
+  const [overlayPan, setOverlayPan] = useState({ x: 0, y: 0 });
+  const overlayZoomRef = useRef(overlayZoom);
+  useEffect(() => {
+    overlayZoomRef.current = overlayZoom;
+  }, [overlayZoom]);
+  const panMouseStateRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
+  const panTouchStateRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const pinchDistRef = useRef<number | null>(null);
+  const suppressNextClickRef = useRef(false);
+  const OVERLAY_MIN_ZOOM = 1;
+  const OVERLAY_MAX_ZOOM = 4;
+
+  const [fullscreenOverlay, setFullscreenOverlay] = useState<{
+    selectedImage: string;
+    targetKey: string;
+    isImageTab: boolean;
+  } | null>(null);
+  const [fsZoom, setFsZoom] = useState(1);
+  const [fsPan, setFsPan] = useState({ x: 0, y: 0 });
+  const fsImageAreaRef = useRef<HTMLDivElement | null>(null);
+  const fsPanMouseStateRef = useRef<{ x: number; y: number; panX: number; panY: number; moved: boolean } | null>(null);
+  const fsPanTouchStateRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const fsPinchDistRef = useRef<number | null>(null);
+
+  // 확대(전체화면) 팝업에서 사진을 "가능한 한 크게, 비율은 유지한 채" 보여주기 위한 치수 계산.
+  // object-contain은 이미지의 실제 렌더링만 줄여 보여줄 뿐, 그 박스(div) 자체의 크기는 못 줄인다.
+  // 그런데 말풍선은 이 박스 크기를 기준으로 %좌표로 위치가 잡히기 때문에, 박스 크기가 사진이
+  // 실제로 보이는 영역과 정확히 같아야 한다. 그래서 바깥 여백(fsOuterRef) 크기와 사진의 원본
+  // 가로세로 비율을 직접 계산해 박스의 가로/세로 픽셀 값을 구해서 적용한다.
+  const fsOuterRef = useRef<HTMLDivElement | null>(null);
+  const fsNaturalSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const [fsFitSize, setFsFitSize] = useState<{ width: number; height: number } | null>(null);
+
+  const recomputeFsFitSize = () => {
+    const el = fsOuterRef.current;
+    const natural = fsNaturalSizeRef.current;
+    if (!el || !natural || natural.width <= 0 || natural.height <= 0) return;
+    const availW = el.clientWidth;
+    const availH = el.clientHeight;
+    if (availW <= 0 || availH <= 0) return;
+    const scale = Math.min(availW / natural.width, availH / natural.height);
+    if (!isFinite(scale) || scale <= 0) return;
+    setFsFitSize({
+      width: Math.floor(natural.width * scale),
+      height: Math.floor(natural.height * scale),
+    });
+  };
+
+  useEffect(() => {
+    if (!fullscreenOverlay?.selectedImage) {
+      fsNaturalSizeRef.current = null;
+      setFsFitSize(null);
+      return;
+    }
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      fsNaturalSizeRef.current = { width: img.naturalWidth, height: img.naturalHeight };
+      recomputeFsFitSize();
+    };
+    img.src = fullscreenOverlay.selectedImage;
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullscreenOverlay?.selectedImage]);
+
+  useEffect(() => {
+    if (!fullscreenOverlay) return;
+    const el = fsOuterRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      recomputeFsFitSize();
+    });
+    observer.observe(el);
+    recomputeFsFitSize();
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullscreenOverlay]);
+
+  // 확대 팝업을 열 때 모바일/태블릿 화면에서는 전체화면 + 가로모드로 전환을 시도한다.
+  // 지원하지 않는 브라우저(예: iOS Safari)에서는 조용히 무시되고 팝업만 정상적으로 열린다.
+  const enterFullscreenLandscape = () => {
+    try {
+      if (typeof window === "undefined" || window.innerWidth >= 1024) return;
+      const attempt = async () => {
+        try {
+          if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+            await document.documentElement.requestFullscreen();
+          }
+        } catch {
+          // 전체화면 전환 실패 시에도 가로모드 잠금은 시도해본다.
+        }
+        try {
+          const orientation = (screen as unknown as { orientation?: { lock?: (o: string) => Promise<void> } }).orientation;
+          if (orientation && typeof orientation.lock === "function") {
+            await orientation.lock("landscape");
+          }
+        } catch {
+          // 가로모드 잠금을 지원하지 않는 브라우저는 무시한다.
+        }
+      };
+      attempt();
+    } catch {
+      // no-op
+    }
+  };
+
+  const exitFullscreenLandscape = () => {
+    try {
+      const orientation = (screen as unknown as { orientation?: { unlock?: () => void } }).orientation;
+      if (orientation && typeof orientation.unlock === "function") {
+        orientation.unlock();
+      }
+    } catch {
+      // no-op
+    }
+    try {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch {
+      // no-op
+    }
+  };
+
+  useEffect(() => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  const unsubscribeDabs = onSnapshot(doc(db, "dabsMeetings", selectedDate), (snap) => {
+    if (!snap.exists()) return;
+
+    const data = snap.data() as DabsDateValue;
+
+    setDabsData((prev) => ({
+      ...prev,
+      [selectedDate]: {
+        ...(prev[selectedDate] || {}),
+        ...data,
+      },
+    }));
+  });
+
+  const unsubscribeSolo = onSnapshot(doc(db, "soloWorkers", selectedDate), (snap) => {
+    if (!snap.exists()) return;
+
+    const data = snap.data() as { rows?: Record<string, DabsRowItem[]> };
+
+    setDabsData((prev) => ({
+      ...prev,
+      [selectedDate]: {
+        ...(prev[selectedDate] || {}),
+        soloWorker: {
+          rows: data.rows || {},
+        },
+      },
+    }));
+  });
+
+const unsubscribeHeatSensitive = () => {};
+
+const unsubscribeOverlays = onSnapshot(doc(db, "dabsOverlays", selectedDate), (snap) => {
+  if (!snap.exists()) return;
+
+  const data = snap.data();
+
+  const buildingDetailEntries: Record<string, { markers: OverlayMarkerItem[]; arrows: OverlayArrowItem[]; people: OverlayPersonItem[] }> = {};
+  Object.keys(data).forEach((key) => {
+    if (key.startsWith("buildingDetail::")) {
+      buildingDetailEntries[key] = {
+        markers: data[key]?.markers || [],
+        arrows: data[key]?.arrows || [],
+        people: data[key]?.people || [],
+      };
+    }
+  });
+
+  setDabsOverlays((prev) => ({
+    ...prev,
+    [selectedDate]: {
+      ...(prev[selectedDate] || {}),
+      highRisk: {
+        markers: data.highRisk?.markers || [],
+        arrows: data.highRisk?.arrows || [],
+        people: data.highRisk?.people || [],
+      },
+      equipmentFlow: {
+        markers: data.equipmentFlow?.markers || [],
+        arrows: data.equipmentFlow?.arrows || [],
+        people: data.equipmentFlow?.people || [],
+      },
+      ...buildingDetailEntries,
+    },
+  }));
+});
+
+const unsubscribeImages = onSnapshot(doc(db, "dabsImages", "shared"), (snap) => {
+  if (!snap.exists()) return;
+
+  const data = snap.data() as Record<string, string>;
+
+  setDabsImages({
+    highRisk: data.highRisk || "",
+    equipmentFlow: data.equipmentFlow || "",
+  });
+});
+
+const unsubscribeBuildingDetailImages = onSnapshot(doc(db, "dabsImages", "buildingDetail"), (snap) => {
+  if (!snap.exists()) return;
+
+  const data = snap.data() as Record<string, string>;
+  const { updatedAt, updatedByUid, updatedByName, ...images } = data as Record<string, any>;
+
+  setBuildingDetailImages(images as Record<string, string>);
+});
+
+  return () => {
+  unsubscribeDabs();
+unsubscribeSolo();
+unsubscribeHeatSensitive();
+unsubscribeOverlays();
+unsubscribeImages();
+unsubscribeBuildingDetailImages();
+};
+}, [db, isDemoMode, currentUser, selectedDate]);
+
+  useEffect(() => {
+    if (isDemoMode) {
+      setUsers(loadDemoUsers());
+      setEntries(loadDemoEntries());
+      setIsAuthReady(true);
+      return undefined;
+    }
+    if (!isConfigured || !auth || !db) {
+      setIsAuthReady(true);
+      setLoginMessage("Firebase 환경변수가 설정되지 않았습니다.");
+      return undefined;
+    }
+
+    let unsubscribeUsers = () => {};
+    let unsubscribeEntries = () => {};
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      unsubscribeUsers();
+      unsubscribeEntries();
+      setUsers([]);
+      setEntries([]);
+      setCurrentUser(null);
+      setCurrentPage("menu");
+
+      if (!firebaseUser) {
+        setIsAuthReady(true);
+        return;
+      }
+
+      try {
+        const userRef = doc(db, "users", firebaseUser.uid);
+        const snap = await getDoc(userRef);
+        if (!snap.exists()) {
+          await signOut(auth);
+          setLoginMessage("회원 정보가 없습니다. 관리자에게 문의하세요.");
+          setIsAuthReady(true);
+          return;
+        }
+        const userData: UserItem = { uid: firebaseUser.uid, ...(snap.data() as Partial<UserItem>) };
+        if (userData.status !== "approved") {
+          await signOut(auth);
+          setLoginMessage("승인 완료된 계정만 로그인할 수 있습니다.");
+          setIsAuthReady(true);
+          return;
+        }
+        setCurrentUser(userData);
+        setCurrentPage("menu");
+        unsubscribeUsers = onSnapshot(
+  collection(db, "users"),
+  (snapshot) =>
+    setUsers(
+      snapshot.docs.map(
+        (item) =>
+          ({
+            uid: item.id,
+            ...(item.data() as Omit<UserItem, "uid">),
+          }) satisfies UserItem
+      )
+    )
+);
+        unsubscribeEntries = onSnapshot(
+  collection(db, "entries"),
+  (snapshot) =>
+    setEntries(
+      snapshot.docs
+        .map(
+          (item) =>
+            ({
+              id: item.id,
+              ...(item.data() as Omit<EntryItem, "id">),
+            }) satisfies EntryItem
+        )
+        .sort((a, b) => {
+          const dateCompare = String(a.date).localeCompare(String(b.date));
+          if (dateCompare !== 0) return dateCompare;
+          return String(a.startTime).localeCompare(String(b.startTime));
+        })
+    ),
+  (error) => {
+    console.log("ENTRIES SNAPSHOT ERROR:", error);
+    setLoginMessage("일정 데이터를 불러오지 못했습니다.");
+  }
+);
+      } catch {
+        setCurrentUser(null);
+        setUsers([]);
+        setEntries([]);
+        setLoginMessage("데이터를 불러오는 중 오류가 발생했습니다.");
+      } finally {
+        setIsAuthReady(true);
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeUsers();
+      unsubscribeEntries();
+    };
+  }, [auth, db, isConfigured, isDemoMode]);
+
+  const monthGrid = useMemo(() => getMonthGrid(currentDate), [currentDate]);
+  const todayKey = formatDateKey(new Date());
+  const timeOptions = useMemo(() => getTimeOptions(), []);
+  const monthLabel = `${currentDate.getFullYear()}년 ${currentDate.getMonth() + 1}월`;
+  const dayEntries = useMemo(() => entries.filter((entry) => entry.date === selectedDate).sort((a, b) => String(a.startTime).localeCompare(String(b.startTime))), [entries, selectedDate]);
+  const unavailableTimes = useMemo(() => timeOptions.filter((time) => dayEntries.some((entry) => isTimeOverlapping(time, getEndTime(time), entry.startTime, entry.endTime))), [dayEntries, timeOptions]);
+  const availableTimes = useMemo(() => timeOptions.filter((time) => !unavailableTimes.includes(time)), [timeOptions, unavailableTimes]);
+  const effectiveSelectedTime = availableTimes.includes(selectedTime) ? selectedTime : availableTimes[0] || "";
+  const effectiveEndTime = effectiveSelectedTime ? getEndTime(effectiveSelectedTime) : "";
+  const pendingUsers = useMemo(() => users.filter((user) => user.status === "pending"), [users]);
+  const approvedUsers = useMemo(() => users.filter((user) => user.status === "approved"), [users]);
+  const canApproveGeneral = currentUser?.role === "master" || currentUser?.role === "admin";
+  const canApproveAdmin = currentUser?.role === "master";
+  const canManageApprovals =
+  currentUser?.role === "master" ||
+  currentUser?.role === "admin";
+
+const canViewActivityLogs =
+  currentUser?.role === "master";
+  const canEditDabs = Boolean(currentUser && currentUser.status === "approved");
+  const canUploadDabsImage = currentUser?.role === "master" || currentUser?.role === "admin";
+  const canAdminEditDabsItem = currentUser?.role === "master" || currentUser?.role === "admin";
+const canManualChangeSelectedDate = currentUser?.role === "master" || currentUser?.role === "admin";
+const canManageHeatwaveCompanies = currentUser?.role === "master" || currentUser?.role === "admin";
+  const canDeleteOwnItem = (item?: { createdByUid?: string }) => {
+  if (!currentUser) return false;
+  if (currentUser.role === "master" || currentUser.role === "admin") return true;
+  return item?.createdByUid === currentUser.uid;
+};
+  const canManageHighRiskTableItem = (item?: { company?: string }) => {
+  if (!currentUser) return false;
+  if (currentUser.role === "master" || currentUser.role === "admin") return true;
+  return Boolean(currentUser.companyName) && item?.company === currentUser.companyName;
+};
+
+useEffect(() => {
+  const today = getTodayKey();
+
+  if (manualSelectedDate && manualSelectedDateSavedToday !== today) {
+    setManualSelectedDate("");
+    setManualSelectedDateSavedToday("");
+    setSelectedDate(getDefaultSelectedDateKey());
+  }
+}, [manualSelectedDate, manualSelectedDateSavedToday]);
+
+useEffect(() => {
+  const today = getTodayKey();
+
+  if (manualSupplementWeekendDate && manualSupplementWeekendDateSavedToday !== today) {
+    setManualSupplementWeekendDate("");
+    setManualSupplementWeekendDateSavedToday("");
+  }
+}, [manualSupplementWeekendDate, manualSupplementWeekendDateSavedToday]);
+
+const handleManualSelectedDateChange = (dateKey: string) => {
+  if (!canManualChangeSelectedDate) return;
+
+  setManualSelectedDate(dateKey);
+  setManualSelectedDateSavedToday(getTodayKey());
+  setSelectedDate(dateKey);
+};
+
+const handleResetSelectedDateToDefault = () => {
+  setManualSelectedDate("");
+  setManualSelectedDateSavedToday("");
+  setSelectedDate(getDefaultSelectedDateKey());
+};
+
+const saveDabsMeetingToFirestore = async (dateKey: string, dateData: DabsDateValue) => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  await setDoc(
+    doc(db, "dabsMeetings", dateKey),
+    {
+      date: dateKey,
+      ...dateData,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+};
+
+const saveSoloWorkersToFirestore = async (
+  dateKey: string,
+  rows: Record<string, DabsRowItem[]>
+) => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  await setDoc(
+    doc(db, "soloWorkers", dateKey),
+    {
+      date: dateKey,
+      rows,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+};
+
+const saveHeatSensitiveWorkersToFirestore = async (
+  dateKey: string,
+  rows: Record<string, DabsRowItem[]>
+) => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  await setDoc(
+    doc(db, "dabsMeetings", dateKey),
+    {
+      date: dateKey,
+      heatSensitive: {
+        rows,
+      },
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+};
+
+const heatSensitiveRows = useMemo<Record<string, DabsRowItem[]>>(() => {
+  const value = dabsData[selectedDate]?.heatSensitive;
+
+  if (typeof value === "object" && value && "rows" in value) {
+    return value.rows || {};
+  }
+
+  return {};
+}, [dabsData, selectedDate]);
+
+const saveDabsOverlaysToFirestore = async (
+  dateKey: string,
+  overlayData: Record<
+    string,
+    {
+      markers?: OverlayMarkerItem[];
+      arrows?: OverlayArrowItem[];
+      people?: OverlayPersonItem[];
+    }
+  >
+) => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  await setDoc(
+    doc(db, "dabsOverlays", dateKey),
+    {
+      date: dateKey,
+      ...overlayData,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+};
+
+const writeActivityLog = async ({
+  action,
+  page,
+  target,
+  detail,
+}: {
+  action: string;
+  page: string;
+  target?: string;
+  detail?: string;
+}) => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  await addDoc(collection(db, "activityLogs"), {
+    action,
+    page,
+    target: target || "",
+    detail: detail || "",
+    actorUid: currentUser.uid || "",
+    actorName: currentUser.name || "",
+    actorCompany: currentUser.companyName || "",
+    actorRole: currentUser.role || "general",
+    createdAt: serverTimestamp(),
+  });
+};  
+
+// 혹서기 기간별 다운로드 (마스터/관리자)
+const handleHeatwaveDownload = async () => {
+  const isAdmin = currentUser?.role === "master" || currentUser?.role === "admin";
+  if (!isAdmin || !db) { setHeatwaveMessage("마스터 또는 관리자만 다운로드할 수 있습니다."); return; }
+  if (!heatwaveDownloadTypes.thermoPhoto && !heatwaveDownloadTypes.thermoLedger) { setHeatwaveMessage("다운로드할 파일 종류를 하나 이상 선택하세요."); return; }
+  if (!heatwaveDownloadStartDate || !heatwaveDownloadEndDate) { setHeatwaveMessage("다운로드 기간을 설정해주세요."); return; }
+  if (heatwaveDownloadStartDate > heatwaveDownloadEndDate) { setHeatwaveMessage("시작 날짜가 종료 날짜보다 클 수 없습니다."); return; }
+  setHeatwaveDownloadLoading(true);
+  setHeatwaveMessage("");
+  try {
+    const dates: string[] = [];
+    const start = new Date(heatwaveDownloadStartDate);
+    const end = new Date(heatwaveDownloadEndDate);
+    const cur = new Date(start);
+    while (cur <= end) { dates.push(formatDateKey(cur)); cur.setDate(cur.getDate() + 1); }
+    const allFiles: Array<{ url: string; name: string; type: string; date: string; company: string }> = [];
+    for (const dateKey of dates) {
+      const snap = await getDoc(doc(db, "heatwaveUploads", dateKey));
+      if (!snap.exists()) continue;
+      const data = snap.data() as HeatwaveDateValue;
+      const uploads = data.uploads || {};
+      for (const [companyName, fileList] of Object.entries(uploads)) {
+        for (const file of (fileList as HeatwaveUploadItem[])) {
+          const isThermo = file.fileType === "thermoPhoto" || file.fileType === "image";
+          const isLedger = file.fileType === "thermoLedger";
+          if (isThermo && heatwaveDownloadTypes.thermoPhoto) allFiles.push({ url: file.fileUrl, name: file.fileName, type: "온습도계사진", date: dateKey, company: companyName });
+          else if (isLedger && heatwaveDownloadTypes.thermoLedger) allFiles.push({ url: file.fileUrl, name: file.fileName, type: "온습도계관리대장", date: dateKey, company: companyName });
+        }
+      }
+    }
+    if (allFiles.length === 0) { setHeatwaveMessage("선택한 기간/종류에 해당하는 파일이 없습니다."); setHeatwaveDownloadLoading(false); return; }
+    for (const file of allFiles) {
+      try {
+        const response = await fetch(file.url);
+        const blob = await response.blob();
+        const safeName = `${file.date}_${file.company}_${file.type}_${file.name}`.replace(/[\\/:*?"<>|]/g, "_");
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url; link.download = safeName;
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      } catch { console.log("파일 다운로드 실패:", file.name); }
+    }
+    setHeatwaveMessage(`${allFiles.length}개 파일 다운로드를 시작했습니다.`);
+    await writeActivityLog({ action: "다운로드", page: "혹서기", target: "기간별 파일 다운로드", detail: `${heatwaveDownloadStartDate} ~ ${heatwaveDownloadEndDate} / ${allFiles.length}건` });
+  } catch (error) { console.log("HEATWAVE DOWNLOAD ERROR:", error); setHeatwaveMessage("다운로드 중 오류가 발생했습니다."); }
+  setHeatwaveDownloadLoading(false);
+};
+
+// 혹서기 전체 파일 일괄 삭제 (마스터만)
+const handleHeatwaveDeleteAll = async () => {
+  if (currentUser?.role !== "master" || !db || !storage) { setHeatwaveMessage("마스터만 전체 삭제를 할 수 있습니다."); return; }
+  const confirmed = window.confirm("모든 혹서기 업로드 파일을 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?");
+  if (!confirmed) return;
+  setHeatwaveDeleteAllLoading(true);
+  setHeatwaveMessage("");
+  try {
+    const snapshot = await getDocs(collection(db, "heatwaveUploads"));
+    let deletedCount = 0;
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data() as HeatwaveDateValue;
+      const uploads = data.uploads || {};
+      for (const fileList of Object.values(uploads)) {
+        for (const file of (fileList as HeatwaveUploadItem[])) {
+          if (file.storagePath) {
+            try { await deleteObject(storageRef(storage, file.storagePath)); } catch { console.log("스토리지 파일 삭제 실패:", file.storagePath); }
+          }
+          deletedCount++;
+        }
+      }
+      await deleteDoc(docSnap.ref);
+    }
+    setHeatwaveUploads({});
+    await writeActivityLog({ action: "일괄삭제", page: "혹서기", target: "전체 업로드 파일", detail: `총 ${deletedCount}개 파일 전체 삭제` });
+    setHeatwaveMessage(`혹서기 업로드 파일 ${deletedCount}개가 모두 삭제되었습니다.`);
+  } catch (error) { console.log("HEATWAVE DELETE ALL ERROR:", error); setHeatwaveMessage("전체 삭제 중 오류가 발생했습니다."); }
+  setHeatwaveDeleteAllLoading(false);
+};
+
+useEffect(() => {
+  if (isDemoMode || !db || !currentUser) {
+    setActivityLogs([]);
+    return;
+  }
+
+  if (currentUser.role !== "master") {
+    setActivityLogs([]);
+    return;
+  }
+
+  const logsQuery = query(
+    collection(db, "activityLogs"),
+    orderBy("createdAt", "desc"),
+    limit(2000)
+  );
+
+  const unsubscribeLogs = onSnapshot(logsQuery, (snapshot) => {
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    oneWeekAgo.setHours(0, 0, 0, 0);
+
+    setActivityLogs(
+      snapshot.docs
+        .map((item) => ({
+          id: item.id,
+          ...(item.data() as Omit<ActivityLogItem, "id">),
+        }))
+        .filter((log) => {
+          if (!log.createdAt) return true;
+          const date =
+            typeof log.createdAt?.toDate === "function"
+              ? log.createdAt.toDate()
+              : new Date(log.createdAt);
+          return date >= oneWeekAgo;
+        })
+    );
+  });
+
+  return () => unsubscribeLogs();
+}, [db, isDemoMode, currentUser]);
+
+const approvedCompanyNames = useMemo(
+  () =>
+    Array.from(
+      new Set(
+        users
+          .filter((user) => user.status === "approved")
+          .map((user) => String(user.companyName || "").trim())
+          .filter((companyName) => companyName && companyName !== "마스터")
+      )
+    ).sort((a, b) => a.localeCompare(b, "ko")),
+  [users]
+);
+
+useEffect(() => {
+  if (isDemoMode || !db || !currentUser) return;
+
+  let isActiveSupplementSnapshot = true;
+
+  setSupplementNoticeText("");
+  setSupplementNoticeImage("");
+  setSupplementNightText("");
+  setSupplementMorningText("");
+  setSupplementNightMorningRows([]);
+
+  setSupplementTomorrowNoticeText("");
+  setSupplementTomorrowNoticeImage("");
+  setSupplementTomorrowRows([]);
+
+  setSupplementWeekendNoticeText("");
+  setSupplementWeekendNoticeImage("");
+  setSupplementWeekendRows([]);
+
+  const unsubscribeSupplementNightMorning = onSnapshot(
+  doc(db, "supplementWorks", supplementNightMorningDateKey),
+  (snap) => {
+    if (!isActiveSupplementSnapshot) return;
+
+    if (!snap.exists()) {
+      setSupplementNoticeText("");
+      setSupplementNoticeImage("");
+      setSupplementNightText("");
+      setSupplementMorningText("");
+      setSupplementNightMorningRows([]);
+      return;
+    }
+
+    const data = snap.data();
+
+    setSupplementNoticeText(String(data.noticeText || ""));
+    setSupplementNoticeImage(String(data.noticeImage || ""));
+    setSupplementNightText("");
+    setSupplementMorningText("");
+    setSupplementNightMorningRows(Array.isArray(data.nightMorningRows) ? data.nightMorningRows : []);
+  }
+);
+
+const unsubscribeSupplementTomorrow = onSnapshot(
+  doc(db, "supplementWorks", selectedDate),
+  (snap) => {
+    if (!isActiveSupplementSnapshot) return;
+
+    if (!snap.exists()) {
+      setSupplementTomorrowNoticeText("");
+      setSupplementTomorrowNoticeImage("");
+      setSupplementTomorrowRows([]);
+      return;
+    }
+
+    const data = snap.data();
+
+    setSupplementTomorrowNoticeText(String(data.tomorrowNoticeText || ""));
+    setSupplementTomorrowNoticeImage(String(data.tomorrowNoticeImage || ""));
+    setSupplementTomorrowRows(Array.isArray(data.tomorrowRows) ? data.tomorrowRows : []);
+  }
+);
+
+const unsubscribeSupplementWeekend = onSnapshot(
+  doc(db, "supplementWorks", supplementWeekendDateKey),
+  (snap) => {
+    if (!isActiveSupplementSnapshot) return;
+
+    if (!snap.exists()) {
+      setSupplementWeekendNoticeText("");
+      setSupplementWeekendNoticeImage("");
+      setSupplementWeekendRows([]);
+      return;
+    }
+
+    const data = snap.data();
+
+    setSupplementWeekendNoticeText(String(data.weekendNoticeText || ""));
+    setSupplementWeekendNoticeImage(String(data.weekendNoticeImage || ""));
+    setSupplementWeekendRows(Array.isArray(data.weekendRows) ? data.weekendRows : []);
+  }
+);
+
+  const unsubscribeSettings = onSnapshot(doc(db, "heatwaveSettings", "companies"), (snap) => {
+  if (!snap.exists()) return;
+
+  const data = snap.data();
+  const oldCompanies = Array.isArray(data.selectedCompanies)
+    ? data.selectedCompanies.map(String)
+    : [];
+
+  const imageCompanies = Array.isArray(data.selectedImageCompanies)
+    ? data.selectedImageCompanies.map(String)
+    : oldCompanies;
+
+  setHeatwaveImageSelectedCompanies(imageCompanies);
+  setHeatwaveExcelSelectedCompanies([]);
+});
+
+const unsubscribeUploads = onSnapshot(doc(db, "heatwaveUploads", heatwaveViewDateKey), (snap) => {
+  if (!snap.exists()) {
+    setHeatwaveUploads((prev) => ({
+      ...prev,
+      [heatwaveViewDateKey]: {
+        date: heatwaveViewDateKey,
+        uploads: {},
+      },
+    }));
+    return;
+  }
+
+  const data = snap.data() as HeatwaveDateValue;
+
+  setHeatwaveUploads((prev) => ({
+    ...prev,
+    [heatwaveViewDateKey]: {
+      date: heatwaveViewDateKey,
+      uploads: data.uploads || {},
+    },
+  }));
+});
+
+const unsubscribeSharedFiles = onSnapshot(doc(db, "heatwaveSharedFiles", heatwaveDateKey), (snap) => {
+  if (!snap.exists()) return;
+
+  const data = snap.data() as HeatwaveSharedDateValue;
+
+  setHeatwaveSharedFiles((prev) => ({
+    ...prev,
+    [heatwaveDateKey]: {
+      date: heatwaveDateKey,
+      thermoHygrometerImage: data.thermoHygrometerImage || null,
+    },
+  }));
+});
+  return () => {
+    isActiveSupplementSnapshot = false;
+
+    unsubscribeSupplementNightMorning();
+unsubscribeSupplementTomorrow();
+unsubscribeSupplementWeekend();
+    unsubscribeSettings();
+    unsubscribeUploads();
+    unsubscribeSharedFiles();
+  };
+}, [db, isDemoMode, currentUser, heatwaveDateKey, heatwaveViewDateKey, selectedDate, supplementWeekendDateKey]);
+
+const handleToggleHeatwaveCompany = async (
+  companyName: string,
+  fileType: "image"
+) => {
+  if (!canManageHeatwaveCompanies || !db || !currentUser) return;
+
+  const nextList = heatwaveImageSelectedCompanies.includes(companyName)
+    ? heatwaveImageSelectedCompanies.filter((item) => item !== companyName)
+    : [...heatwaveImageSelectedCompanies, companyName].sort((a, b) => a.localeCompare(b, "ko"));
+
+  setHeatwaveImageSelectedCompanies(nextList);
+
+  await setDoc(
+    doc(db, "heatwaveSettings", "companies"),
+    {
+      selectedImageCompanies: nextList,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+};
+const getHeatwaveCompanyUploads = (companyName: string, dateKey = heatwaveViewDateKey) =>
+  heatwaveUploads[dateKey]?.uploads?.[companyName] || [];
+
+const getHeatwaveCompanyStatus = (companyName: string, dateKey = heatwaveViewDateKey) => {
+  const uploads = getHeatwaveCompanyUploads(companyName, dateKey);
+
+  const thermoPhotoCount = uploads.filter(
+    (item) => item.fileType === "thermoPhoto" || item.fileType === "image"
+  ).length;
+
+  const thermoLedgerCount = uploads.filter(
+    (item) => item.fileType === "thermoLedger"
+  ).length;
+
+  return {
+    uploads,
+    imageCount: thermoPhotoCount,
+    excelCount: 0,
+    thermoPhotoCount,
+    thermoLedgerCount,
+    breakTimeLedgerCount: 0,
+    isComplete: thermoPhotoCount >= 4 && thermoLedgerCount >= 1,
+  };
+};
+
+const getHeatwaveFileTypeLabel = (
+  fileType: "image" | "thermoPhoto" | "thermoLedger"
+) => {
+  if (fileType === "thermoPhoto" || fileType === "image") return "온습도계 사진";
+  if (fileType === "thermoLedger") return "온습도계 관리대장";
+  return "파일";
+};
+
+const getHeatwaveSharedFileKindLabel = (
+  fileKind: "thermoHygrometerImage"
+) => {
+  return "온습도계 이미지";
+};
+
+const handleHeatwaveUpload = async (
+  event: React.ChangeEvent<HTMLInputElement>,
+  fileType: "thermoPhoto" | "thermoLedger"
+) => {
+  setHeatwaveMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const companyName = String(currentUser?.companyName || "").trim();
+
+  if (!currentUser || !companyName) {
+    setHeatwaveMessage("로그인 후 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  const isTargetCompany = heatwaveImageSelectedCompanies.includes(companyName);
+
+  if (!isTargetCompany) {
+    setHeatwaveMessage("온습도계 업로드 대상 업체로 체크된 업체만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage) {
+    setHeatwaveMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  const maxSize = MAX_HEATWAVE_IMAGE_FILE_SIZE;
+
+  if (file.size > maxSize) {
+    setHeatwaveMessage(
+      fileType === "thermoPhoto"
+        ? "온습도계 사진은 5MB 이하만 업로드할 수 있습니다."
+        : "관리대장은 5MB 이하만 업로드할 수 있습니다."
+    );
+    event.target.value = "";
+    return;
+  }
+
+  const currentUploads = getHeatwaveCompanyUploads(companyName, heatwaveDateKey);
+
+  const thermoPhotoCount = currentUploads.filter(
+    (item) => item.fileType === "thermoPhoto" || item.fileType === "image"
+  ).length;
+
+  const thermoLedgerCount = currentUploads.filter(
+    (item) => item.fileType === "thermoLedger"
+  ).length;
+
+  if (fileType === "thermoPhoto" && thermoPhotoCount >= 4) {
+    setHeatwaveMessage("온습도계 사진은 하루 4개까지만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (fileType === "thermoLedger" && thermoLedgerCount >= 1) {
+    setHeatwaveMessage("온습도계 관리대장은 하루 1개까지만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeCompanyName = companyName.replace(/[\\/:*?"<>|]/g, "-");
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `heatwaveUploads/${heatwaveDateKey}/${safeCompanyName}/${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    const newUpload: HeatwaveUploadItem = {
+      id: createLocalId("heatwave"),
+      fileName: file.name,
+      fileUrl,
+      fileType,
+      storagePath,
+      companyName,
+      uploadedByUid: currentUser.uid || "",
+      uploadedByName: currentUser.name || "",
+      createdAt: new Date().toISOString(),
+    };
+
+    const latestUploadSnap = await getDoc(doc(db, "heatwaveUploads", heatwaveDateKey));
+
+    const latestUploadData = latestUploadSnap.exists()
+      ? (latestUploadSnap.data() as HeatwaveDateValue)
+      : { uploads: {} };
+
+    const latestUploads = latestUploadData.uploads || {};
+    const latestCompanyUploads = latestUploads[companyName] || [];
+
+    const nextUploads = {
+      ...latestUploads,
+      [companyName]: [...latestCompanyUploads, newUpload],
+    };
+
+    setHeatwaveUploads((prev) => ({
+      ...prev,
+      [heatwaveDateKey]: {
+        date: heatwaveDateKey,
+        uploads: nextUploads,
+      },
+    }));
+
+    await setDoc(
+      doc(db, "heatwaveUploads", heatwaveDateKey),
+      {
+        date: heatwaveDateKey,
+        uploads: nextUploads,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+  action: "입력",
+  page: "혹서기",
+  target: companyName,
+  detail: `${getHeatwaveFileTypeLabel(fileType)} 업로드 / ${file.name}`,
+});
+
+setHeatwaveMessage("업로드되었습니다.");
+  } catch (error) {
+    console.log("HEATWAVE UPLOAD ERROR:", error);
+
+    setHeatwaveMessage(
+      error instanceof Error
+        ? `업로드 오류: ${error.message}`
+        : "업로드 중 오류가 발생했습니다."
+    );
+  }
+
+  event.target.value = "";
+};
+const isHeatwaveAdmin = currentUser?.role === "master" || currentUser?.role === "admin";
+
+const canAccessHeatwaveCompanyFiles = (companyName: string) => {
+  const myCompanyName = String(currentUser?.companyName || "").trim();
+  return isHeatwaveAdmin || myCompanyName === companyName;
+};
+
+const canManageHeatwaveUploadFile = (file?: HeatwaveUploadItem) => {
+  if (!currentUser || !file) return false;
+
+  const myCompanyName = String(currentUser.companyName || "").trim();
+  const fileCompanyName = String(file.companyName || "").trim();
+
+  return isHeatwaveAdmin || myCompanyName === fileCompanyName;
+};
+
+const openHeatwaveFilePreview = (fileUrl?: string) => {
+  if (!fileUrl) return;
+  window.open(fileUrl, "_blank", "noopener,noreferrer");
+};
+
+const downloadHeatwaveFile = (fileUrl?: string, fileName = "download") => {
+  if (!fileUrl) return;
+
+  const link = document.createElement("a");
+  link.href = fileUrl;
+  link.download = fileName;
+  link.target = "_blank";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+const handleDeleteHeatwaveUpload = async (companyName: string, uploadId: string) => {
+  setHeatwaveMessage("");
+
+  if (!db || !storage) {
+    setHeatwaveMessage("Firebase 연결 오류");
+    return;
+  }
+
+  const currentUploads = getHeatwaveCompanyUploads(companyName, heatwaveViewDateKey);
+  const targetFile = currentUploads.find((item) => item.id === uploadId);
+
+  if (!targetFile) {
+    setHeatwaveMessage("삭제할 파일을 찾을 수 없습니다.");
+    return;
+  }
+
+  if (!canManageHeatwaveUploadFile(targetFile)) {
+    setHeatwaveMessage("업로드한 업체 또는 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  try {
+    if (targetFile.storagePath) {
+      try {
+        await deleteObject(storageRef(storage, targetFile.storagePath));
+      } catch (error) {
+        console.log("HEATWAVE STORAGE DELETE SKIPPED:", error);
+      }
+    }
+
+        const nextUploads = {
+      ...(heatwaveUploads[heatwaveViewDateKey]?.uploads || {}),
+      [companyName]: currentUploads.filter((item) => item.id !== uploadId),
+    };
+
+    setHeatwaveUploads((prev) => ({
+      ...prev,
+      [heatwaveViewDateKey]: {
+        date: heatwaveViewDateKey,
+        uploads: nextUploads,
+      },
+    }));
+
+    await setDoc(
+      doc(db, "heatwaveUploads", heatwaveViewDateKey),
+      {
+        date: heatwaveViewDateKey,
+        uploads: nextUploads,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+  action: "삭제",
+  page: "혹서기",
+  target: companyName,
+  detail: `${getHeatwaveFileTypeLabel(targetFile.fileType)} 삭제 / ${targetFile.fileName}`,
+});
+
+setHeatwaveMessage("파일이 삭제되었습니다.");
+  } catch (error) {
+    console.log("HEATWAVE DELETE ERROR:", error);
+    setHeatwaveMessage("파일 삭제 중 오류가 발생했습니다.");
+  }
+};
+
+const renderHeatwaveUploadFileList = (companyName: string) => {
+  if (!canAccessHeatwaveCompanyFiles(companyName)) return null;
+
+  const uploads = getHeatwaveCompanyUploads(companyName);
+
+  if (uploads.length === 0) {
+    return <div className="text-xs text-slate-400">업로드된 파일 없음</div>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {uploads.map((file) => {
+        const canManage = canManageHeatwaveUploadFile(file);
+
+        return (
+          <div key={file.id} className="rounded-xl border border-slate-200 bg-white p-2 text-xs">
+            <div className="font-semibold text-slate-800">
+              {file.fileType === "thermoPhoto" || file.fileType === "image"
+  ? "온습도계 사진"
+  : "온습도계 관리대장"} · {file.fileName}
+            </div>
+
+            {(file.fileType === "thermoPhoto" || file.fileType === "image") && (
+              <img
+                src={file.fileUrl}
+                alt={file.fileName}
+                className="mt-2 max-h-40 rounded-xl border border-slate-200 object-contain"
+              />
+            )}
+
+            {canManage && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => openHeatwaveFilePreview(file.fileUrl)}>
+                  미리보기
+                </Button>
+
+                <Button variant="outline" size="sm" onClick={() => downloadHeatwaveFile(file.fileUrl, file.fileName)}>
+                  다운로드
+                </Button>
+
+                <Button variant="outline" size="sm" onClick={() => handleDeleteHeatwaveUpload(companyName, file.id)}>
+                  삭제
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const handleDeleteHeatwaveSharedFile = async (
+  fileKind: "thermoHygrometerImage"
+) => {
+  setHeatwaveMessage("");
+
+  if (!isHeatwaveAdmin) {
+    setHeatwaveMessage("공통 파일은 마스터, 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  if (!db || !storage) {
+    setHeatwaveMessage("Firebase 연결 오류");
+    return;
+  }
+
+  const targetFile = heatwaveSharedFiles[heatwaveDateKey]?.[fileKind];
+
+  if (!targetFile) {
+    setHeatwaveMessage("삭제할 파일이 없습니다.");
+    return;
+  }
+
+  try {
+    if (targetFile.storagePath) {
+      try {
+        await deleteObject(storageRef(storage, targetFile.storagePath));
+      } catch (error) {
+        console.log("HEATWAVE SHARED STORAGE DELETE SKIPPED:", error);
+      }
+    }
+
+    const nextSharedFiles = {
+      ...(heatwaveSharedFiles[heatwaveDateKey] || { date: heatwaveDateKey }),
+      [fileKind]: null,
+    };
+
+    setHeatwaveSharedFiles((prev) => ({
+      ...prev,
+      [heatwaveDateKey]: nextSharedFiles,
+    }));
+
+    await setDoc(
+      doc(db, "heatwaveSharedFiles", heatwaveDateKey),
+      {
+        date: heatwaveDateKey,
+        ...nextSharedFiles,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+  action: "삭제",
+  page: "혹서기",
+  target: "공통 파일",
+  detail: `${getHeatwaveSharedFileKindLabel(fileKind)} 삭제 / ${targetFile.fileName}`,
+});
+
+setHeatwaveMessage("공통 파일이 삭제되었습니다.");
+  } catch (error) {
+    console.log("HEATWAVE SHARED DELETE ERROR:", error);
+    setHeatwaveMessage("공통 파일 삭제 중 오류가 발생했습니다.");
+  }
+};
+
+const renderHeatwaveSharedFileBox = (
+  title: string,
+  fileKind: "thermoHygrometerImage"
+) => {
+  const file = heatwaveSharedFiles[heatwaveDateKey]?.[fileKind];
+
+  return (
+    <div className="rounded-2xl border border-slate-200 p-4">
+      <div className="text-sm font-semibold text-slate-900">{title}</div>
+
+      {file ? (
+        <div className="mt-2 space-y-2">
+          <div className="break-all text-sm text-slate-700">{file.fileName}</div>
+
+          {fileKind === "thermoHygrometerImage" && (
+            <img
+              src={file.fileUrl}
+              alt={title}
+              className="max-h-48 rounded-xl border border-slate-200 object-contain"
+            />
+          )}
+
+          {isHeatwaveAdmin && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => openHeatwaveFilePreview(file.fileUrl)}>
+                미리보기
+              </Button>
+
+              <Button variant="outline" size="sm" onClick={() => downloadHeatwaveFile(file.fileUrl, file.fileName)}>
+                다운로드
+              </Button>
+
+              <Button variant="outline" size="sm" onClick={() => handleDeleteHeatwaveSharedFile(fileKind)}>
+                삭제
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="mt-2 text-sm text-slate-400">업로드 없음</div>
+      )}
+    </div>
+  );
+};
+
+const handleHeatwaveSharedFileUpload = async (
+  event: React.ChangeEvent<HTMLInputElement>,
+  fileKind: "thermoHygrometerImage"
+) => {
+  setHeatwaveMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!canManageHeatwaveCompanies) {
+    setHeatwaveMessage("온습도계 파일은 마스터, 관리자만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage) {
+    setHeatwaveMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  const maxSize = MAX_HEATWAVE_IMAGE_FILE_SIZE;
+
+  if (file.size > maxSize) {
+    setHeatwaveMessage("온습도계 이미지는 5MB 이하만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `heatwaveSharedFiles/${heatwaveDateKey}/${fileKind}-${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    const newFile: HeatwaveSharedFileItem = {
+      fileName: file.name,
+      fileUrl,
+      storagePath,
+      uploadedByUid: currentUser?.uid || "",
+uploadedByName: currentUser?.name || "",
+createdAt: new Date().toISOString(),
+    };
+
+    const nextSharedFiles = {
+      ...(heatwaveSharedFiles[heatwaveDateKey] || { date: heatwaveDateKey }),
+      [fileKind]: newFile,
+    };
+
+    setHeatwaveSharedFiles((prev) => ({
+      ...prev,
+      [heatwaveDateKey]: nextSharedFiles,
+    }));
+
+    await setDoc(
+      doc(db, "heatwaveSharedFiles", heatwaveDateKey),
+      {
+        date: heatwaveDateKey,
+        ...nextSharedFiles,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+  action: "입력",
+  page: "혹서기",
+  target: "공통 파일",
+  detail: `${getHeatwaveSharedFileKindLabel(fileKind)} 업로드 / ${file.name}`,
+});
+
+setHeatwaveMessage("온습도계 이미지가 업로드되었습니다.");
+  } catch (error) {
+    console.log("HEATWAVE SHARED FILE UPLOAD ERROR:", error);
+
+console.error(error);
+
+setHeatwaveMessage(
+  `파일 업로드 오류: ${
+    error instanceof Error ? error.message : JSON.stringify(error)
+  }`
+);
+  }
+
+    event.target.value = "";
+};
+
+const canManageSupplementNotice = currentUser?.role === "master" || currentUser?.role === "admin";
+
+const getSupplementCopyText = () => {
+  return supplementNightMorningRows
+    .map((row) => [row.nightText.trim(), row.morningText.trim()].filter(Boolean).join("\n\n"))
+    .filter(Boolean)
+    .join("\n\n");
+};
+
+const saveSupplementNightMorningRows = async (
+  rows: typeof supplementNightMorningRows,
+  action: string,
+  target: string,
+  detail: string
+) => {
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return false;
+  }
+
+  try {
+    setSupplementNightMorningRows(rows);
+
+    await setDoc(
+      doc(db, "supplementWorks", supplementNightMorningDateKey),
+      {
+        date: supplementNightMorningDateKey,
+        nightMorningRows: rows,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action,
+      page: "보충작업",
+      target,
+      detail,
+    });
+
+    return true;
+  } catch (error) {
+    console.log("SUPPLEMENT NIGHT MORNING SAVE ERROR:", error);
+    setSupplementMessage("저장 권한 또는 네트워크 오류로 저장되지 않았습니다.");
+    return false;
+  }
+};
+
+const handleSaveSupplementNightMorning = async () => {
+  setSupplementMessage("");
+
+  if (!currentUser) {
+    setSupplementMessage("로그인 후 입력할 수 있습니다.");
+    return;
+  }
+
+  if (!supplementNightText.trim() && !supplementMorningText.trim()) {
+    setSupplementMessage("금일 야간 또는 명일 조출 내용을 입력하세요.");
+    return;
+  }
+
+  const companyName = String(currentUser.companyName || "").trim();
+
+  const newRow = {
+    id: createLocalId("supplement-night-morning"),
+    company: companyName,
+    nightText: supplementNightText.trim(),
+    morningText: supplementMorningText.trim(),
+    createdByUid: currentUser.uid,
+    createdByName: currentUser.name,
+  };
+
+  const saved = await saveSupplementNightMorningRows(
+    [...supplementNightMorningRows, newRow],
+    "입력",
+    companyName,
+    `금일야간 ${newRow.nightText.length}자 / 명일조출 ${newRow.morningText.length}자`
+  );
+
+  if (!saved) return;
+
+  setSupplementNightText("");
+  setSupplementMorningText("");
+  setSupplementMessage("저장되었습니다.");
+};
+
+const handleUpdateSupplementNightMorningRow = async () => {
+  setSupplementMessage("");
+
+  if (!canAdminEditDabsItem) {
+    setSupplementMessage("수정은 마스터, 관리자만 가능합니다.");
+    return;
+  }
+
+  if (!editSupplementNightMorningPopup.id) return;
+
+  const targetRow = supplementNightMorningRows.find(
+    (row) => row.id === editSupplementNightMorningPopup.id
+  );
+
+  const nextRows = supplementNightMorningRows.map((row) =>
+    row.id === editSupplementNightMorningPopup.id
+      ? {
+          ...row,
+          company: editSupplementNightMorningPopup.company.trim(),
+          nightText: editSupplementNightMorningPopup.nightText.trim(),
+          morningText: editSupplementNightMorningPopup.morningText.trim(),
+        }
+      : row
+  );
+
+  await saveSupplementNightMorningRows(
+    nextRows,
+    "수정",
+    editSupplementNightMorningPopup.company.trim(),
+    `${targetRow?.company || ""} → ${editSupplementNightMorningPopup.company.trim()}`
+  );
+
+  setEditSupplementNightMorningPopup({
+    open: false,
+    id: "",
+    company: "",
+    nightText: "",
+    morningText: "",
+  });
+
+  setSupplementMessage("수정되었습니다.");
+};
+
+const handleDeleteSupplementNightMorningRow = async (rowId: string) => {
+  setSupplementMessage("");
+
+  const targetRow = supplementNightMorningRows.find((row) => row.id === rowId);
+
+  if (!canDeleteOwnItem(targetRow)) {
+    setSupplementMessage("본인이 입력한 항목 또는 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  await saveSupplementNightMorningRows(
+    supplementNightMorningRows.filter((row) => row.id !== rowId),
+    "삭제",
+    targetRow?.company || "",
+    `${targetRow?.nightText || ""} / ${targetRow?.morningText || ""}`
+  );
+
+  setSupplementMessage("삭제되었습니다.");
+};
+
+const handleCopySupplementNightMorning = async () => {
+  const copyText = getSupplementCopyText();
+
+  if (!copyText) {
+    setSupplementMessage("복사할 내용이 없습니다.");
+    return;
+  }
+
+  await navigator.clipboard.writeText(copyText);
+  setSupplementMessage("복사되었습니다.");
+};
+
+const handleDownloadSupplementTomorrowExcel = () => {
+  const headers = ["작업구분", "업체명", "작업위치", "작업인원", "관리감독자", "작업내용", "안전대책, 조치사항"];
+
+  const rows = supplementTomorrowRows.map((row) => [
+    row.workType,
+    row.company,
+    row.location,
+    row.workerCount,
+    row.supervisorCount,
+    row.content,
+    row.safetyAction,
+  ]);
+
+  const html = `
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+      </head>
+      <body>
+        <table border="1">
+          <thead>
+            <tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                (row) =>
+                  `<tr>${row
+                    .map((cell) => `<td>${String(cell || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</td>`)
+                    .join("")}</tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `;
+
+  const blob = new Blob([html], {
+    type: "application/vnd.ms-excel;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `명일보충작업-${selectedDate}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+const handleSaveSupplementNotice = async () => {
+  setSupplementMessage("");
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지는 마스터, 관리자만 저장할 수 있습니다.");
+    return;
+  }
+
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return;
+  }
+
+  await setDoc(
+    doc(db, "supplementWorks", supplementNightMorningDateKey),
+    {
+      date: supplementNightMorningDateKey,
+      noticeText: supplementNoticeText,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+
+  await writeActivityLog({
+    action: "수정",
+    page: "보충작업",
+    target: "공지",
+    detail: supplementNoticeText,
+  });
+
+  setSupplementMessage("공지가 저장되었습니다.");
+};
+
+const handleSupplementNoticeImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  setSupplementMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지 이미지는 마스터, 관리자만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `supplementWorks/${supplementNightMorningDateKey}/notice-${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    setSupplementNoticeImage(fileUrl);
+
+    await setDoc(
+      doc(db, "supplementWorks", supplementNightMorningDateKey),
+      {
+        date: supplementNightMorningDateKey,
+        noticeImage: fileUrl,
+        noticeImageStoragePath: storagePath,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action: "수정",
+      page: "보충작업",
+      target: "공지 이미지",
+      detail: file.name,
+    });
+
+    setSupplementMessage("공지 이미지가 업로드되었습니다.");
+  } catch (error) {
+    console.log("SUPPLEMENT NOTICE IMAGE UPLOAD ERROR:", error);
+    setSupplementMessage("공지 이미지 업로드 중 오류가 발생했습니다.");
+  }
+
+  event.target.value = "";
+};
+
+const handleSaveSupplementTomorrowNotice = async () => {
+  setSupplementMessage("");
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지는 마스터, 관리자만 저장할 수 있습니다.");
+    return;
+  }
+
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return;
+  }
+
+  await setDoc(
+    doc(db, "supplementWorks", selectedDate),
+    {
+      date: selectedDate,
+      tomorrowNoticeText: supplementTomorrowNoticeText,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+
+  await writeActivityLog({
+    action: "수정",
+    page: "보충작업",
+    target: "명일 보충작업 공지",
+    detail: supplementTomorrowNoticeText,
+  });
+
+  setSupplementMessage("공지가 저장되었습니다.");
+};
+
+const handleSupplementTomorrowNoticeImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  setSupplementMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지 이미지는 마스터, 관리자만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `supplementWorks/${selectedDate}/tomorrow-notice-${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    setSupplementTomorrowNoticeImage(fileUrl);
+
+    await setDoc(
+      doc(db, "supplementWorks", selectedDate),
+      {
+        date: selectedDate,
+        tomorrowNoticeImage: fileUrl,
+        tomorrowNoticeImageStoragePath: storagePath,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action: "수정",
+      page: "보충작업",
+      target: "명일 보충작업 공지 이미지",
+      detail: file.name,
+    });
+
+    setSupplementMessage("공지 이미지가 업로드되었습니다.");
+  } catch (error) {
+    console.log("SUPPLEMENT TOMORROW NOTICE IMAGE UPLOAD ERROR:", error);
+    setSupplementMessage("공지 이미지 업로드 중 오류가 발생했습니다.");
+  }
+
+  event.target.value = "";
+};
+
+const saveSupplementTomorrowRows = async (
+  rows: typeof supplementTomorrowRows,
+  action: string,
+  target: string,
+  detail: string
+) => {
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return false;
+  }
+
+  try {
+    setSupplementTomorrowRows(rows);
+
+    await setDoc(
+      doc(db, "supplementWorks", selectedDate),
+      {
+        date: selectedDate,
+        tomorrowRows: rows,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action,
+      page: "보충작업",
+      target,
+      detail,
+    });
+
+    return true;
+  } catch (error) {
+    console.log("SUPPLEMENT TOMORROW SAVE ERROR:", error);
+    setSupplementMessage("저장 권한 또는 네트워크 오류로 저장되지 않았습니다.");
+    return false;
+  }
+};
+
+const handleAddSupplementTomorrowRow = async () => {
+  setSupplementMessage("");
+
+  if (!currentUser) {
+    setSupplementMessage("로그인 후 입력할 수 있습니다.");
+    return;
+  }
+
+  if (
+    !supplementTomorrowInput.location.trim() ||
+    !supplementTomorrowInput.workerCount.trim() ||
+    !supplementTomorrowInput.supervisorCount.trim() ||
+    !supplementTomorrowInput.content.trim() ||
+    !supplementTomorrowInput.safetyAction.trim()
+  ) {
+    setSupplementMessage("모든 입력값을 입력하세요.");
+    return;
+  }
+
+  const companyName = String(currentUser.companyName || "").trim();
+
+  const newRow = {
+    id: createLocalId("supplement-tomorrow"),
+    workType: supplementTomorrowInput.workType,
+    company: companyName,
+    location: supplementTomorrowInput.location.trim(),
+    workerCount: supplementTomorrowInput.workerCount.trim(),
+    supervisorCount: supplementTomorrowInput.supervisorCount.trim(),
+    content: supplementTomorrowInput.content.trim(),
+    safetyAction: supplementTomorrowInput.safetyAction.trim(),
+    createdByUid: currentUser.uid,
+    createdByName: currentUser.name,
+  };
+
+  const nextRows = [...supplementTomorrowRows, newRow];
+
+  const saved = await saveSupplementTomorrowRows(
+    nextRows,
+    "입력",
+    companyName,
+    `${newRow.workType} / ${newRow.location} / 작업인원 ${newRow.workerCount} / 관리감독자 ${newRow.supervisorCount} / ${newRow.content}`
+  );
+
+  if (!saved) return;
+
+  setSupplementTomorrowInput({
+    workType: "조출",
+    location: "",
+    workerCount: "",
+    supervisorCount: "",
+    content: "",
+    safetyAction: "",
+  });
+
+  setSupplementMessage("저장되었습니다.");
+};
+
+const handleUpdateSupplementTomorrowRow = async () => {
+  setSupplementMessage("");
+
+  if (!canAdminEditDabsItem) {
+    setSupplementMessage("수정은 마스터, 관리자만 가능합니다.");
+    return;
+  }
+
+  if (
+    !editSupplementTomorrowPopup.id ||
+    !editSupplementTomorrowPopup.company.trim() ||
+    !editSupplementTomorrowPopup.location.trim() ||
+    !editSupplementTomorrowPopup.workerCount.trim() ||
+    !editSupplementTomorrowPopup.supervisorCount.trim() ||
+    !editSupplementTomorrowPopup.content.trim() ||
+    !editSupplementTomorrowPopup.safetyAction.trim()
+  ) {
+    setSupplementMessage("모든 입력값을 입력하세요.");
+    return;
+  }
+
+  const targetRow = supplementTomorrowRows.find(
+    (row) => row.id === editSupplementTomorrowPopup.id
+  );
+
+  const nextRows = supplementTomorrowRows.map((row) =>
+    row.id === editSupplementTomorrowPopup.id
+      ? {
+          ...row,
+          workType: editSupplementTomorrowPopup.workType,
+          company: editSupplementTomorrowPopup.company.trim(),
+          location: editSupplementTomorrowPopup.location.trim(),
+          workerCount: editSupplementTomorrowPopup.workerCount.trim(),
+          supervisorCount: editSupplementTomorrowPopup.supervisorCount.trim(),
+          content: editSupplementTomorrowPopup.content.trim(),
+          safetyAction: editSupplementTomorrowPopup.safetyAction.trim(),
+        }
+      : row
+  );
+
+  await saveSupplementTomorrowRows(
+    nextRows,
+    "수정",
+    editSupplementTomorrowPopup.company.trim(),
+    `${targetRow?.workType || ""} / ${targetRow?.location || ""} → ${editSupplementTomorrowPopup.workType} / ${editSupplementTomorrowPopup.location.trim()}`
+  );
+
+  setEditSupplementTomorrowPopup({
+    open: false,
+    id: "",
+    workType: "조출",
+    company: "",
+    location: "",
+    workerCount: "",
+    supervisorCount: "",
+    content: "",
+    safetyAction: "",
+  });
+
+  setSupplementMessage("수정되었습니다.");
+};
+
+const handleDeleteSupplementTomorrowRow = async (rowId: string) => {
+  setSupplementMessage("");
+
+  const targetRow = supplementTomorrowRows.find((row) => row.id === rowId);
+
+  if (!canDeleteOwnItem(targetRow)) {
+    setSupplementMessage("본인이 입력한 항목 또는 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  const nextRows = supplementTomorrowRows.filter((row) => row.id !== rowId);
+
+  await saveSupplementTomorrowRows(
+    nextRows,
+    "삭제",
+    targetRow?.company || "",
+    `${targetRow?.workType || ""} / ${targetRow?.location || ""} / ${targetRow?.content || ""}`
+  );
+
+  setSupplementMessage("삭제되었습니다.");
+};
+
+const handleSupplementWeekendDateChange = (dateKey: string) => {
+  if (!canAdminEditDabsItem) return;
+
+  setManualSupplementWeekendDate(dateKey);
+  setManualSupplementWeekendDateSavedToday(getTodayKey());
+};
+
+const handleResetSupplementWeekendDate = () => {
+  setManualSupplementWeekendDate("");
+  setManualSupplementWeekendDateSavedToday("");
+};
+
+const handleSaveSupplementWeekendNotice = async () => {
+  setSupplementMessage("");
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지는 마스터, 관리자만 저장할 수 있습니다.");
+    return;
+  }
+
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return;
+  }
+
+  await setDoc(
+    doc(db, "supplementWorks", supplementWeekendDateKey),
+    {
+      date: supplementWeekendDateKey,
+      weekendNoticeText: supplementWeekendNoticeText,
+      updatedAt: serverTimestamp(),
+      updatedByUid: currentUser.uid || "",
+      updatedByName: currentUser.name || "",
+    },
+    { merge: true }
+  );
+
+  await writeActivityLog({
+    action: "수정",
+    page: "보충작업",
+    target: "주말 보충작업 공지",
+    detail: supplementWeekendNoticeText,
+  });
+
+  setSupplementMessage("공지가 저장되었습니다.");
+};
+
+const handleSupplementWeekendNoticeImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  setSupplementMessage("");
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!canManageSupplementNotice) {
+    setSupplementMessage("공지 이미지는 마스터, 관리자만 업로드할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (!db || !storage || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const safeFileName = file.name.replace(/[\\/:*?"<>|]/g, "-");
+    const storagePath = `supplementWorks/${supplementWeekendDateKey}/weekend-notice-${Date.now()}-${safeFileName}`;
+    const fileRef = storageRef(storage, storagePath);
+
+    await uploadBytes(fileRef, file);
+    const fileUrl = await getDownloadURL(fileRef);
+
+    setSupplementWeekendNoticeImage(fileUrl);
+
+    await setDoc(
+      doc(db, "supplementWorks", supplementWeekendDateKey),
+      {
+        date: supplementWeekendDateKey,
+        weekendNoticeImage: fileUrl,
+        weekendNoticeImageStoragePath: storagePath,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action: "수정",
+      page: "보충작업",
+      target: "주말 보충작업 공지 이미지",
+      detail: file.name,
+    });
+
+    setSupplementMessage("공지 이미지가 업로드되었습니다.");
+  } catch (error) {
+    console.log("SUPPLEMENT WEEKEND NOTICE IMAGE UPLOAD ERROR:", error);
+    setSupplementMessage("공지 이미지 업로드 중 오류가 발생했습니다.");
+  }
+
+  event.target.value = "";
+};
+
+const saveSupplementWeekendRows = async (
+  rows: typeof supplementWeekendRows,
+  action: string,
+  target: string,
+  detail: string
+) => {
+  if (!db || !currentUser) {
+    setSupplementMessage("Firebase 연결 오류");
+    return false;
+  }
+
+  try {
+    setSupplementWeekendRows(rows);
+
+    await setDoc(
+      doc(db, "supplementWorks", supplementWeekendDateKey),
+      {
+        date: supplementWeekendDateKey,
+        weekendRows: rows,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser.uid || "",
+        updatedByName: currentUser.name || "",
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action,
+      page: "보충작업",
+      target,
+      detail,
+    });
+
+    return true;
+  } catch (error) {
+    console.log("SUPPLEMENT WEEKEND SAVE ERROR:", error);
+    setSupplementMessage("저장 권한 또는 네트워크 오류로 저장되지 않았습니다.");
+    return false;
+  }
+};
+
+const handleAddSupplementWeekendRow = async () => {
+  setSupplementMessage("");
+
+  if (!currentUser) {
+    setSupplementMessage("로그인 후 입력할 수 있습니다.");
+    return;
+  }
+
+  if (
+    !supplementWeekendInput.location.trim() ||
+    !supplementWeekendInput.workerCount.trim() ||
+    !supplementWeekendInput.supervisorCount.trim() ||
+    !supplementWeekendInput.content.trim() ||
+    !supplementWeekendInput.safetyAction.trim()
+  ) {
+    setSupplementMessage("모든 입력값을 입력하세요.");
+    return;
+  }
+
+  const companyName = String(currentUser.companyName || "").trim();
+
+  const newRow = {
+    id: createLocalId("supplement-weekend"),
+    workType: "주말",
+    company: companyName,
+    location: supplementWeekendInput.location.trim(),
+    workerCount: supplementWeekendInput.workerCount.trim(),
+    supervisorCount: supplementWeekendInput.supervisorCount.trim(),
+    content: supplementWeekendInput.content.trim(),
+    safetyAction: supplementWeekendInput.safetyAction.trim(),
+    createdByUid: currentUser.uid,
+    createdByName: currentUser.name,
+  };
+
+  const nextRows = [...supplementWeekendRows, newRow];
+
+  const saved = await saveSupplementWeekendRows(
+    nextRows,
+    "입력",
+    companyName,
+    `주말 / ${newRow.location} / 작업인원 ${newRow.workerCount} / 관리감독자 ${newRow.supervisorCount} / ${newRow.content}`
+  );
+
+  if (!saved) return;
+
+  setSupplementWeekendInput({
+    location: "",
+    workerCount: "",
+    supervisorCount: "",
+    content: "",
+    safetyAction: "",
+  });
+
+  setSupplementMessage("저장되었습니다.");
+};
+
+const handleUpdateSupplementWeekendRow = async () => {
+  setSupplementMessage("");
+
+  if (!canAdminEditDabsItem) {
+    setSupplementMessage("수정은 마스터, 관리자만 가능합니다.");
+    return;
+  }
+
+  if (
+    !editSupplementWeekendPopup.id ||
+    !editSupplementWeekendPopup.company.trim() ||
+    !editSupplementWeekendPopup.location.trim() ||
+    !editSupplementWeekendPopup.workerCount.trim() ||
+    !editSupplementWeekendPopup.supervisorCount.trim() ||
+    !editSupplementWeekendPopup.content.trim() ||
+    !editSupplementWeekendPopup.safetyAction.trim()
+  ) {
+    setSupplementMessage("모든 입력값을 입력하세요.");
+    return;
+  }
+
+  const targetRow = supplementWeekendRows.find(
+    (row) => row.id === editSupplementWeekendPopup.id
+  );
+
+  const nextRows = supplementWeekendRows.map((row) =>
+    row.id === editSupplementWeekendPopup.id
+      ? {
+          ...row,
+          workType: "주말",
+          company: editSupplementWeekendPopup.company.trim(),
+          location: editSupplementWeekendPopup.location.trim(),
+          workerCount: editSupplementWeekendPopup.workerCount.trim(),
+          supervisorCount: editSupplementWeekendPopup.supervisorCount.trim(),
+          content: editSupplementWeekendPopup.content.trim(),
+          safetyAction: editSupplementWeekendPopup.safetyAction.trim(),
+        }
+      : row
+  );
+
+  await saveSupplementWeekendRows(
+    nextRows,
+    "수정",
+    editSupplementWeekendPopup.company.trim(),
+    `${targetRow?.location || ""} → ${editSupplementWeekendPopup.location.trim()}`
+  );
+
+  setEditSupplementWeekendPopup({
+    open: false,
+    id: "",
+    company: "",
+    location: "",
+    workerCount: "",
+    supervisorCount: "",
+    content: "",
+    safetyAction: "",
+  });
+
+  setSupplementMessage("수정되었습니다.");
+};
+
+const handleDeleteSupplementWeekendRow = async (rowId: string) => {
+  setSupplementMessage("");
+
+  const targetRow = supplementWeekendRows.find((row) => row.id === rowId);
+
+  if (!canDeleteOwnItem(targetRow)) {
+    setSupplementMessage("본인이 입력한 항목 또는 관리자만 삭제할 수 있습니다.");
+    return;
+  }
+
+  const nextRows = supplementWeekendRows.filter((row) => row.id !== rowId);
+
+  await saveSupplementWeekendRows(
+    nextRows,
+    "삭제",
+    targetRow?.company || "",
+    `${targetRow?.workType || ""} / ${targetRow?.location || ""} / ${targetRow?.content || ""}`
+  );
+
+  setSupplementMessage("삭제되었습니다.");
+};
+
+const handleDownloadSupplementWeekendExcel = () => {
+  const headers = ["작업구분", "업체명", "작업위치", "작업인원", "관리감독자", "작업내용", "안전대책, 조치사항"];
+
+  const rows = supplementWeekendRows.map((row) => [
+    row.workType,
+    row.company,
+    row.location,
+    row.workerCount,
+    row.supervisorCount,
+    row.content,
+    row.safetyAction,
+  ]);
+
+  const html = `
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+      </head>
+      <body>
+        <table border="1">
+          <thead>
+            <tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr>
+          </thead>
+          <tbody>
+            ${rows
+              .map(
+                (row) =>
+                  `<tr>${row
+                    .map((cell) => `<td>${String(cell || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</td>`)
+                    .join("")}</tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `;
+
+  const blob = new Blob([html], {
+    type: "application/vnd.ms-excel;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `주말보충작업-${supplementWeekendDateKey}.xls`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
+  const menuItems = [
+  { key: "dabs", title: "DAB's회의", description: "회의 관련 페이지로 이동", icon: MessageSquare },
+  { key: "education", title: "교육일정", description: "현재 교육일정 페이지로 이동", icon: CalendarDays },
+{ key: "heatwave", title: "혹서기", description: "혹서기 온습도계 업로드 현황 관리", icon: CalendarDays },
+{ key: "supplementWork", title: "보충작업", description: "금일야간/명일조출, 명일·주말 보충작업 관리", icon: CalendarDays },
+  ...(canManageApprovals
+    ? [{ key: "approval", title: "회원 승인 관리", description: "가입 신청 승인/반려 관리", icon: UserPlus }]
+    : []),
+  ...(canViewActivityLogs
+    ? [{ key: "activityLog", title: "활동 로그", description: "입력·수정·삭제 기록 확인", icon: LayoutGrid }]
+    : []),
+];
+
+  const selectedDateObject = useMemo(() => {
+  const [year, month, day] = selectedDate.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}, [selectedDate]);
+
+const selectedDatePlusZero = selectedDateObject;
+
+const selectedDatePlusOne = useMemo(() => {
+  const d = new Date(selectedDateObject);
+  d.setDate(d.getDate() + 1);
+  return d;
+}, [selectedDateObject]);
+ 
+  const dabsTabs = useMemo(() => [
+  { key: "highRisk", label: "고위험작업" },
+  { key: "buildingDetail", label: "동별 상세도" },
+  { key: "equipmentFlow", label: "장비동선" },
+  { key: "archWork", label: "건축토목 작업" },
+  { key: "mepWork", label: "기전부 작업" },
+  { key: "fireWork", label: "화기작업" },
+  { key: "materialsAfter0", label: `${formatShortDate(selectedDatePlusZero)} 자재반입` },
+  { key: "materialsAfter1", label: `${formatShortDate(selectedDatePlusOne)} 자재반입` },
+  { key: "soloWorker", label: "단독작업자" },
+], [selectedDatePlusZero, selectedDatePlusOne]);
+
+  const activeDabsTab = dabsTabs[dabsTabIndex] || dabsTabs[0];
+const activeDabsKey = activeDabsTab.key;
+
+const soloRows = useMemo<Record<string, DabsRowItem[]>>(
+  () => dabsData[selectedDate]?.soloWorker?.rows || {},
+  [dabsData, selectedDate]
+);
+
+const getMergedSectionRows = (tabKey: string) => {
+  const mergedRows: Record<string, DabsRowItem[]> = {};
+
+  getMergedSectionKeys(tabKey).forEach((sourceKey) => {
+    const tabValue = dabsData[selectedDate]?.[sourceKey];
+    const rows =
+      typeof tabValue === "object" && tabValue && "rows" in tabValue
+        ? tabValue.rows || {}
+        : {};
+
+    Object.entries(rows).forEach(([building, list]) => {
+      mergedRows[building] = [
+        ...(mergedRows[building] || []),
+        ...(list || []),
+      ];
+    });
+  });
+
+  return mergedRows;
+};
+
+const portfolioSlides = useMemo(() => {
+  const slides: Array<{
+    type: "overlay" | "overlayWithTable" | "section" | "material" | "soloWorker";
+    key: string;
+    tabKey?: string;
+    label: string;
+    columns?: string[];
+soloItems?: Array<DabsRowItem & { building: string }>;
+highRiskTableItems?: Array<DabsRowItem & { building: string }>;
+  }> = [];
+
+  const maxRowsPerSlide = 17
+
+  dabsTabs.forEach((tab) => {
+    if (tab.key === "equipmentFlow") {
+      slides.push({
+        type: "overlay",
+        key: tab.key,
+        tabKey: tab.key,
+        label: tab.label,
+      });
+      return;
+    }
+
+    if (tab.key === "highRisk") {
+      const highRiskTabValue = dabsData[selectedDate]?.highRiskTable;
+      const highRiskStoredRows =
+        typeof highRiskTabValue === "object" && highRiskTabValue && "rows" in highRiskTabValue
+          ? highRiskTabValue.rows || {}
+          : {};
+      const highRiskRows = getHighRiskTableRows(highRiskStoredRows);
+      const highRiskChunks = splitHighRiskRowsByCompany(highRiskRows, HIGH_RISK_PORTFOLIO_MAX_ROWS);
+
+      highRiskChunks.forEach((chunk, index) => {
+        slides.push({
+          type: "overlayWithTable",
+          key: `highRisk-${index}`,
+          tabKey: tab.key,
+          label:
+            highRiskChunks.length > 1
+              ? `${tab.label} (${index + 1}/${highRiskChunks.length})`
+              : tab.label,
+          highRiskTableItems: chunk,
+        });
+      });
+      return;
+    }
+
+    if (
+      tab.key === "archWork" ||
+tab.key === "mepWork" ||
+tab.key === "fireWork"
+    ) {
+      const rows = getMergedSectionRows(tab.key);
+
+      const columnChunks = splitColumnsByMaxRows(
+        getDabsColumnsByTabKey(tab.key),
+        rows,
+        maxRowsPerSlide
+      );
+
+      columnChunks.forEach((columns, index) => {
+        slides.push({
+          type: "section",
+          key: `${tab.key}-${index}`,
+          tabKey: tab.key,
+          label:
+            columnChunks.length > 1
+              ? `${tab.label} (${index + 1}/${columnChunks.length})`
+              : tab.label,
+          columns,
+        });
+      });
+
+      return;
+    }
+
+    if (tab.key === "materialsAfter0" || tab.key === "materialsAfter1") {
+      slides.push({
+        type: "material",
+        key: tab.key,
+        tabKey: tab.key,
+        label: tab.label,
+      });
+    }
+  });
+
+  const sortedSoloItems = getSoloWorkerRowsByCompany(soloRows);
+const soloChunks = splitSoloWorkersByMaxRows(sortedSoloItems, maxRowsPerSlide);
+
+soloChunks.forEach((soloItems, index) => {
+  slides.push({
+    type: "soloWorker",
+    key: `soloWorker-${index}`,
+    label:
+      soloChunks.length > 1
+        ? `단독작업자 (${index + 1}/${soloChunks.length})`
+        : "단독작업자",
+    soloItems,
+  });
+});
+
+  return slides;
+}, [dabsTabs, dabsData, selectedDate, soloRows]);
+
+const soloCompanyColorList = useMemo(
+  () => getUniqueCompaniesFromRows(soloRows),
+  [soloRows]
+);
+
+const heatSensitiveList = useMemo(
+  () => getSoloWorkerRowsByCompany(heatSensitiveRows, heatSensitiveCompanyFilter),
+  [heatSensitiveRows, heatSensitiveCompanyFilter]
+);
+
+const heatSensitiveGrouped = useMemo(
+  () =>
+    heatSensitiveList.reduce<Record<string, typeof heatSensitiveList>>((acc, item) => {
+      const key = item.company || "-";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    }, {}),
+  [heatSensitiveList]
+);
+
+const heatSensitiveCompanyColorList = useMemo(
+  () => getUniqueCompaniesFromRows(heatSensitiveRows),
+  [heatSensitiveRows]
+);
+
+useEffect(() => {
+  if (portfolioSlideIndex >= portfolioSlides.length) {
+    setPortfolioSlideIndex(0);
+  }
+}, [portfolioSlideIndex, portfolioSlides.length]);
+
+useEffect(() => {
+  if (currentPage !== "portfolio") return;
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "ArrowRight") {
+      setPortfolioSlideIndex((prev) =>
+        prev >= portfolioSlides.length - 1 ? 0 : prev + 1
+      );
+    }
+
+    if (event.key === "ArrowLeft") {
+      setPortfolioSlideIndex((prev) =>
+        prev <= 0 ? portfolioSlides.length - 1 : prev - 1
+      );
+    }
+  };
+
+  window.addEventListener("keydown", handleKeyDown);
+
+  return () => {
+    window.removeEventListener("keydown", handleKeyDown);
+  };
+}, [currentPage, portfolioSlides.length]);
+
+useEffect(() => {
+  if (currentPage !== "portfolio") return;
+
+  const slide = portfolioSlides[portfolioSlideIndex];
+  if (!slide?.tabKey) return;
+
+  const nextDabsTabIndex = dabsTabs.findIndex((tab) => tab.key === slide.tabKey);
+
+  if (nextDabsTabIndex >= 0 && nextDabsTabIndex !== dabsTabIndex) {
+    setDabsTabIndex(nextDabsTabIndex);
+  }
+}, [currentPage, portfolioSlideIndex, portfolioSlides, dabsTabs, dabsTabIndex]);
+
+ useEffect(() => {
+  const nextValue = dabsData[selectedDate]?.[activeDabsKey];
+  setDabsDraft(typeof nextValue === "string" ? nextValue : "");
+  setDabsMessage("");
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
+  setPendingEquipmentMarker(null);
+}, [selectedDate, activeDabsKey, dabsData]);
+
+useEffect(() => {
+  setOverlayZoom(1);
+  setOverlayPan({ x: 0, y: 0 });
+  setFullscreenOverlay((prev) => {
+    if (prev) {
+      exitFullscreenLandscape();
+    }
+    return null;
+  });
+  setFsZoom(1);
+  setFsPan({ x: 0, y: 0 });
+}, [activeDabsKey, selectedBuildingDetail, selectedDate]);
+
+  const getRelativePoint = (clientX: number, clientY: number) => {
+  if (!imageAreaRef.current) return null;
+  const rect = imageAreaRef.current.getBoundingClientRect();
+  const ix = (clientX - rect.left - overlayPan.x) / overlayZoom;
+  const iy = (clientY - rect.top - overlayPan.y) / overlayZoom;
+  return {
+    x: (ix / rect.width) * 100,
+    y: (iy / rect.height) * 100,
+  };
+};
+
+const clampOverlayPan = (
+  zoom: number,
+  pan: { x: number; y: number },
+  rect: { width: number; height: number } | null | undefined
+) => {
+  if (!rect || zoom <= 1) return { x: 0, y: 0 };
+  const minX = rect.width - rect.width * zoom;
+  const minY = rect.height - rect.height * zoom;
+  return {
+    x: Math.min(0, Math.max(minX, pan.x)),
+    y: Math.min(0, Math.max(minY, pan.y)),
+  };
+};
+
+const applyOverlayZoom = (
+  nextZoomRaw: number,
+  anchorClient?: { clientX: number; clientY: number }
+) => {
+  const rect = imageAreaRef.current?.getBoundingClientRect();
+  const nextZoom = Math.min(
+    OVERLAY_MAX_ZOOM,
+    Math.max(OVERLAY_MIN_ZOOM, Math.round(nextZoomRaw * 100) / 100)
+  );
+  if (!rect) {
+    setOverlayZoom(nextZoom);
+    setOverlayPan({ x: 0, y: 0 });
+    return;
+  }
+  const anchorX = anchorClient ? anchorClient.clientX - rect.left : rect.width / 2;
+  const anchorY = anchorClient ? anchorClient.clientY - rect.top : rect.height / 2;
+  const ix = (anchorX - overlayPan.x) / overlayZoom;
+  const iy = (anchorY - overlayPan.y) / overlayZoom;
+  const nextPan =
+    nextZoom <= 1
+      ? { x: 0, y: 0 }
+      : clampOverlayPan(nextZoom, { x: anchorX - ix * nextZoom, y: anchorY - iy * nextZoom }, rect);
+  setOverlayZoom(nextZoom);
+  setOverlayPan(nextPan);
+};
+
+const resetOverlayZoom = () => {
+  setOverlayZoom(1);
+  setOverlayPan({ x: 0, y: 0 });
+};
+
+const applyFsZoom = (
+  nextZoomRaw: number,
+  anchorClient?: { clientX: number; clientY: number }
+) => {
+  const rect = fsImageAreaRef.current?.getBoundingClientRect();
+  const nextZoom = Math.min(
+    OVERLAY_MAX_ZOOM,
+    Math.max(OVERLAY_MIN_ZOOM, Math.round(nextZoomRaw * 100) / 100)
+  );
+  if (!rect) {
+    setFsZoom(nextZoom);
+    setFsPan({ x: 0, y: 0 });
+    return;
+  }
+  const anchorX = anchorClient ? anchorClient.clientX - rect.left : rect.width / 2;
+  const anchorY = anchorClient ? anchorClient.clientY - rect.top : rect.height / 2;
+  const ix = (anchorX - fsPan.x) / fsZoom;
+  const iy = (anchorY - fsPan.y) / fsZoom;
+  const nextPan =
+    nextZoom <= 1
+      ? { x: 0, y: 0 }
+      : clampOverlayPan(nextZoom, { x: anchorX - ix * nextZoom, y: anchorY - iy * nextZoom }, rect);
+  setFsZoom(nextZoom);
+  setFsPan(nextPan);
+};
+
+const resetFsZoom = () => {
+  setFsZoom(1);
+  setFsPan({ x: 0, y: 0 });
+};
+
+const handleFsMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+  if (fsZoom <= 1) {
+    fsPanMouseStateRef.current = null;
+    return;
+  }
+  fsPanMouseStateRef.current = { x: event.clientX, y: event.clientY, panX: fsPan.x, panY: fsPan.y, moved: false };
+};
+
+const handleFsMouseMoveCombined = (event: React.MouseEvent<HTMLDivElement>) => {
+  const panState = fsPanMouseStateRef.current;
+  if (!panState) return;
+  const dx = event.clientX - panState.x;
+  const dy = event.clientY - panState.y;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) panState.moved = true;
+  if (panState.moved) {
+    const rect = fsImageAreaRef.current?.getBoundingClientRect();
+    setFsPan(clampOverlayPan(fsZoom, { x: panState.panX + dx, y: panState.panY + dy }, rect));
+  }
+};
+
+const handleFsMouseUp = () => {
+  fsPanMouseStateRef.current = null;
+};
+
+const handleFsWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+  event.preventDefault();
+  const delta = event.deltaY > 0 ? -0.3 : 0.3;
+  applyFsZoom(fsZoom + delta, { clientX: event.clientX, clientY: event.clientY });
+};
+
+const handleFsTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+  if (event.touches.length >= 2) {
+    fsPanTouchStateRef.current = null;
+    fsPinchDistRef.current = touchDistance(event.touches[0], event.touches[1]);
+    return;
+  }
+  const touch = event.touches?.[0];
+  if (!touch) return;
+  fsPinchDistRef.current = null;
+  fsPanTouchStateRef.current =
+    fsZoom > 1 ? { x: touch.clientX, y: touch.clientY, panX: fsPan.x, panY: fsPan.y } : null;
+};
+
+const handleFsTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+  if (event.touches.length >= 2) {
+    const rect = fsImageAreaRef.current?.getBoundingClientRect();
+    const dist = touchDistance(event.touches[0], event.touches[1]);
+    if (rect && fsPinchDistRef.current) {
+      const scale = dist / fsPinchDistRef.current;
+      const midX = (event.touches[0].clientX + event.touches[1].clientX) / 2 - rect.left;
+      const midY = (event.touches[0].clientY + event.touches[1].clientY) / 2 - rect.top;
+      const nextZoom = Math.min(OVERLAY_MAX_ZOOM, Math.max(OVERLAY_MIN_ZOOM, fsZoom * scale));
+      const ix = (midX - fsPan.x) / fsZoom;
+      const iy = (midY - fsPan.y) / fsZoom;
+      const nextPan =
+        nextZoom <= 1
+          ? { x: 0, y: 0 }
+          : clampOverlayPan(nextZoom, { x: midX - ix * nextZoom, y: midY - iy * nextZoom }, rect);
+      setFsZoom(nextZoom);
+      setFsPan(nextPan);
+    }
+    fsPinchDistRef.current = dist;
+    return;
+  }
+  const touch = event.touches?.[0];
+  if (!touch) return;
+  if (fsPanTouchStateRef.current && fsZoom > 1) {
+    const rect = fsImageAreaRef.current?.getBoundingClientRect();
+    const dx = touch.clientX - fsPanTouchStateRef.current.x;
+    const dy = touch.clientY - fsPanTouchStateRef.current.y;
+    setFsPan(
+      clampOverlayPan(fsZoom, { x: fsPanTouchStateRef.current.panX + dx, y: fsPanTouchStateRef.current.panY + dy }, rect)
+    );
+  }
+};
+
+const handleFsTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+  if (event.touches.length === 0) {
+    fsPinchDistRef.current = null;
+    fsPanTouchStateRef.current = null;
+  }
+};
+
+useLayoutEffect(() => {
+  const isImageTab =
+    activeDabsKey === "highRisk" ||
+    activeDabsKey === "equipmentFlow" ||
+    (activeDabsKey === "buildingDetail" && !!selectedBuildingDetail);
+  const overlayTargetKey =
+    activeDabsKey === "buildingDetail" && selectedBuildingDetail
+      ? `buildingDetail::${selectedBuildingDetail}`
+      : activeDabsKey;
+  const imageArea = imageAreaRef.current;
+
+  if (!isImageTab || !imageArea) {
+    setAdjustedOverlayPositions({});
+    return;
+  }
+
+  const recomputeOverlayPositions = () => {
+    const overlayBundle = getOverlayBundle(overlayTargetKey);
+    const markers = overlayBundle.markers || [];
+    const areaRect = imageArea.getBoundingClientRect();
+
+    if (!areaRect.width || !areaRect.height || markers.length === 0) {
+      setAdjustedOverlayPositions({});
+      return;
+    }
+
+    const padding = 9;
+    const gap = 2;
+    const placedRects: Array<{ left: number; top: number; right: number; bottom: number }> = [];
+    const nextPositions: Record<string, { x: number; y: number }> = {};
+
+    const isOverlapping = (rect: { left: number; top: number; right: number; bottom: number }) =>
+      placedRects.some(
+        (placed) =>
+          rect.left < placed.right + gap &&
+          rect.right > placed.left - gap &&
+          rect.top < placed.bottom + gap &&
+          rect.bottom > placed.top - gap
+      );
+
+    const clampRect = (centerX: number, centerY: number, width: number, height: number) => {
+      const halfWidth = width / 2;
+      const halfHeight = height / 2;
+
+      const safeX = Math.min(
+        Math.max(centerX, halfWidth + padding),
+        areaRect.width - halfWidth - padding
+      );
+
+      const safeY = Math.min(
+        Math.max(centerY, halfHeight + padding),
+        areaRect.height - halfHeight - padding
+      );
+
+      return { x: safeX, y: safeY };
+    };
+
+    markers.forEach((marker) => {
+      const markerKey = `${overlayTargetKey}-${marker.id}`;
+      const markerElement = overlayMarkerRefs.current[markerKey];
+
+      if (!markerElement) return;
+
+      const markerRect = markerElement.getBoundingClientRect();
+      const currentOverlayZoom = overlayZoomRef.current;
+      const width = markerRect.width / currentOverlayZoom;
+      const height = markerRect.height / currentOverlayZoom;
+
+      const originalX = (marker.x / 100) * areaRect.width;
+      const originalY = (marker.y / 100) * areaRect.height;
+
+      const candidates: Array<{ x: number; y: number }> = [];
+
+      const base = clampRect(originalX, originalY, width, height);
+      candidates.push(base);
+
+      const stepX = width + gap;
+      const stepY = height + gap;
+
+      for (let ring = 1; ring <= 8; ring += 1) {
+        candidates.push(
+          { x: originalX + stepX * ring, y: originalY },
+          { x: originalX - stepX * ring, y: originalY },
+          { x: originalX, y: originalY + stepY * ring },
+          { x: originalX, y: originalY - stepY * ring },
+          { x: originalX + stepX * ring, y: originalY + stepY * ring },
+          { x: originalX - stepX * ring, y: originalY + stepY * ring },
+          { x: originalX + stepX * ring, y: originalY - stepY * ring },
+          { x: originalX - stepX * ring, y: originalY - stepY * ring }
+        );
+      }
+
+      const safePoint =
+        candidates
+          .map((candidate) => clampRect(candidate.x, candidate.y, width, height))
+          .find((candidate) => {
+            const rect = {
+              left: candidate.x - width / 2,
+              top: candidate.y - height / 2,
+              right: candidate.x + width / 2,
+              bottom: candidate.y + height / 2,
+            };
+
+            return !isOverlapping(rect);
+          }) || base;
+
+      const finalRect = {
+        left: safePoint.x - width / 2,
+        top: safePoint.y - height / 2,
+        right: safePoint.x + width / 2,
+        bottom: safePoint.y + height / 2,
+      };
+
+      placedRects.push(finalRect);
+
+      nextPositions[markerKey] = {
+        x: (safePoint.x / areaRect.width) * 100,
+        y: (safePoint.y / areaRect.height) * 100,
+      };
+    });
+
+    setAdjustedOverlayPositions((prev) => {
+      if (JSON.stringify(prev) === JSON.stringify(nextPositions)) return prev;
+      return nextPositions;
+    });
+  };
+
+  recomputeOverlayPositions();
+
+  // 화면 크기/회전/이미지 로딩 변화에도 마커 위치를 다시 계산해서
+  // 모바일-데스크톱 전환, 창 크기 조절 시에도 겹치거나 밀려나지 않도록 함.
+  const resizeObserver =
+    typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => recomputeOverlayPositions()) : null;
+  resizeObserver?.observe(imageArea);
+  window.addEventListener("resize", recomputeOverlayPositions);
+  window.addEventListener("orientationchange", recomputeOverlayPositions);
+
+  return () => {
+    resizeObserver?.disconnect();
+    window.removeEventListener("resize", recomputeOverlayPositions);
+    window.removeEventListener("orientationchange", recomputeOverlayPositions);
+  };
+}, [activeDabsKey, selectedDate, dabsOverlays, dabsImages, buildingDetailImages, selectedBuildingDetail, isCapturingImage]);
+
+  const vibrateBriefly = () => {
+  if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") navigator.vibrate(25);
+};
+
+const handleDownloadCaptureImage = async (
+  targetRef: React.RefObject<HTMLDivElement | null>,
+  fileName: string
+) => {
+  const target = targetRef.current;
+
+  if (!target) {
+    alert("다운로드할 화면을 찾을 수 없습니다.");
+    return;
+  }
+
+  let titleEl: HTMLDivElement | null = null;
+
+  try {
+
+    setIsCapturingImage(true);
+await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+    const safeFileName = fileName.replace(/[\\/:*?"<>|]/g, "-");
+
+    titleEl = document.createElement("div");
+    titleEl.textContent = fileName;
+    titleEl.style.cssText =
+      "padding:10px 4px 18px;font-size:20px;line-height:1.3;font-weight:700;color:#0f172a;text-align:center;background-color:#ffffff;";
+    target.insertBefore(titleEl, target.firstChild);
+
+    const image = await toJpeg(target, {
+      cacheBust: true,
+      quality: 0.8,
+      pixelRatio: 1,
+      backgroundColor: "#ffffff",
+      style: {
+        backgroundColor: "#ffffff",
+      },
+    });
+
+    const link = document.createElement("a");
+    link.href = image;
+    link.download = `${safeFileName}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (error) {
+    console.log("IMAGE DOWNLOAD ERROR:", error);
+    alert("이미지 저장 중 오류가 발생했습니다. 콘솔을 확인하세요.");
+  } finally {
+    if (titleEl && titleEl.parentNode) {
+      titleEl.parentNode.removeChild(titleEl);
+    }
+    setIsCapturingImage(false);
+  }
+};
+
+const waitForNextPaint = async () => {
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+};
+
+const handleDownloadPortfolioImages = async () => {
+  if (portfolioSlides.length === 0) {
+    alert("저장할 발표 페이지가 없습니다.");
+    return;
+  }
+
+  setIsExportingPortfolioImages(true);
+  setIsCapturingImage(true);
+  setCurrentPage("portfolio");
+
+  await waitForNextPaint();
+
+  try {
+    for (let index = 0; index < portfolioSlides.length; index += 1) {
+      setPortfolioSlideIndex(index);
+      await waitForNextPaint();
+
+      const target = portfolioCaptureRef.current;
+
+      if (!target) continue;
+
+      const slide = portfolioSlides[index];
+      const safeLabel = String(slide.label || `page-${index + 1}`).replace(/[\\/:*?"<>|]/g, "-");
+
+      const image = await toJpeg(target, {
+        cacheBust: true,
+        quality: 0.9,
+        pixelRatio: 1,
+        backgroundColor: "#ffffff",
+        style: {
+          backgroundColor: "#ffffff",
+        },
+      });
+
+      const link = document.createElement("a");
+      link.href = image;
+      link.download = `${String(index + 1).padStart(2, "0")}-${safeLabel}-${selectedDate}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  } catch (error) {
+    console.log("PORTFOLIO IMAGE DOWNLOAD ERROR:", error);
+    alert("발표 이미지 저장 중 오류가 발생했습니다. 콘솔을 확인하세요.");
+  } finally {
+    setIsExportingPortfolioImages(false);
+setIsCapturingImage(false);
+setCurrentPage("menu");
+setPortfolioSlideIndex(0);
+  }
+};
+
+  const addEntry = async () => {
+  setEntryMessage("");
+
+  if (!currentUser || currentUser.status !== "approved") {
+    setEntryMessage("승인된 계정만 일정을 등록할 수 있습니다.");
+    return;
+  }
+
+  if (!selectedDate || !effectiveSelectedTime) {
+    setEntryMessage("등록 가능한 시간이 없습니다.");
+    return;
+  }
+
+  const isDuplicateTime = dayEntries.some((entry) =>
+    isTimeOverlapping(effectiveSelectedTime, effectiveEndTime, entry.startTime, entry.endTime)
+  );
+
+  if (isDuplicateTime) {
+    setEntryMessage("이미 등록된 시간과 겹칩니다.");
+    return;
+  }
+
+  const newEntryData = {
+    date: selectedDate,
+    startTime: effectiveSelectedTime,
+    endTime: effectiveEndTime,
+    companyName: currentUser.companyName,
+    createdByUid: currentUser.uid,
+    createdByName: currentUser.name,
+    createdByRole: currentUser.role,
+    createdAt: new Date().toISOString(),
+  };
+
+  if (isDemoMode) {
+    const nextEntries = [
+      ...loadDemoEntries(),
+      {
+        id: createLocalId("demo-entry"),
+        ...newEntryData,
+      },
+    ];
+
+    saveDemoEntries(nextEntries);
+    setEntries(nextEntries);
+    setEntryMessage("일정이 등록되었습니다.");
+    return;
+  }
+
+  if (!db) {
+    setEntryMessage("Firebase 연결이 없습니다.");
+    return;
+  }
+
+  try {
+    await addDoc(collection(db, "entries"), {
+      ...newEntryData,
+      createdAt: serverTimestamp(),
+    });
+
+    await writeActivityLog({
+      action: "입력",
+      page: "교육일정",
+      target: currentUser.companyName || "",
+      detail: `${selectedDate} ${effectiveSelectedTime}~${effectiveEndTime}`,
+    });
+
+    setEntryMessage("일정이 등록되었습니다.");
+  } catch (error) {
+    console.log("ENTRY ADD ERROR:", error);
+    setEntryMessage("일정 등록 중 오류가 발생했습니다.");
+  }
+};
+
+  const deleteEntry = async (entryId: string) => {
+  setEntryMessage("");
+
+  if (!currentUser) {
+    setEntryMessage("로그인 후 삭제할 수 있습니다.");
+    return;
+  }
+
+  const targetEntry = entries.find((entry) => entry.id === entryId);
+
+  if (!canDeleteOwnItem(targetEntry)) {
+    setDeleteNoticeOpen(true);
+    setEntryMessage("본인이 입력한 일정만 삭제할 수 있습니다.");
+    return;
+  }
+
+  if (isDemoMode) {
+    const nextEntries = loadDemoEntries().filter((entry) => entry.id !== entryId);
+    saveDemoEntries(nextEntries);
+    setEntries(nextEntries);
+    setEntryMessage("일정이 삭제되었습니다.");
+    return;
+  }
+
+  if (!db) {
+    setEntryMessage("Firebase 연결이 없습니다.");
+    return;
+  }
+
+  try {
+    await deleteDoc(doc(db, "entries", entryId));
+
+    await writeActivityLog({
+      action: "삭제",
+      page: "교육일정",
+      target: targetEntry?.companyName || "",
+      detail: `${targetEntry?.date || ""} ${targetEntry?.startTime || ""}~${targetEntry?.endTime || ""}`,
+    });
+
+    setEntryMessage("일정이 삭제되었습니다.");
+  } catch (error: any) {
+    console.log("ENTRY DELETE ERROR:", error);
+    setEntryMessage(error?.message || "일정 삭제 중 오류가 발생했습니다.");
+  }
+};
+
+const handleUpdateEntry = async () => {
+  if (!currentUser) {
+    setEntryMessage("로그인 후 수정할 수 있습니다.");
+    return;
+  }
+
+  if (!editEntryPopup.companyName.trim()) {
+    setEntryMessage("업체명을 입력하세요.");
+    return;
+  }
+
+  const targetEntry = entries.find((entry) => entry.id === editEntryPopup.entryId);
+
+  if (!targetEntry) {
+    setEntryMessage("수정할 일정을 찾을 수 없습니다.");
+    return;
+  }
+
+  if (!canDeleteOwnItem(targetEntry)) {
+    setDeleteNoticeOpen(true);
+    setEntryMessage("본인이 입력한 일정만 수정할 수 있습니다.");
+    return;
+  }
+
+  const nextEndTime = getEndTime(editEntryPopup.startTime);
+
+  const isDuplicateTime = entries.some((entry) => {
+    if (entry.id === editEntryPopup.entryId) return false;
+    if (entry.date !== editEntryPopup.date) return false;
+
+    return isTimeOverlapping(
+      editEntryPopup.startTime,
+      nextEndTime,
+      entry.startTime,
+      entry.endTime
+    );
+  });
+
+  if (isDuplicateTime) {
+    setEntryMessage("이미 등록된 시간과 겹칩니다.");
+    return;
+  }
+
+  if (isDemoMode) {
+    const nextEntries = loadDemoEntries().map((entry) =>
+      entry.id === editEntryPopup.entryId
+        ? {
+            ...entry,
+            date: editEntryPopup.date,
+            startTime: editEntryPopup.startTime,
+            endTime: nextEndTime,
+            companyName: editEntryPopup.companyName.trim(),
+          }
+        : entry
+    );
+
+    saveDemoEntries(nextEntries);
+    setEntries(nextEntries);
+    setSelectedDate(editEntryPopup.date);
+    setEditEntryPopup({
+      open: false,
+      entryId: "",
+      date: "",
+      startTime: "09:00",
+      companyName: "",
+    });
+    setEntryMessage("일정이 수정되었습니다.");
+    return;
+  }
+
+  if (!db) {
+    setEntryMessage("Firebase 연결이 없습니다.");
+    return;
+  }
+
+  try {
+    await updateDoc(doc(db, "entries", editEntryPopup.entryId), {
+      date: editEntryPopup.date,
+      startTime: editEntryPopup.startTime,
+      endTime: nextEndTime,
+      companyName: editEntryPopup.companyName.trim(),
+    });
+
+    await writeActivityLog({
+      action: "수정",
+      page: "교육일정",
+      target: editEntryPopup.companyName.trim(),
+      detail: `${targetEntry.date} ${targetEntry.startTime}~${targetEntry.endTime} → ${editEntryPopup.date} ${editEntryPopup.startTime}~${nextEndTime}`,
+    });
+
+    setSelectedDate(editEntryPopup.date);
+    setEditEntryPopup({
+      open: false,
+      entryId: "",
+      date: "",
+      startTime: "09:00",
+      companyName: "",
+    });
+
+    setEntryMessage("일정이 수정되었습니다.");
+  } catch (error: any) {
+    console.log("ENTRY UPDATE ERROR:", error);
+    setEntryMessage(error?.message || "일정 수정 중 오류가 발생했습니다.");
+  }
+};
+
+  const handleLogin = async () => {
+  if (loginLoading) return;
+
+  setLoginLoading(true);
+  setLoginMessage("");
+
+  try {
+    if (isDemoMode) {
+      const demoUsers = loadDemoUsers();
+      const foundUser = demoUsers.find(
+        (user) =>
+          String(user.email).toLowerCase() === loginId.trim().toLowerCase() &&
+          user.password === loginPassword.trim()
+      );
+
+      if (!foundUser) {
+        setLoginMessage("아이디 또는 비밀번호가 올바르지 않습니다.");
+        return;
+      }
+
+      if (foundUser.status !== "approved") {
+        setLoginMessage("승인 완료된 계정만 로그인할 수 있습니다.");
+        return;
+      }
+
+      setCurrentUser(foundUser);
+      setUsers(demoUsers);
+      setEntries(loadDemoEntries());
+      setCurrentPage("menu");
+      setLoginId("");
+      setLoginPassword("");
+      return;
+    }
+
+    if (!auth) {
+      setLoginMessage("Firebase 설정이 없어 로그인할 수 없습니다.");
+      return;
+    }
+
+    await signInWithEmailAndPassword(auth, loginId.trim(), loginPassword.trim());
+    setLoginId("");
+    setLoginPassword("");
+  } catch {
+    setLoginMessage("아이디(이메일) 또는 비밀번호가 올바르지 않습니다.");
+  } finally {
+    setLoginLoading(false);
+  }
+};
+
+const handlePasswordReset = async () => {
+  const email = loginId.trim();
+
+  if (isDemoMode) {
+    setLoginMessage("데모 모드에서는 사용할 수 없습니다.");
+    return;
+  }
+
+  if (!auth) {
+    setLoginMessage("Firebase 설정이 없습니다.");
+    return;
+  }
+
+  if (!email) {
+    setLoginMessage("아이디(이메일)를 먼저 입력하세요.");
+    return;
+  }
+
+  try {
+    await sendPasswordResetEmail(auth, email);
+    setLoginMessage("비밀번호 재설정 메일을 보냈습니다.");
+  } catch {
+    setLoginMessage("이메일을 확인하세요.");
+  }
+};
+
+  const handleLogout = async () => {
+    if (isDemoMode) {
+      setCurrentUser(null);
+      setLoginMessage("로그아웃되었습니다.");
+      setCurrentPage("menu");
+      return;
+    }
+    if (!auth) return;
+    await signOut(auth);
+    setLoginMessage("로그아웃되었습니다.");
+    setCurrentPage("menu");
+  };
+
+  const handleSignup = async () => {
+    const email = signupId.trim();
+    const password = signupPassword.trim();
+    const companyName = signupCompanyName.trim();
+    const name = signupName.trim();
+    if (!email || !password || !companyName || !name) return setSignupMessage("업체명, 이름, 아이디, 비밀번호를 모두 입력하세요.");
+    if (isDemoMode) {
+      const demoUsers = loadDemoUsers();
+      if (demoUsers.some((user) => String(user.email).toLowerCase() === email.toLowerCase())) return setSignupMessage("이미 사용 중인 아이디입니다.");
+      const newUser = { uid: createLocalId("demo-user"), email, password, companyName, name, role: signupRole, status: "pending", createdAt: new Date().toISOString(), approvedAt: null, approvedBy: null };
+      const nextUsers = [...demoUsers, newUser];
+      saveDemoUsers(nextUsers);
+      setUsers(nextUsers);
+      setSignupId("");
+      setSignupPassword("");
+      setSignupCompanyName("");
+      setSignupName("");
+      setSignupRole("general");
+      setSignupMessage(signupRole === "admin" ? "관리자 계정 가입 신청이 접수되었습니다. 마스터 승인이 필요합니다." : "일반 계정 가입 신청이 접수되었습니다. 마스터 또는 관리자의 승인이 필요합니다.");
+      return;
+    }
+    if (!auth || !db) return setSignupMessage("Firebase 설정이 없어 회원가입을 진행할 수 없습니다.");
+    try {
+      const methods = await fetchSignInMethodsForEmail(auth, email);
+
+if (methods.length > 0) {
+  setSignupMessage("이미 가입된 이메일입니다. 왼쪽 로그인 창에서 로그인하세요.");
+  return;
+}
+
+const credential = await createUserWithEmailAndPassword(auth, email, password);
+
+await setDoc(doc(db, "users", credential.user.uid), {
+  email,
+  companyName,
+  name,
+  role: signupRole,
+  status: "pending",
+  createdAt: serverTimestamp(),
+  approvedAt: null,
+  approvedBy: null,
+});
+
+// 🔥 성공 메시지
+setSignupMessage(
+  signupRole === "admin"
+    ? "관리자 계정 가입 신청이 완료되었습니다. 마스터 승인을 기다리세요."
+    : "회원가입 신청이 완료되었습니다. 승인 후 로그인 가능합니다."
+);
+
+// 🔥 입력값 초기화
+setSignupId("");
+setSignupPassword("");
+setSignupCompanyName("");
+setSignupName("");
+setSignupRole("general");
+
+await signOut(auth);
+    } catch (error: any) {
+  console.log("SIGNUP ERROR:", error.code);
+
+  if (error.code === "auth/email-already-in-use") {
+    setSignupMessage("이미 사용 중인 이메일입니다.");
+  } else if (error.code === "auth/weak-password") {
+    setSignupMessage("비밀번호는 6자 이상이어야 합니다.");
+  } else if (error.code === "auth/invalid-email") {
+    setSignupMessage("이메일 형식이 올바르지 않습니다.");
+  } else {
+    setSignupMessage("회원가입 중 오류가 발생했습니다.");
+  }
+}
+  };
+
+  const approveUser = async (uid: string) => {
+    if (!currentUser) return;
+    if (isDemoMode) {
+      const demoUsers = loadDemoUsers();
+      const targetUser = demoUsers.find((user) => user.uid === uid);
+      if (!targetUser) return;
+      const canApprove = targetUser.role === "admin" ? canApproveAdmin : canApproveGeneral;
+      if (!canApprove) return;
+      const nextUsers = demoUsers.map((user) => user.uid === uid ? { ...user, status: "approved", approvedAt: new Date().toISOString(), approvedBy: currentUser.uid } : user);
+      saveDemoUsers(nextUsers);
+      setUsers(nextUsers);
+      return;
+    }
+    if (!db) return;
+    const targetUser = users.find((user) => user.uid === uid);
+    if (!targetUser) return;
+    const canApprove = targetUser.role === "admin" ? canApproveAdmin : canApproveGeneral;
+    if (!canApprove) return;
+    await updateDoc(doc(db, "users", uid), { status: "approved", approvedAt: serverTimestamp(), approvedBy: currentUser.uid });
+  };
+
+  const rejectUser = async (uid: string) => {
+    if (!currentUser) return;
+    if (isDemoMode) {
+      const demoUsers = loadDemoUsers();
+      const targetUser = demoUsers.find((user) => user.uid === uid);
+      if (!targetUser) return;
+      const canReject = targetUser.role === "admin" ? canApproveAdmin : canApproveGeneral;
+      if (!canReject) return;
+      const nextUsers = demoUsers.map((user) => user.uid === uid ? { ...user, status: "rejected", approvedAt: null, approvedBy: currentUser.uid } : user);
+      saveDemoUsers(nextUsers);
+      setUsers(nextUsers);
+      return;
+    }
+    if (!db) return;
+    const targetUser = users.find((user) => user.uid === uid);
+    if (!targetUser) return;
+    const canReject = targetUser.role === "admin" ? canApproveAdmin : canApproveGeneral;
+    if (!canReject) return;
+    await updateDoc(doc(db, "users", uid), { status: "rejected", approvedAt: null, approvedBy: currentUser.uid });
+  };
+
+const cancelApprovalUser = async (uid: string) => {
+  if (!currentUser) return;
+
+  if (isDemoMode) {
+    const demoUsers = loadDemoUsers();
+    const targetUser = demoUsers.find((user) => user.uid === uid);
+    if (!targetUser) return;
+
+    const canCancel = targetUser.role === "admin" ? canApproveAdmin : canApproveGeneral;
+    if (!canCancel) return;
+
+    const nextUsers = demoUsers.map((user) =>
+      user.uid === uid
+        ? {
+            ...user,
+            status: "rejected",
+            approvedAt: null,
+            approvedBy: currentUser.uid,
+          }
+        : user
+    );
+
+    saveDemoUsers(nextUsers);
+    setUsers(nextUsers);
+    return;
+  }
+
+  if (!db) return;
+
+  const targetUser = users.find((user) => user.uid === uid);
+  if (!targetUser) return;
+
+  const canCancel = targetUser.role === "admin" ? canApproveAdmin : canApproveGeneral;
+  if (!canCancel) return;
+
+  await updateDoc(doc(db, "users", uid), {
+  status: "rejected",
+  approvedAt: null,
+  approvedBy: currentUser.uid,
+});
+};
+
+  const handleSaveDabsText = async () => {
+  if (!canEditDabs) {
+    setDabsMessage("권한 없음");
+    return;
+  }
+
+  const nextData = {
+    ...(dabsData[selectedDate] || {}),
+    [activeDabsKey]: dabsDraft,
+  };
+
+  setDabsData((prev) => ({
+    ...prev,
+    [selectedDate]: nextData,
+  }));
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData);
+
+  setDabsMessage("저장 완료");
+};
+
+  const handleAddSectionWork = async () => {
+  if (!canEditDabs || !sectionInput.building || !sectionInput.content.trim()) return;
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? sectionInput.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
+
+  const inputContent = sectionInput.content.trim();
+  const inputRedRanges = normalizeTextColorRanges(
+    sectionInput.contentRedRanges,
+    inputContent.length
+  );
+
+  const storageKey = getSectionStorageKey(activeDabsKey, sectionInput.building);
+  const currentTabValue = dabsData[selectedDate]?.[storageKey];
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const buildingRows = currentRows[sectionInput.building] || [];
+  const existingIndex = buildingRows.findIndex((item) => item.company === companyName);
+
+  const nextBuildingRows =
+    existingIndex >= 0
+      ? buildingRows.map((item, index) => {
+          if (index !== existingIndex) return item;
+
+          const oldContent = item.content || "";
+          const joiner = oldContent ? "/" : "";
+          const offset = oldContent.length + joiner.length;
+
+          return {
+            ...item,
+            content: `${oldContent}${joiner}${inputContent}`,
+            contentRedRanges: [
+              ...(item.contentRedRanges || []),
+              ...inputRedRanges.map((range) => ({
+                start: range.start + offset,
+                end: range.end + offset,
+              })),
+            ],
+          };
+        })
+      : [
+          ...buildingRows,
+          {
+            id: createLocalId("section"),
+            company: companyName,
+            content: inputContent,
+            contentRedRanges: inputRedRanges,
+            createdByUid: currentUser?.uid,
+            createdByName: currentUser?.name,
+          },
+        ];
+
+  const nextRows = {
+    ...currentRows,
+    [sectionInput.building]: nextBuildingRows,
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      [storageKey]: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: existingIndex >= 0 ? "수정" : "입력",
+    page: "DAB's회의",
+    target: companyName,
+    detail: `${activeDabsTab.label} / ${sectionInput.building} / ${inputContent}`,
+  });
+
+  setSectionInput({ building: "", company: "", content: "", contentRedRanges: [] });
+  setSectionTextSelection({ start: 0, end: 0 });
+  setDabsMessage("저장되었습니다.");
+};
+
+  const handleAddMaterial = async () => {
+  const { gate, material, vehicle, vehicleCount, location, manager, phone, workerOnCargo, cargoHeight1m, time } = materialsInput;
+  if (!canEditDabs || !material.trim() || !vehicle.trim() || !location.trim()) return;
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? materialsInput.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
+
+  const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
+  const list =
+    typeof currentTabValue === "object" && currentTabValue && "list" in currentTabValue
+      ? currentTabValue.list || []
+      : [];
+
+  const nextList = [
+    ...list,
+    {
+      id: createLocalId("material"),
+      gate,
+      material: material.trim(),
+      vehicle: vehicle.trim(),
+      vehicleCount: vehicleCount.trim(),
+      location: location.trim(),
+      manager: manager.trim(),
+      phone: phone.trim(),
+      workerOnCargo,
+      cargoHeight1m: workerOnCargo ? cargoHeight1m : false,
+      time,
+      company: companyName,
+      createdByUid: currentUser?.uid,
+      createdByName: currentUser?.name,
+    },
+  ];
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      [activeDabsKey]: { list: nextList },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "DAB's회의",
+    target: companyName,
+    detail: `${activeDabsTab.label} / ${time}시 / ${gate}게이트 / ${material.trim()} / ${vehicle.trim()}${vehicleCount.trim() ? ` ${vehicleCount.trim()}대` : ""} / ${location.trim()} / 담당자: ${manager.trim()} / 연락처: ${phone.trim()}`,
+  });
+
+  setMaterialsInput({ gate: "1", company: "", material: "", vehicle: "", vehicleCount: "", location: "", manager: "", phone: "", workerOnCargo: false, cargoHeight1m: false, time: "06" });
+  setDabsMessage("저장되었습니다.");
+};
+
+const handleUpdateMaterial = async () => {
+  if (!canAdminEditDabsItem) return;
+
+  if (
+    !editMaterialPopup.itemId ||
+    !editMaterialPopup.gate ||
+    !editMaterialPopup.time ||
+    !editMaterialPopup.company.trim() ||
+    !editMaterialPopup.material.trim() ||
+    !editMaterialPopup.vehicle.trim() ||
+    !editMaterialPopup.location.trim()
+  ) {
+    return;
+  }
+
+  const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
+
+  const currentList =
+    typeof currentTabValue === "object" && currentTabValue && "list" in currentTabValue
+      ? currentTabValue.list || []
+      : [];
+
+  const targetItem = currentList.find((item) => item.id === editMaterialPopup.itemId);
+
+  const nextList = currentList.map((item) =>
+    item.id === editMaterialPopup.itemId
+      ? {
+          ...item,
+          gate: editMaterialPopup.gate,
+          time: editMaterialPopup.time,
+          company: editMaterialPopup.company.trim(),
+          material: editMaterialPopup.material.trim(),
+          vehicle: editMaterialPopup.vehicle.trim(),
+          vehicleCount: editMaterialPopup.vehicleCount.trim(),
+          location: editMaterialPopup.location.trim(),
+          manager: editMaterialPopup.manager.trim(),
+          phone: editMaterialPopup.phone.trim(),
+          workerOnCargo: editMaterialPopup.workerOnCargo,
+          cargoHeight1m: editMaterialPopup.workerOnCargo ? editMaterialPopup.cargoHeight1m : false,
+        }
+      : item
+  );
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      [activeDabsKey]: { list: nextList },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "수정",
+    page: "DAB's회의",
+    target: editMaterialPopup.company.trim(),
+    detail: `${activeDabsTab.label} / ${targetItem?.time || ""}시 ${targetItem?.gate || ""}게이트 ${targetItem?.material || ""} → ${editMaterialPopup.time}시 ${editMaterialPopup.gate}게이트 ${editMaterialPopup.material.trim()}`,
+  });
+
+  setEditMaterialPopup({
+    open: false,
+    itemId: "",
+    gate: "",
+    time: "",
+    company: "",
+    material: "",
+    vehicle: "",
+    vehicleCount: "",
+    location: "",
+    manager: "",
+    phone: "",
+    workerOnCargo: false,
+    cargoHeight1m: false,
+  });
+
+  setDabsMessage("수정되었습니다.");
+};
+
+  const handleUpdateSectionWork = async () => {
+  if (!canAdminEditDabsItem) return;
+  if (!editSectionPopup.itemId || !editSectionPopup.building || !editSectionPopup.company.trim() || !editSectionPopup.content.trim()) return;
+
+  const oldBuilding = editSectionPopup.oldBuilding;
+const newBuilding = editSectionPopup.building;
+
+const sourceKey =
+  getMergedSectionKeys(activeDabsKey).find((key) => {
+    const tabValue = dabsData[selectedDate]?.[key];
+    const rows =
+      typeof tabValue === "object" && tabValue && "rows" in tabValue
+        ? tabValue.rows || {}
+        : {};
+
+    return (rows[oldBuilding] || []).some((item) => item.id === editSectionPopup.itemId);
+  }) || getSectionStorageKey(activeDabsKey, oldBuilding);
+
+const targetKey = getSectionStorageKey(activeDabsKey, newBuilding);
+
+const sourceTabValue = dabsData[selectedDate]?.[sourceKey];
+const sourceRows =
+  typeof sourceTabValue === "object" && sourceTabValue && "rows" in sourceTabValue
+    ? sourceTabValue.rows || {}
+    : {};
+
+const targetItem = (sourceRows[oldBuilding] || []).find(
+  (item) => item.id === editSectionPopup.itemId
+);
+if (!targetItem) return;
+
+const nextContent = editSectionPopup.content.trim();
+
+const nextDateData = {
+  ...(dabsData[selectedDate] || {}),
+};
+
+const nextSourceRows = {
+  ...sourceRows,
+  [oldBuilding]: (sourceRows[oldBuilding] || []).filter(
+    (item) => item.id !== editSectionPopup.itemId
+  ),
+};
+
+nextDateData[sourceKey] = { rows: nextSourceRows };
+
+const targetTabValue = sourceKey === targetKey ? nextDateData[targetKey] : dabsData[selectedDate]?.[targetKey];
+const targetRows =
+  typeof targetTabValue === "object" && targetTabValue && "rows" in targetTabValue
+    ? targetTabValue.rows || {}
+    : {};
+
+const nextTargetRows = {
+  ...targetRows,
+  [newBuilding]: [
+    ...(targetRows[newBuilding] || []),
+    {
+      ...targetItem,
+      company: editSectionPopup.company.trim(),
+      content: nextContent,
+      contentRedRanges: normalizeTextColorRanges(
+        editSectionPopup.contentRedRanges,
+        nextContent.length
+      ),
+    },
+  ],
+};
+
+nextDateData[targetKey] = { rows: nextTargetRows };
+
+const nextData = {
+  ...dabsData,
+  [selectedDate]: nextDateData,
+};
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "수정",
+    page: "DAB's회의",
+    target: editSectionPopup.company.trim(),
+    detail: `${activeDabsTab.label} / ${oldBuilding} / ${targetItem.content || ""} → ${newBuilding} / ${nextContent}`,
+  });
+
+  setEditSectionPopup({
+    open: false,
+    itemId: "",
+    oldBuilding: "",
+    building: "",
+    company: "",
+    content: "",
+    contentRedRanges: [],
+  });
+
+  setEditSectionTextSelection({ start: 0, end: 0 });
+  setDabsMessage("수정되었습니다.");
+};
+  const handleDeleteDabsItem = async (itemId: string, building: string | null = null) => {
+  if (isSectionWorkTabKey(activeDabsKey)) {
+    const sourceKey =
+      getMergedSectionKeys(activeDabsKey).find((key) => {
+        const tabValue = dabsData[selectedDate]?.[key];
+        const rows =
+          typeof tabValue === "object" && tabValue && "rows" in tabValue
+            ? tabValue.rows || {}
+            : {};
+
+        return building ? (rows[building] || []).some((item) => item.id === itemId) : false;
+      }) || activeDabsKey;
+
+    const currentTabValue = dabsData[selectedDate]?.[sourceKey];
+    const currentRows =
+      typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+        ? currentTabValue.rows || {}
+        : {};
+
+    const nextRows = { ...currentRows };
+    const targetItem = building ? (nextRows[building] || []).find((item) => item.id === itemId) : undefined;
+
+    if (!canDeleteOwnItem(targetItem)) return;
+
+    if (building) {
+      nextRows[building] = (nextRows[building] || []).filter((item) => item.id !== itemId);
+    }
+
+    const nextData = {
+      ...dabsData,
+      [selectedDate]: {
+        ...(dabsData[selectedDate] || {}),
+        [sourceKey]: { rows: nextRows },
+      },
+    };
+
+    setDabsData(nextData);
+
+    await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+    await writeActivityLog({
+      action: "삭제",
+      page: "DAB's회의",
+      target: targetItem?.company || "",
+      detail: `${activeDabsTab.label} / ${building || ""} / ${targetItem?.content || ""}`,
+    });
+
+    return;
+  }
+
+  const currentTabValue = dabsData[selectedDate]?.[activeDabsKey];
+  const currentList =
+    typeof currentTabValue === "object" && currentTabValue && "list" in currentTabValue
+      ? currentTabValue.list || []
+      : [];
+
+  const targetItem = currentList.find((item) => item.id === itemId);
+
+  if (!canDeleteOwnItem(targetItem)) return;
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      [activeDabsKey]: {
+        list: currentList.filter((item) => item.id !== itemId),
+      },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "DAB's회의",
+    target: targetItem?.company || "",
+    detail: `${activeDabsTab.label} / ${targetItem?.time || ""}시 / ${targetItem?.gate || ""}게이트 / ${targetItem?.material || ""} / ${targetItem?.vehicle || ""} / ${targetItem?.location || ""} / 담당자: ${targetItem?.manager || ""} / 연락처: ${targetItem?.phone || ""}`,
+  });
+};
+
+const handleAddHighRiskTableItem = async () => {
+  if (!canEditDabs || !highRiskTableInput.building || !highRiskTableInput.content.trim()) return;
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? highRiskTableInput.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
+
+  const currentTabValue = dabsData[selectedDate]?.highRiskTable;
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const buildingRows = currentRows[highRiskTableInput.building] || [];
+
+  const nextBuildingRows = [
+    ...buildingRows,
+    {
+      id: createLocalId("highRiskTable"),
+      company: companyName,
+      content: highRiskTableInput.content.trim(),
+      safety: highRiskTableInput.safety.trim(),
+      createdByUid: currentUser?.uid,
+      createdByName: currentUser?.name,
+    },
+  ];
+
+  const nextRows = {
+    ...currentRows,
+    [highRiskTableInput.building]: nextBuildingRows,
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      highRiskTable: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "DAB's회의",
+    target: companyName,
+    detail: `고위험작업 표 / ${highRiskTableInput.building} / ${highRiskTableInput.content.trim()} / ${highRiskTableInput.safety.trim()}`,
+  });
+
+  setHighRiskTableInput({ building: "", company: "", content: "", safety: "" });
+  setDabsMessage("저장되었습니다.");
+};
+
+const handleUpdateHighRiskTableItem = async () => {
+  if (
+    !editHighRiskTablePopup.itemId ||
+    !editHighRiskTablePopup.building ||
+    !editHighRiskTablePopup.company.trim() ||
+    !editHighRiskTablePopup.content.trim()
+  ) {
+    return;
+  }
+
+  const oldBuilding = editHighRiskTablePopup.oldBuilding;
+  const newBuilding = editHighRiskTablePopup.building;
+
+  const currentTabValue = dabsData[selectedDate]?.highRiskTable;
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const targetItem = (currentRows[oldBuilding] || []).find(
+    (item) => item.id === editHighRiskTablePopup.itemId
+  );
+  if (!targetItem) return;
+  if (!canManageHighRiskTableItem(targetItem)) return;
+
+  const nextRowsAfterRemoval = {
+    ...currentRows,
+    [oldBuilding]: (currentRows[oldBuilding] || []).filter(
+      (item) => item.id !== editHighRiskTablePopup.itemId
+    ),
+  };
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const nextCompany = canManualCompany
+    ? editHighRiskTablePopup.company.trim()
+    : targetItem.company || "";
+
+  const updatedItem = {
+    ...targetItem,
+    company: nextCompany,
+    content: editHighRiskTablePopup.content.trim(),
+    safety: editHighRiskTablePopup.safety.trim(),
+  };
+
+  const nextRows = {
+    ...nextRowsAfterRemoval,
+    [newBuilding]: [...(nextRowsAfterRemoval[newBuilding] || []), updatedItem],
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      highRiskTable: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "수정",
+    page: "DAB's회의",
+    target: updatedItem.company || "",
+    detail: `고위험작업 표 / ${oldBuilding} / ${targetItem.content || ""} → ${newBuilding} / ${updatedItem.content}`,
+  });
+
+  setEditHighRiskTablePopup({
+    open: false,
+    itemId: "",
+    oldBuilding: "",
+    building: "",
+    company: "",
+    content: "",
+    safety: "",
+  });
+
+  setDabsMessage("수정되었습니다.");
+};
+
+const handleDeleteHighRiskTableItem = async (itemId: string, building: string) => {
+  const currentTabValue = dabsData[selectedDate]?.highRiskTable;
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const targetItem = (currentRows[building] || []).find((item) => item.id === itemId);
+  if (!canManageHighRiskTableItem(targetItem)) return;
+
+  const nextRows = {
+    ...currentRows,
+    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      highRiskTable: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "DAB's회의",
+    target: targetItem?.company || "",
+    detail: `고위험작업 표 / ${building} / ${targetItem?.content || ""}`,
+  });
+};
+
+const handleLoadPreviousCompanyData = async (targetKey: string) => {
+  if (!currentUser?.companyName) return;
+
+  if (!loadSourceDate || loadSourceDate === selectedDate) {
+    setDabsMessage("불러올 날짜를 확인하세요.");
+    return;
+  }
+
+  if (!db) {
+    setDabsMessage("Firebase 연결이 없습니다.");
+    return;
+  }
+
+  const companyName = currentUser.companyName;
+
+  if (targetKey === "soloWorker") {
+    const sourceSnap = await getDoc(doc(db, "soloWorkers", loadSourceDate));
+    const sourceRows = sourceSnap.exists()
+      ? ((sourceSnap.data() as { rows?: Record<string, DabsRowItem[]> }).rows || {})
+      : {};
+
+    const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
+    const nextRows = { ...currentRows };
+
+    Object.entries(sourceRows).forEach(([building, list]) => {
+      const myItems = (list || []).filter((item) => item.company === companyName);
+      if (myItems.length === 0) return;
+
+      nextRows[building] = [
+        ...(nextRows[building] || []),
+        ...myItems.map((item) => ({
+          ...item,
+          id: createLocalId("solo-worker"),
+          createdByUid: currentUser.uid,
+          createdByName: currentUser.name,
+        })),
+      ];
+    });
+
+    const nextData = {
+      ...dabsData,
+      [selectedDate]: {
+        ...(dabsData[selectedDate] || {}),
+        soloWorker: { rows: nextRows },
+      },
+    };
+
+    setDabsData(nextData);
+    await saveSoloWorkersToFirestore(selectedDate, nextRows);
+    setDabsMessage(`${formatMonthDay(loadSourceDate)} 단독작업자 데이터를 불러왔습니다.`);
+    return;
+  }
+
+  const sourceSnap = await getDoc(doc(db, "dabsMeetings", loadSourceDate));
+  const sourceData = sourceSnap.exists() ? (sourceSnap.data() as DabsDateValue) : {};
+  const sourceKeys = getMergedSectionKeys(targetKey);
+const nextDateData = {
+  ...(dabsData[selectedDate] || {}),
+};
+
+sourceKeys.forEach((sourceKey) => {
+  const sourceTabValue = sourceData[sourceKey];
+
+  const sourceRows =
+    typeof sourceTabValue === "object" && sourceTabValue && "rows" in sourceTabValue
+      ? sourceTabValue.rows || {}
+      : {};
+
+  const currentTabValue = dabsData[selectedDate]?.[sourceKey];
+  const currentRows =
+    typeof currentTabValue === "object" && currentTabValue && "rows" in currentTabValue
+      ? currentTabValue.rows || {}
+      : {};
+
+  const nextRows = { ...currentRows };
+
+  Object.entries(sourceRows).forEach(([building, list]) => {
+    const myItems = (list || []).filter((item) => item.company === companyName);
+    if (myItems.length === 0) return;
+
+    nextRows[building] = [
+      ...(nextRows[building] || []),
+      ...myItems.map((item) => ({
+        ...item,
+        id: createLocalId("section"),
+        createdByUid: currentUser.uid,
+        createdByName: currentUser.name,
+      })),
+    ];
+  });
+
+  nextDateData[sourceKey] = { rows: nextRows };
+});
+
+const nextData = {
+  ...dabsData,
+  [selectedDate]: nextDateData,
+};
+
+  setDabsData(nextData);
+  await saveDabsMeetingToFirestore(selectedDate, nextData[selectedDate]);
+  setDabsMessage(`${formatMonthDay(loadSourceDate)} 데이터를 불러왔습니다.`);
+};
+
+const handleAddSoloWorker = async () => {
+  if (!canEditDabs || !soloWorkerInput.building || !soloWorkerInput.name.trim() || !soloWorkerInput.content.trim()) return;
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? soloWorkerInput.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
+
+  const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
+
+  const nextRows = {
+    ...currentRows,
+    [soloWorkerInput.building]: [
+      ...(currentRows[soloWorkerInput.building] || []),
+      {
+        id: createLocalId("solo-worker"),
+        company: companyName,
+        name: soloWorkerInput.name.trim(),
+        content: soloWorkerInput.content.trim(),
+        elderly: soloWorkerInput.elderly,
+        createdByUid: currentUser?.uid,
+        createdByName: currentUser?.name,
+      },
+    ],
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      soloWorker: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveSoloWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "단독작업자",
+    target: companyName,
+    detail: `${soloWorkerInput.building} / ${soloWorkerInput.name.trim()} / ${soloWorkerInput.content.trim()} / 고령자 ${soloWorkerInput.elderly}`,
+  });
+
+  setSoloWorkerInput({ building: "", company: "", name: "", content: "", elderly: "x" });
+};
+
+  const handleUpdateSoloWorker = async () => {
+  if (!canAdminEditDabsItem) return;
+  if (!editSoloPopup.itemId || !editSoloPopup.building || !editSoloPopup.company.trim() || !editSoloPopup.name.trim() || !editSoloPopup.content.trim()) return;
+
+  const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
+  const nextRows = { ...currentRows };
+
+  const targetItem = (nextRows[editSoloPopup.oldBuilding] || []).find(
+    (item) => item.id === editSoloPopup.itemId
+  );
+
+  if (!targetItem) return;
+
+  nextRows[editSoloPopup.oldBuilding] = (nextRows[editSoloPopup.oldBuilding] || []).filter(
+    (item) => item.id !== editSoloPopup.itemId
+  );
+
+  nextRows[editSoloPopup.building] = [
+    ...(nextRows[editSoloPopup.building] || []),
+    {
+      ...targetItem,
+      company: editSoloPopup.company.trim(),
+      name: editSoloPopup.name.trim(),
+      content: editSoloPopup.content.trim(),
+      elderly: editSoloPopup.elderly,
+    },
+  ];
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      soloWorker: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveSoloWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "수정",
+    page: "단독작업자",
+    target: editSoloPopup.company.trim(),
+    detail: `${editSoloPopup.oldBuilding} / ${targetItem.name || ""} / ${targetItem.content || ""} → ${editSoloPopup.building} / ${editSoloPopup.name.trim()} / ${editSoloPopup.content.trim()}`,
+  });
+
+  setEditSoloPopup({
+    open: false,
+    itemId: "",
+    oldBuilding: "",
+    building: "",
+    company: "",
+    name: "",
+    content: "",
+    elderly: "x",
+  });
+};
+
+  const handleDeleteSoloWorker = async (itemId: string, building: string) => {
+  const currentRows = dabsData[selectedDate]?.soloWorker?.rows || {};
+  const targetItem = (currentRows[building] || []).find((item) => item.id === itemId);
+
+  if (!canDeleteOwnItem(targetItem)) return;
+
+  const nextRows = {
+    ...currentRows,
+    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      soloWorker: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveSoloWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "단독작업자",
+    target: targetItem?.company || "",
+    detail: `${building} / ${targetItem?.name || ""} / ${targetItem?.content || ""}`,
+  });
+};
+
+const handleAddHeatSensitive = async () => {
+  if (!canEditDabs || !heatSensitiveInput.building || !heatSensitiveInput.name.trim() || !heatSensitiveInput.content.trim()) return;
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? heatSensitiveInput.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
+
+  const heatSensitiveValue = dabsData[selectedDate]?.heatSensitive;
+
+  const currentRows =
+    typeof heatSensitiveValue === "object" &&
+    heatSensitiveValue &&
+    "rows" in heatSensitiveValue
+      ? heatSensitiveValue.rows || {}
+      : {};
+
+  const nextRows = {
+    ...currentRows,
+    [heatSensitiveInput.building]: [
+      ...(currentRows[heatSensitiveInput.building] || []),
+      {
+        id: createLocalId("heat-sensitive"),
+        company: companyName,
+        name: heatSensitiveInput.name.trim(),
+        content: heatSensitiveInput.content.trim(),
+        createdByUid: currentUser?.uid,
+        createdByName: currentUser?.name,
+      },
+    ],
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      heatSensitive: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "고령자",
+    target: companyName,
+    detail: `${heatSensitiveInput.building} / ${heatSensitiveInput.name.trim()} / ${heatSensitiveInput.content.trim()}`,
+  });
+
+  setHeatSensitiveInput({ building: "", company: "", name: "", content: "" });
+};
+
+const handleUpdateHeatSensitive = async () => {
+  if (!canAdminEditDabsItem) return;
+  if (!editHeatSensitivePopup.itemId || !editHeatSensitivePopup.building || !editHeatSensitivePopup.company.trim() || !editHeatSensitivePopup.name.trim() || !editHeatSensitivePopup.content.trim()) return;
+
+  const heatSensitiveValue = dabsData[selectedDate]?.heatSensitive;
+
+  const currentRows =
+    typeof heatSensitiveValue === "object" &&
+    heatSensitiveValue &&
+    "rows" in heatSensitiveValue
+      ? heatSensitiveValue.rows || {}
+      : {};
+
+  const nextRows = { ...currentRows };
+
+  const targetItem = (nextRows[editHeatSensitivePopup.oldBuilding] || []).find(
+    (item) => item.id === editHeatSensitivePopup.itemId
+  );
+
+  if (!targetItem) return;
+
+  nextRows[editHeatSensitivePopup.oldBuilding] = (nextRows[editHeatSensitivePopup.oldBuilding] || []).filter(
+    (item) => item.id !== editHeatSensitivePopup.itemId
+  );
+
+  nextRows[editHeatSensitivePopup.building] = [
+    ...(nextRows[editHeatSensitivePopup.building] || []),
+    {
+      ...targetItem,
+      company: editHeatSensitivePopup.company.trim(),
+      name: editHeatSensitivePopup.name.trim(),
+      content: editHeatSensitivePopup.content.trim(),
+      
+    },
+  ];
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      heatSensitive: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "수정",
+    page: "고령자",
+    target: editHeatSensitivePopup.company.trim(),
+    detail: `${editHeatSensitivePopup.oldBuilding} / ${targetItem.name || ""} / ${targetItem.content || ""} → ${editHeatSensitivePopup.building} / ${editHeatSensitivePopup.name.trim()} / ${editHeatSensitivePopup.content.trim()}`,
+  });
+
+  setEditHeatSensitivePopup({
+    open: false,
+    itemId: "",
+    oldBuilding: "",
+    building: "",
+    company: "",
+    name: "",
+    content: "",
+  });
+};
+
+const handleDeleteHeatSensitive = async (itemId: string, building: string) => {
+  const heatSensitiveValue = dabsData[selectedDate]?.heatSensitive;
+
+  const currentRows =
+    typeof heatSensitiveValue === "object" &&
+    heatSensitiveValue &&
+    "rows" in heatSensitiveValue
+      ? heatSensitiveValue.rows || {}
+      : {};
+
+  const targetItem = (currentRows[building] || []).find((item) => item.id === itemId);
+
+  if (!canDeleteOwnItem(targetItem)) return;
+
+  const nextRows = {
+    ...currentRows,
+    [building]: (currentRows[building] || []).filter((item) => item.id !== itemId),
+  };
+
+  const nextData = {
+    ...dabsData,
+    [selectedDate]: {
+      ...(dabsData[selectedDate] || {}),
+      heatSensitive: { rows: nextRows },
+    },
+  };
+
+  setDabsData(nextData);
+
+  await saveHeatSensitiveWorkersToFirestore(selectedDate, nextRows);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "고령자",
+    target: targetItem?.company || "",
+    detail: `${building} / ${targetItem?.name || ""} / ${targetItem?.content || ""}`,
+  });
+};
+
+const getOverlayBundle = (key = activeDabsKey) => dabsOverlays[selectedDate]?.[key] || { markers: [], arrows: [], people: [] };
+
+const getCompanyListFromWorkTabs = () => {
+  const workTabs = [
+    { key: "archWork", label: "건축토목 작업" },
+    { key: "mepWork", label: "기전부 작업" },
+  ];
+
+  return workTabs.map((tab) => {
+    const rows = getMergedSectionRows(tab.key);
+
+    const companies = Array.from(
+      new Set(
+        Object.values(rows)
+          .flat()
+          .map((item) => String(item.company || "").trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b, "ko"));
+
+    return {
+      ...tab,
+      companies,
+    };
+  });
+};
+
+const handleUpdateOverlayInfo = async () => {
+  if (!canAdminEditDabsItem) return;
+
+  if (!editOverlayPopup.itemId || !editOverlayPopup.company.trim() || !editOverlayPopup.note.trim()) {
+    return;
+  }
+
+  if (editOverlayPopup.targetKey === "highRisk" && !editOverlayPopup.building) {
+    return;
+  }
+
+  const isLineBasedTarget =
+    editOverlayPopup.targetKey === "equipmentFlow" ||
+    editOverlayPopup.targetKey.startsWith("buildingDetail::");
+
+  if (editOverlayPopup.targetKey.startsWith("buildingDetail::") && (!editOverlayPopup.time || !editOverlayPopup.endTime)) {
+    return;
+  }
+
+  const currentValue = getOverlayBundle(editOverlayPopup.targetKey);
+  const targetMarker = (currentValue.markers || []).find((marker) => marker.id === editOverlayPopup.itemId);
+
+  const nextMarkers = isLineBasedTarget
+    ? (currentValue.markers || []).filter(
+        (marker) => marker.id !== editOverlayPopup.itemId
+      )
+    : (currentValue.markers || []).map((marker) =>
+        marker.id === editOverlayPopup.itemId
+          ? {
+              ...marker,
+              company: editOverlayPopup.company.trim(),
+                note: editOverlayPopup.note.trim(),
+                building: editOverlayPopup.building,
+                equipmentType: "",
+              }
+            : marker
+        );
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      [editOverlayPopup.targetKey]: {
+        ...currentValue,
+        markers: nextMarkers,
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "수정",
+    page: "DAB's회의",
+    target: editOverlayPopup.company.trim(),
+    detail:
+      editOverlayPopup.targetKey === "equipmentFlow"
+        ? `장비동선 / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} → ${editOverlayPopup.company.trim()} / ${editOverlayPopup.note.trim()} / ${getEquipmentLabel(editOverlayPopup.equipmentType)}`
+        : editOverlayPopup.targetKey.startsWith("buildingDetail::")
+        ? `동별 상세도 / ${editOverlayPopup.targetKey.split("::")[1] || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} → ${editOverlayPopup.company.trim()} / ${editOverlayPopup.note.trim()} / ${editOverlayPopup.time}시~${editOverlayPopup.endTime}시`
+        : `고위험작업 / ${targetMarker?.building || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} → ${editOverlayPopup.building} / ${editOverlayPopup.company.trim()} / ${editOverlayPopup.note.trim()}`,
+  });
+
+  if (isLineBasedTarget) {
+    setMoveOverlayTarget({
+      itemId: editOverlayPopup.itemId,
+      targetKey: editOverlayPopup.targetKey,
+      mode: "arrow",
+    });
+
+    setPendingEquipmentMarker({
+      arrowId: editOverlayPopup.itemId,
+      company: editOverlayPopup.company.trim(),
+      note: editOverlayPopup.note.trim(),
+      equipmentType: editOverlayPopup.equipmentType,
+      time: editOverlayPopup.time,
+      endTime: editOverlayPopup.endTime,
+      logAction: "수정",
+      createdByUid: currentUser?.uid,
+      createdByName: currentUser?.name,
+    });
+  } else {
+    setMoveOverlayTarget({
+      itemId: editOverlayPopup.itemId,
+      targetKey: editOverlayPopup.targetKey,
+      mode: "marker",
+    });
+  }
+
+  setEditOverlayPopup({
+    open: false,
+    itemId: "",
+    targetKey: "highRisk",
+    company: "",
+    note: "",
+    building: "",
+    equipmentType: "concrete_pump_truck",
+    time: "",
+    endTime: "",
+  });
+
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
+
+  setDabsMessage(
+    isLineBasedTarget
+      ? "수정되었습니다. 새 경로를 클릭으로 다시 그린 뒤 완료를 눌러주세요."
+      : "수정되었습니다. 새 위치를 선택하세요."
+  );
+};
+
+const handleDeleteOverlayItem = async (itemId: string, targetKey = activeDabsKey) => {
+  const currentValue = getOverlayBundle(targetKey);
+
+  const targetMarker = (currentValue.markers || []).find((item) => item.id === itemId);
+  const targetArrow = (currentValue.arrows || []).find((item) => item.id === itemId);
+  const targetItem = targetMarker || targetArrow;
+
+  if (!canDeleteOwnItem(targetItem)) return;
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      [targetKey]: {
+        ...currentValue,
+        markers: (currentValue.markers || []).filter((item) => item.id !== itemId),
+        arrows: (currentValue.arrows || []).filter((item) => item.id !== itemId),
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "DAB's회의",
+    target: targetMarker?.company || "",
+    detail:
+      targetKey === "equipmentFlow"
+        ? `장비동선 / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} / ${targetMarker?.equipmentType ? getEquipmentLabel(targetMarker.equipmentType) : ""}`
+        : targetKey.startsWith("buildingDetail::")
+        ? `동별 상세도 / ${targetKey.split("::")[1] || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""} / ${targetMarker?.time ? `${targetMarker.time}시~${targetMarker.endTime || ""}시` : ""}`
+        : `고위험작업 / ${targetMarker?.building || ""} / ${targetMarker?.company || ""} / ${targetMarker?.note || ""}`,
+  });
+};
+
+  const handleHighRiskImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  if (!canUploadDabsImage) {
+    setDabsMessage("사진 업로드는 마스터, 관리자만 가능합니다.");
+    return;
+  }
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!db || !storage) {
+    setDabsMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const imageDocRef = doc(db, "dabsImages", "shared");
+    const oldImageSnap = await getDoc(imageDocRef);
+    const oldStoragePath = oldImageSnap.exists()
+      ? String(oldImageSnap.data().storagePath || "")
+      : "";
+
+    if (oldStoragePath) {
+      try {
+        await deleteObject(storageRef(storage, oldStoragePath));
+      } catch (error) {
+        console.log("OLD IMAGE DELETE SKIPPED:", error);
+      }
+    }
+
+    const newStoragePath = `dabsImages/shared-${Date.now()}-${file.name}`;
+    const imageRef = storageRef(storage, newStoragePath);
+
+    await uploadBytes(imageRef, file);
+
+    const imageUrl = await getDownloadURL(imageRef);
+
+    const nextImages = {
+      highRisk: imageUrl,
+      equipmentFlow: imageUrl,
+    };
+
+    setDabsImages(nextImages);
+
+    await setDoc(
+      doc(db, "dabsImages", "shared"),
+      {
+        ...nextImages,
+        storagePath: newStoragePath,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser?.uid,
+        updatedByName: currentUser?.name,
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action: "수정",
+      page: "DAB's회의",
+      target: "공통 사진",
+      detail: `고위험작업/장비동선 사진 변경 / ${file.name}`,
+    });
+
+    setDabsMessage("사진이 저장되었습니다.");
+  } catch (error) {
+    console.log("IMAGE UPLOAD ERROR:", error);
+    setDabsMessage("사진 저장 중 오류가 발생했습니다.");
+  }
+
+  event.target.value = "";
+};
+
+  const handleBuildingDetailImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  if (!canUploadDabsImage) {
+    setDabsMessage("사진 업로드는 마스터, 관리자만 가능합니다.");
+    return;
+  }
+
+  if (!selectedBuildingDetail) return;
+
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!db || !storage) {
+    setDabsMessage("Firebase 연결 오류");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const newStoragePath = `dabsImages/buildingDetail-${selectedBuildingDetail}-${Date.now()}-${file.name}`;
+    const imageRef = storageRef(storage, newStoragePath);
+
+    await uploadBytes(imageRef, file);
+
+    const imageUrl = await getDownloadURL(imageRef);
+
+    const nextImages = { ...buildingDetailImages, [selectedBuildingDetail]: imageUrl };
+
+    setBuildingDetailImages(nextImages);
+
+    await setDoc(
+      doc(db, "dabsImages", "buildingDetail"),
+      {
+        [selectedBuildingDetail]: imageUrl,
+        updatedAt: serverTimestamp(),
+        updatedByUid: currentUser?.uid,
+        updatedByName: currentUser?.name,
+      },
+      { merge: true }
+    );
+
+    await writeActivityLog({
+      action: "수정",
+      page: "DAB's회의",
+      target: selectedBuildingDetail,
+      detail: `동별 상세도 / ${selectedBuildingDetail} 사진 변경 / ${file.name}`,
+    });
+
+    setDabsMessage("사진이 저장되었습니다.");
+  } catch (error) {
+    console.log("BUILDING IMAGE UPLOAD ERROR:", error);
+    setDabsMessage("사진 저장 중 오류가 발생했습니다.");
+  }
+
+  event.target.value = "";
+};
+
+  const openMarkerPopup = async (event: React.MouseEvent<HTMLDivElement>) => {
+  if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
+
+  const point = getRelativePoint(event.clientX, event.clientY);
+  if (!point) return;
+
+  if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
+    const currentValue = getOverlayBundle("highRisk");
+    const targetMarker = (currentValue.markers || []).find(
+      (marker) => marker.id === moveOverlayTarget.itemId
+    );
+
+    const nextMarkers = (currentValue.markers || []).map((marker) =>
+      marker.id === moveOverlayTarget.itemId
+        ? {
+            ...marker,
+            x: point.x,
+            y: point.y,
+          }
+        : marker
+    );
+
+    const nextData = {
+      ...dabsOverlays,
+      [selectedDate]: {
+        ...(dabsOverlays[selectedDate] || {}),
+        highRisk: {
+          ...currentValue,
+          markers: nextMarkers,
+        },
+      },
+    };
+
+    setDabsOverlays(nextData);
+
+    await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    await writeActivityLog({
+      action: "수정",
+      page: "DAB's회의",
+      target: targetMarker?.company || "",
+      detail: `고위험작업 위치 수정 / ${targetMarker?.building || ""} / ${targetMarker?.note || ""}`,
+    });
+
+    setMoveOverlayTarget(null);
+    setDabsMessage("위치가 수정되었습니다.");
+    return;
+  }
+
+  setImagePopup({
+    open: true,
+    x: point.x,
+    y: point.y,
+    company: "",
+    note: "",
+    equipmentType: "concrete_pump_truck",
+    building: "",
+    targetKey: "highRisk",
+    time: "06",
+    endTime: "07",
+  });
+};
+
+  const openMarkerPopupByTouch = async (touch: { clientX: number; clientY: number }) => {
+  if (activeDabsKey !== "highRisk" || !dabsImages?.highRisk) return;
+
+  const point = getRelativePoint(touch.clientX, touch.clientY);
+  if (!point) return;
+
+  lastTouchTimeRef.current = Date.now();
+  vibrateBriefly();
+
+  if (moveOverlayTarget?.targetKey === "highRisk" && moveOverlayTarget.mode === "marker") {
+    const currentValue = getOverlayBundle("highRisk");
+    const targetMarker = (currentValue.markers || []).find(
+      (marker) => marker.id === moveOverlayTarget.itemId
+    );
+
+    const nextMarkers = (currentValue.markers || []).map((marker) =>
+      marker.id === moveOverlayTarget.itemId
+        ? {
+            ...marker,
+            x: point.x,
+            y: point.y,
+          }
+        : marker
+    );
+
+    const nextData = {
+      ...dabsOverlays,
+      [selectedDate]: {
+        ...(dabsOverlays[selectedDate] || {}),
+        highRisk: {
+          ...currentValue,
+          markers: nextMarkers,
+        },
+      },
+    };
+
+    setDabsOverlays(nextData);
+
+    await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    await writeActivityLog({
+      action: "수정",
+      page: "DAB's회의",
+      target: targetMarker?.company || "",
+      detail: `고위험작업 위치 수정 / ${targetMarker?.building || ""} / ${targetMarker?.note || ""}`,
+    });
+
+    setMoveOverlayTarget(null);
+    setDabsMessage("위치가 수정되었습니다.");
+    return;
+  }
+
+  setImagePopup({
+    open: true,
+    x: point.x,
+    y: point.y,
+    company: "",
+    note: "",
+    equipmentType: "concrete_pump_truck",
+    building: "",
+    targetKey: "highRisk",
+    time: "06",
+    endTime: "07",
+  });
+};
+
+  const cancelMarkerPopup = async () => {
+  const targetKey = imagePopup.targetKey;
+  const isLineBasedTarget = targetKey === "equipmentFlow" || targetKey.startsWith("buildingDetail::");
+
+  if (isLineBasedTarget) {
+    // 라인(화살표)을 그리고 완료한 뒤 말풍선 입력을 취소하면, 방금 그린 라인도 함께
+    // 되돌려야 말풍선 없이 라인만 남아 삭제가 불가능해지는 현상을 막을 수 있습니다.
+    const currentValue = getOverlayBundle(targetKey);
+    const nextArrows = [...(currentValue.arrows || [])];
+
+    if (nextArrows.length > 0) nextArrows.pop();
+
+    const nextData = {
+      ...dabsOverlays,
+      [selectedDate]: {
+        ...(dabsOverlays[selectedDate] || {}),
+        [targetKey]: {
+          ...currentValue,
+          arrows: nextArrows,
+        },
+      },
+    };
+
+    setDabsOverlays(nextData);
+    await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+  }
+
+  setMoveOverlayTarget(null);
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
+  setPendingEquipmentMarker(null);
+  setImagePopup({
+    open: false,
+    x: 0,
+    y: 0,
+    company: "",
+    note: "",
+    equipmentType: "concrete_pump_truck",
+    building: "",
+    targetKey: "highRisk",
+    time: "06",
+    endTime: "07",
+  });
+};
+
+  const submitMarkerPopup = async () => {
+  if (!canEditDabs || !imagePopup.note.trim()) return;
+  if (imagePopup.targetKey === "highRisk" && !imagePopup.building) return;
+
+  const canManualCompany = currentUser?.role === "master" || currentUser?.role === "admin";
+  const companyName = canManualCompany
+    ? imagePopup.company.trim()
+    : currentUser?.companyName || "";
+
+  if (!companyName) {
+    setDabsMessage("업체명을 입력하세요.");
+    return;
+  }
+
+  const targetKey = imagePopup.targetKey || activeDabsKey;
+  const currentValue = getOverlayBundle(targetKey);
+  const isLineBasedTarget = targetKey === "equipmentFlow" || targetKey.startsWith("buildingDetail::");
+
+  if (isLineBasedTarget) {
+    const lastArrow = currentValue.arrows?.[currentValue.arrows.length - 1];
+    if (!lastArrow) return;
+
+    setPendingEquipmentMarker({
+      arrowId: lastArrow.id,
+      company: companyName,
+      note: imagePopup.note.trim(),
+      equipmentType: imagePopup.equipmentType,
+      time: imagePopup.time,
+      endTime: imagePopup.endTime,
+      logAction: "입력",
+      createdByUid: currentUser?.uid,
+      createdByName: currentUser?.name,
+    });
+
+    setImagePopup({
+      open: false,
+      x: 0,
+      y: 0,
+      company: "",
+      note: "",
+      equipmentType: "concrete_pump_truck",
+      building: "",
+      targetKey: "highRisk",
+      time: "06",
+      endTime: "07",
+    });
+
+    setDabsMessage("상자를 표시할 위치를 한 번 더 클릭하세요.");
+    return;
+  }
+
+  const marker = {
+    id: createLocalId("marker"),
+    x: imagePopup.x,
+    y: imagePopup.y,
+    building: imagePopup.building,
+    company: companyName,
+    note: imagePopup.note.trim(),
+    equipmentType: "",
+    createdByUid: currentUser?.uid,
+    createdByName: currentUser?.name,
+  };
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      [targetKey]: {
+        ...currentValue,
+        markers: [...(currentValue.markers || []), marker],
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "DAB's회의",
+    target: companyName,
+    detail: `고위험작업 / ${imagePopup.building} / ${imagePopup.note.trim()}`,
+  });
+
+  setImagePopup({
+    open: false,
+    x: 0,
+    y: 0,
+    company: "",
+    note: "",
+    equipmentType: "concrete_pump_truck",
+    building: "",
+    targetKey: "highRisk",
+    time: "06",
+    endTime: "07",
+  });
+};
+
+ const handleAddEquipmentArrowPoint = (point: { x: number; y: number }) => {
+  setArrowPoints((prev) => [...prev, point]);
+  setArrowPreviewPoint(point);
+};
+
+const handleUndoLastEquipmentArrowPoint = () => {
+  setArrowPoints((prev) => prev.slice(0, -1));
+};
+
+const handleCancelEquipmentArrowDraw = () => {
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
+};
+
+const completeEquipmentArrow = async () => {
+  if (arrowPoints.length < 2) return;
+  if (activeDabsKey !== "equipmentFlow" && !(activeDabsKey === "buildingDetail" && selectedBuildingDetail)) return;
+
+  const targetKey =
+    activeDabsKey === "buildingDetail" && selectedBuildingDetail
+      ? `buildingDetail::${selectedBuildingDetail}`
+      : "equipmentFlow";
+
+  const points = arrowPoints;
+  const start = points[0];
+  const end = points[points.length - 1];
+
+  const currentValue = getOverlayBundle(targetKey);
+
+// 화살표(라인)는 겹쳐도 입력 가능.
+// 상자 중복 검사는 상자 위치를 클릭하는 단계에서만 처리합니다.
+
+if (moveOverlayTarget?.targetKey === targetKey && moveOverlayTarget.mode === "arrow") {
+  const nextArrows = (currentValue.arrows || []).map((arrow) =>
+    arrow.id === moveOverlayTarget.itemId
+      ? {
+          ...arrow,
+          startX: start.x,
+          startY: start.y,
+          endX: end.x,
+          endY: end.y,
+          points,
+        }
+      : arrow
+  );
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      [targetKey]: {
+        ...currentValue,
+        arrows: nextArrows,
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  setMoveOverlayTarget(null);
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
+  setDabsMessage("경로가 수정되었습니다. 상자를 표시할 위치를 한 번 더 클릭하세요.");
+  return;
+}
+
+  const arrow = {
+    id: createLocalId("arrow"),
+    startX: start.x,
+    startY: start.y,
+    endX: end.x,
+    endY: end.y,
+    points,
+    createdByUid: currentUser?.uid,
+    createdByName: currentUser?.name,
+  };
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      [targetKey]: {
+        ...currentValue,
+        arrows: [...(currentValue.arrows || []), arrow],
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  setArrowPoints([]);
+  setArrowPreviewPoint(null);
+  setImagePopup({
+    open: true,
+    x: (arrow.startX + arrow.endX) / 2,
+    y: (arrow.startY + arrow.endY) / 2,
+    company: "",
+    note: "",
+    equipmentType: "concrete_pump_truck",
+    building: "",
+    targetKey,
+    time: "06",
+    endTime: "07",
+  });
+  vibrateBriefly();
+};
+
+const handlePlacePersonMarker = async (point: { x: number; y: number }) => {
+  if (!personPlacementMode || !canEditDabs) return;
+
+  const placedType = personPlacementMode;
+  const currentValue = getOverlayBundle("equipmentFlow");
+
+  const marker: OverlayPersonItem = {
+    id: createLocalId("person"),
+    x: point.x,
+    y: point.y,
+    personType: placedType,
+    createdByUid: currentUser?.uid,
+    createdByName: currentUser?.name,
+  };
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      equipmentFlow: {
+        ...currentValue,
+        people: [...(currentValue.people || []), marker],
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "입력",
+    page: "DAB's회의",
+    target: currentUser?.companyName || "",
+    detail: `장비동선 / ${placedType === "guide" ? "유도자" : "신호수"} 배치`,
+  });
+
+  setPersonPlacementMode(null);
+  setDabsMessage(`${placedType === "guide" ? "유도자" : "신호수"}가 배치되었습니다.`);
+};
+
+const handleDeletePersonMarker = async (itemId: string) => {
+  const currentValue = getOverlayBundle("equipmentFlow");
+  const targetItem = (currentValue.people || []).find((item) => item.id === itemId);
+  if (!canDeleteOwnItem(targetItem)) return;
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      equipmentFlow: {
+        ...currentValue,
+        people: (currentValue.people || []).filter((item) => item.id !== itemId),
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+    action: "삭제",
+    page: "DAB's회의",
+    target: targetItem?.createdByName || "",
+    detail: `장비동선 / ${targetItem?.personType === "guide" ? "유도자" : "신호수"} 삭제`,
+  });
+};
+
+  const handleEquipmentClick = async (event: React.MouseEvent<HTMLDivElement>) => {
+  if (Date.now() - lastTouchTimeRef.current < 500) return;
+
+  const targetKey =
+    activeDabsKey === "equipmentFlow"
+      ? "equipmentFlow"
+      : activeDabsKey === "buildingDetail" && selectedBuildingDetail
+      ? `buildingDetail::${selectedBuildingDetail}`
+      : "";
+  const targetImage =
+    activeDabsKey === "equipmentFlow"
+      ? dabsImages?.equipmentFlow
+      : activeDabsKey === "buildingDetail" && selectedBuildingDetail
+      ? buildingDetailImages?.[selectedBuildingDetail]
+      : undefined;
+
+  if (!targetKey || !targetImage || !canEditDabs) return;
+
+  const point = getRelativePoint(event.clientX, event.clientY);
+  if (!point) return;
+
+  if (personPlacementMode) {
+    await handlePlacePersonMarker(point);
+    return;
+  }
+
+  if (
+    pendingEquipmentMarker &&
+    !(moveOverlayTarget?.targetKey === targetKey && moveOverlayTarget.mode === "arrow")
+  ) {
+    const currentValue = getOverlayBundle(targetKey);
+
+    const marker = {
+      id: pendingEquipmentMarker.arrowId,
+      x: point.x,
+      y: point.y,
+      building: "",
+      company: pendingEquipmentMarker.company,
+      note: pendingEquipmentMarker.note,
+      equipmentType: targetKey === "equipmentFlow" ? pendingEquipmentMarker.equipmentType : "",
+      time: pendingEquipmentMarker.time,
+      endTime: pendingEquipmentMarker.endTime,
+      createdByUid: pendingEquipmentMarker.createdByUid,
+      createdByName: pendingEquipmentMarker.createdByName,
+    };
+
+    const nextArrows = (currentValue.arrows || []).map((arrow) =>
+      arrow.id === pendingEquipmentMarker.arrowId
+        ? { ...arrow, company: pendingEquipmentMarker.company, note: pendingEquipmentMarker.note, time: pendingEquipmentMarker.time, endTime: pendingEquipmentMarker.endTime }
+        : arrow
+    );
+
+    const nextData = {
+      ...dabsOverlays,
+      [selectedDate]: {
+        ...(dabsOverlays[selectedDate] || {}),
+        [targetKey]: {
+          ...currentValue,
+          markers: [...(currentValue.markers || []), marker],
+          arrows: nextArrows,
+        },
+      },
+    };
+
+    setDabsOverlays(nextData);
+
+    await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+    await writeActivityLog({
+      action: pendingEquipmentMarker.logAction || "입력",
+      page: "DAB's회의",
+      target: pendingEquipmentMarker.company,
+      detail:
+        targetKey === "equipmentFlow"
+          ? `장비동선 / ${getEquipmentLabel(pendingEquipmentMarker.equipmentType)} / ${pendingEquipmentMarker.note}`
+          : `동별 상세도 / ${selectedBuildingDetail} / ${pendingEquipmentMarker.company} / ${pendingEquipmentMarker.note} / ${pendingEquipmentMarker.time}시~${pendingEquipmentMarker.endTime}시`,
+    });
+
+    setPendingEquipmentMarker(null);
+    setDabsMessage(targetKey === "equipmentFlow" ? "장비동선이 저장되었습니다." : "저장되었습니다.");
+    return;
+  }
+
+  handleAddEquipmentArrowPoint(point);
+};
+
+  const handleEquipmentMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (
+      !(activeDabsKey === "equipmentFlow" || (activeDabsKey === "buildingDetail" && selectedBuildingDetail)) ||
+      arrowPoints.length === 0
+    ) return;
+    const point = getRelativePoint(event.clientX, event.clientY);
+    if (!point) return;
+    setArrowPreviewPoint(point);
+  };
+
+  const handleOverlayMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (overlayZoom <= 1) {
+      panMouseStateRef.current = null;
+      return;
+    }
+    panMouseStateRef.current = { x: event.clientX, y: event.clientY, panX: overlayPan.x, panY: overlayPan.y, moved: false };
+  };
+
+  const handleOverlayMouseMoveCombined = (event: React.MouseEvent<HTMLDivElement>) => {
+    const panState = panMouseStateRef.current;
+    if (panState) {
+      const dx = event.clientX - panState.x;
+      const dy = event.clientY - panState.y;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) panState.moved = true;
+      if (panState.moved) {
+        const rect = imageAreaRef.current?.getBoundingClientRect();
+        setOverlayPan(clampOverlayPan(overlayZoom, { x: panState.panX + dx, y: panState.panY + dy }, rect));
+        suppressNextClickRef.current = true;
+        return;
+      }
+    }
+    if (activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") handleEquipmentMouseMove(event);
+  };
+
+  const handleOverlayMouseUp = () => {
+    panMouseStateRef.current = null;
+  };
+
+  // 인라인 사진에서는 Ctrl/Cmd+휠(트랙패드 핀치) 줌도 받지 않음 — 확대는 "확대" 버튼의 전체화면 보기에서만 지원.
+
+  const touchDistance = (t0: { clientX: number; clientY: number }, t1: { clientX: number; clientY: number }) =>
+    Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+
+  const handleOverlayTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    // 모바일에서 사진을 탭해 말풍선을 입력하는 동작과 핀치 줌 제스처가 서로 충돌하는 것을 막기 위해
+    // 인라인 사진에서는 핀치 줌을 받지 않음(확대는 별도 "확대" 버튼의 전체화면 보기에서만 지원).
+    if (event.touches.length >= 2) {
+      return;
+    }
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    pinchDistRef.current = null;
+    panTouchStateRef.current =
+      overlayZoom > 1 ? { x: touch.clientX, y: touch.clientY, panX: overlayPan.x, panY: overlayPan.y } : null;
+    if (activeDabsKey === "highRisk") {
+      touchGestureRef.current = { moved: false, startX: touch.clientX, startY: touch.clientY };
+      return;
+    }
+    const targetImage =
+      activeDabsKey === "equipmentFlow"
+        ? dabsImages?.equipmentFlow
+        : activeDabsKey === "buildingDetail" && selectedBuildingDetail
+        ? buildingDetailImages?.[selectedBuildingDetail]
+        : undefined;
+    if (!(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") || !targetImage || !canEditDabs) return;
+    lastTouchTimeRef.current = Date.now();
+    touchGestureRef.current = { moved: false, startX: touch.clientX, startY: touch.clientY };
+  };
+
+  const handleOverlayTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    // 핀치 줌은 전체화면 보기 전용. 인라인 사진에서는 무시해 탭-말풍선 입력과의 충돌을 막음.
+    if (event.touches.length >= 2) {
+      return;
+    }
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    const gesture = touchGestureRef.current;
+    if (Math.abs(touch.clientX - gesture.startX) > 6 || Math.abs(touch.clientY - gesture.startY) > 6) touchGestureRef.current.moved = true;
+    if (panTouchStateRef.current && overlayZoom > 1) {
+      const rect = imageAreaRef.current?.getBoundingClientRect();
+      const dx = touch.clientX - panTouchStateRef.current.x;
+      const dy = touch.clientY - panTouchStateRef.current.y;
+      setOverlayPan(
+        clampOverlayPan(overlayZoom, { x: panTouchStateRef.current.panX + dx, y: panTouchStateRef.current.panY + dy }, rect)
+      );
+      return;
+    }
+    if (!(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") || arrowPoints.length === 0) return;
+    const point = getRelativePoint(touch.clientX, touch.clientY);
+    if (!point) return;
+    setArrowPreviewPoint(point);
+  };
+
+  const handleOverlayTouchEnd = async (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length === 0) {
+      pinchDistRef.current = null;
+      panTouchStateRef.current = null;
+    }
+    const touch = event.changedTouches?.[0];
+    if (!touch) return;
+    const point = getRelativePoint(touch.clientX, touch.clientY);
+    if (!point) return;
+    lastTouchTimeRef.current = Date.now();
+    if (activeDabsKey === "highRisk") {
+      if (!touchGestureRef.current.moved) openMarkerPopupByTouch(touch);
+      return;
+    }
+
+    const targetKey =
+      activeDabsKey === "equipmentFlow"
+        ? "equipmentFlow"
+        : activeDabsKey === "buildingDetail" && selectedBuildingDetail
+        ? `buildingDetail::${selectedBuildingDetail}`
+        : "";
+    const targetImage =
+      activeDabsKey === "equipmentFlow"
+        ? dabsImages?.equipmentFlow
+        : activeDabsKey === "buildingDetail" && selectedBuildingDetail
+        ? buildingDetailImages?.[selectedBuildingDetail]
+        : undefined;
+
+    if (!targetKey || !targetImage || !canEditDabs) return;
+
+if (personPlacementMode) {
+  if (!touchGestureRef.current.moved) await handlePlacePersonMarker(point);
+  return;
+}
+
+if (
+  pendingEquipmentMarker &&
+  !(moveOverlayTarget?.targetKey === targetKey && moveOverlayTarget.mode === "arrow")
+) {
+  const currentValue = getOverlayBundle(targetKey);
+
+  const marker = {
+    id: pendingEquipmentMarker.arrowId,
+    x: point.x,
+    y: point.y,
+    building: "",
+    company: pendingEquipmentMarker.company,
+    note: pendingEquipmentMarker.note,
+    equipmentType: targetKey === "equipmentFlow" ? pendingEquipmentMarker.equipmentType : "",
+    time: pendingEquipmentMarker.time,
+    endTime: pendingEquipmentMarker.endTime,
+    createdByUid: pendingEquipmentMarker.createdByUid,
+    createdByName: pendingEquipmentMarker.createdByName,
+  };
+
+  const nextArrows = (currentValue.arrows || []).map((arrow) =>
+    arrow.id === pendingEquipmentMarker.arrowId
+      ? { ...arrow, company: pendingEquipmentMarker.company, note: pendingEquipmentMarker.note, time: pendingEquipmentMarker.time, endTime: pendingEquipmentMarker.endTime }
+      : arrow
+  );
+
+  const nextData = {
+    ...dabsOverlays,
+    [selectedDate]: {
+      ...(dabsOverlays[selectedDate] || {}),
+      [targetKey]: {
+        ...currentValue,
+        markers: [...(currentValue.markers || []), marker],
+        arrows: nextArrows,
+      },
+    },
+  };
+
+  setDabsOverlays(nextData);
+  await saveDabsOverlaysToFirestore(selectedDate, nextData[selectedDate]);
+
+  await writeActivityLog({
+  action: pendingEquipmentMarker.logAction || "입력",
+  page: "DAB's회의",
+  target: pendingEquipmentMarker.company,
+  detail:
+    targetKey === "equipmentFlow"
+      ? `장비동선 / ${getEquipmentLabel(pendingEquipmentMarker.equipmentType)} / ${pendingEquipmentMarker.note}`
+      : `동별 상세도 / ${selectedBuildingDetail} / ${pendingEquipmentMarker.company} / ${pendingEquipmentMarker.note} / ${pendingEquipmentMarker.time}시~${pendingEquipmentMarker.endTime}시`,
+});
+
+setPendingEquipmentMarker(null);
+setDabsMessage(targetKey === "equipmentFlow" ? "장비동선이 저장되었습니다." : "저장되었습니다.");
+return;
+}
+
+if (touchGestureRef.current.moved) return;
+
+handleAddEquipmentArrowPoint(point);
+  };
+
+  const renderTopBar = () => {
+    if (!currentUser) return null;
+    return (
+      <motion.div
+  initial={{ opacity: 0, y: 12 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ duration: 0.35 }}
+  className="grid grid-cols-[1fr_auto] items-start gap-2 md:flex md:items-center md:justify-between"
+>
+  <div className="min-w-0">
+    <div className="flex items-center gap-1.5 text-slate-600">
+      <CalendarDays className="h-4 w-4 shrink-0 md:h-5 md:w-5" />
+      <span className="truncate text-xs md:text-sm">현장 안전정보 통합 시스템</span>
+    </div>
+
+    <h1 className="mt-1 truncate text-lg font-bold tracking-tight text-slate-900 md:text-xl lg:text-2xl">
+      HS 어울림 청주사직
+    </h1>
+
+    <p className="mt-1 hidden text-sm text-slate-500 sm:block">
+      로그인 후 원하는 메뉴를 선택해 이동하세요.
+    </p>
+  </div>
+
+  <Card className="w-[190px] shrink-0 rounded-xl border-0 shadow-sm md:w-auto md:rounded-2xl">
+  <CardContent className="flex items-center justify-between gap-2 p-2 md:gap-3 md:p-3">
+    <div className="min-w-0 text-right">
+      <div className="truncate text-xs font-semibold text-slate-900 md:text-sm">
+        {currentUser.name}
+      </div>
+      <div className="truncate text-[10px] text-slate-500 md:text-xs">
+        {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}
+      </div>
+    </div>
+
+    <Button
+      variant="outline"
+      onClick={handleLogout}
+      className="h-8 shrink-0 whitespace-nowrap rounded-lg px-2 text-[11px] leading-none md:h-10 md:rounded-2xl md:px-4 md:text-sm"
+    >
+      <LogOut className="mr-1 h-3 w-3 md:mr-2 md:h-4 md:w-4" />
+      로그아웃
+    </Button>
+  </CardContent>
+</Card>
+</motion.div>
+    );
+  };
+
+  const renderOverlayImage = (
+  selectedImage: string | undefined,
+  isImageTab: boolean,
+  targetKey = activeDabsKey,
+  fillHeight = false,
+  compactMarkers = false,
+  isFullscreenViewer = false
+) => {
+  const overlayBundle = getOverlayBundle(targetKey);
+    const markers = overlayBundle.markers || [];
+const arrows = overlayBundle.arrows || [];
+const people = overlayBundle.people || [];
+const overlayCompanyList = getUniqueCompaniesFromMarkers(markers);
+const activeZoom = isFullscreenViewer ? fsZoom : overlayZoom;
+const activePan = isFullscreenViewer ? fsPan : overlayPan;
+const activeApplyZoom = isFullscreenViewer ? applyFsZoom : applyOverlayZoom;
+const activeResetZoom = isFullscreenViewer ? resetFsZoom : resetOverlayZoom;
+
+// 확대(전체화면) 팝업은 가로모드로 돌아가면 화면 너비가 md(768px) 기준을 넘어서버려서
+// 모바일용 축소 스타일이 아니라 태블릿용 스타일이 적용되는 문제가 있었다.
+// 전체화면 뷰어에서는 항상 가장 작은(모바일) 크기를 고정으로 쓰도록, md:/lg: 반응형 접두사를 제거한다.
+const mobileMarkerClass = (responsiveClassName: string) => {
+  const isMobileFullscreen =
+    isFullscreenViewer && typeof window !== "undefined" && window.innerWidth < 1024;
+  if (!isMobileFullscreen) return responsiveClassName;
+  return responsiveClassName
+    .split(/\s+/)
+    .filter((cls) => cls && !cls.startsWith("md:") && !cls.startsWith("lg:"))
+    .join(" ");
+};
+
+const renderZoomControls = (wide: boolean) => (
+  <>
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        activeApplyZoom(activeZoom - 0.5);
+      }}
+      onTouchStart={(e) => e.stopPropagation()}
+      disabled={activeZoom <= OVERLAY_MIN_ZOOM}
+      className={cn(
+        "flex items-center justify-center rounded-full font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-30",
+        wide ? "h-9 w-9 text-lg lg:h-8 lg:w-8 lg:text-base" : "h-8 w-8 text-base lg:h-7 lg:w-7 lg:text-sm"
+      )}
+    >
+      −
+    </button>
+    <span
+      className={cn(
+        "text-center font-semibold text-slate-600",
+        wide ? "min-w-[3.6rem] text-[13px] lg:min-w-[3.2rem] lg:text-[12px]" : "min-w-[2.6rem] text-[11px] lg:text-[10px]"
+      )}
+    >
+      {Math.round(activeZoom * 100)}%
+    </span>
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        activeApplyZoom(activeZoom + 0.5);
+      }}
+      onTouchStart={(e) => e.stopPropagation()}
+      disabled={activeZoom >= OVERLAY_MAX_ZOOM}
+      className={cn(
+        "flex items-center justify-center rounded-full font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-30",
+        wide ? "h-9 w-9 text-lg lg:h-8 lg:w-8 lg:text-base" : "h-8 w-8 text-base lg:h-7 lg:w-7 lg:text-sm"
+      )}
+    >
+      +
+    </button>
+    {activeZoom !== 1 && (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          activeResetZoom();
+        }}
+        onTouchStart={(e) => e.stopPropagation()}
+        className={cn(
+          "ml-0.5 flex items-center justify-center rounded-full px-2 font-semibold text-slate-600 hover:bg-slate-100",
+          wide ? "h-9 text-[13px] lg:h-8 lg:text-[12px]" : "h-8 text-[11px] lg:h-7 lg:text-[10px]"
+        )}
+      >
+        원래대로
+      </button>
+    )}
+  </>
+);
+
+return (
+  <>
+  {/* 확대(전체화면) 보기: 바깥 div(fsOuterRef)는 남는 공간 전체를 차지하고, 안쪽 박스(ref가 걸린
+     div)는 그 공간과 사진의 원본 가로세로 비율을 기준으로 JS에서 계산한 정확한 px 크기로 그려서
+     "최대한 크게 + 비율 유지"를 동시에 만족시킨다. 말풍선은 이 안쪽 박스 크기를 기준으로 %좌표로
+     위치가 잡히므로, 박스 크기가 사진이 실제로 보이는 영역과 정확히 같아야 한다 — 바깥 div 크기를
+     그대로 쓰면 사진과 박스 비율이 달라져 여백에도 %좌표가 매핑되며 말풍선 위치가 틀어진다.
+     일반 화면에서는 레이아웃에 영향이 없도록 display:contents로 둔다. */}
+  <div
+    ref={isFullscreenViewer ? fsOuterRef : undefined}
+    className={isFullscreenViewer ? "flex min-h-0 w-full flex-1 items-center justify-center" : "contents"}
+  >
+  <div
+    ref={isFullscreenViewer ? fsImageAreaRef : imageAreaRef}
+    className={cn(
+      "relative overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:rounded-2xl",
+      fillHeight ? "inline-flex max-h-full max-w-full items-center justify-center" : "w-full"
+    )}
+    style={isFullscreenViewer && fsFitSize ? { width: fsFitSize.width, height: fsFitSize.height } : undefined}
+    onClick={
+      isFullscreenViewer
+        ? undefined
+        : (event) => {
+            if (suppressNextClickRef.current) {
+              suppressNextClickRef.current = false;
+              return;
+            }
+            if (activeDabsKey === "highRisk") openMarkerPopup(event);
+            else if (activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") handleEquipmentClick(event);
+          }
+    }
+        onMouseMove={isFullscreenViewer ? handleFsMouseMoveCombined : handleOverlayMouseMoveCombined}
+        onMouseDown={isImageTab ? (isFullscreenViewer ? handleFsMouseDown : handleOverlayMouseDown) : undefined}
+        onMouseUp={isImageTab ? (isFullscreenViewer ? handleFsMouseUp : handleOverlayMouseUp) : undefined}
+        onMouseLeave={isImageTab ? (isFullscreenViewer ? handleFsMouseUp : handleOverlayMouseUp) : undefined}
+        onWheel={isImageTab && isFullscreenViewer ? handleFsWheel : undefined}
+        onTouchStart={isImageTab ? (isFullscreenViewer ? handleFsTouchStart : handleOverlayTouchStart) : undefined}
+        onTouchMove={isImageTab ? (isFullscreenViewer ? handleFsTouchMove : handleOverlayTouchMove) : undefined}
+        onTouchEnd={isImageTab ? (isFullscreenViewer ? handleFsTouchEnd : handleOverlayTouchEnd) : undefined}
+      >
+  {selectedImage ? (
+  <img
+  src={selectedImage}
+  alt=""
+  aria-hidden="true"
+  className={cn(
+    "block invisible select-none",
+    fillHeight ? "max-h-full max-w-full h-auto w-auto object-contain" : "w-full h-auto"
+  )}
+  draggable={false}
+/>
+) : (
+  <div className="flex h-64 items-center justify-center text-sm text-slate-400">
+    등록된 사진이 없습니다.
+  </div>
+)}
+  {selectedImage && (
+    <div
+      className="absolute inset-0"
+      style={{
+        transform: `translate(${activePan.x}px, ${activePan.y}px) scale(${activeZoom})`,
+        transformOrigin: "0 0",
+      }}
+    >
+      <img
+        src={selectedImage}
+        alt={activeDabsTab.label}
+        crossOrigin="anonymous"
+        className="block h-full w-full select-none object-contain"
+        draggable={false}
+      />
+          <>
+            <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <defs>
+                <marker id="arrowhead" markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" fill="#f97316"><polygon points="0 0, 4 2, 0 4" /></marker>
+                {COMPANY_STROKE_PALETTE.map((strokeColor, strokeIndex) => (
+                  <marker key={strokeIndex} id={`arrowhead-${targetKey}-${strokeIndex}`} markerUnits="userSpaceOnUse" markerWidth="4" markerHeight="4" refX="3" refY="2" orient="auto" fill={strokeColor}><polygon points="0 0, 4 2, 0 4" /></marker>
+                ))}
+              </defs>
+              {arrows.map((arrow) => {
+                const pts = arrow.points && arrow.points.length >= 2
+                  ? arrow.points
+                  : [{ x: arrow.startX, y: arrow.startY }, { x: arrow.endX, y: arrow.endY }];
+                const isLineStyle = targetKey.startsWith("buildingDetail::");
+                const strokeIndex = getCompanyStrokeIndex(arrow.company || "-", overlayCompanyList);
+                const strokeColor = isLineStyle ? getTimeStrokeColor(arrow.time || "") : COMPANY_STROKE_PALETTE[strokeIndex];
+                return (
+                  <polyline
+                    key={arrow.id}
+                    points={pts.map((p) => `${p.x},${p.y}`).join(" ")}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={isLineStyle ? "12.5" : "2.5"}
+                    vectorEffect="non-scaling-stroke"
+                    markerEnd={isLineStyle ? undefined : `url(#arrowhead-${targetKey}-${strokeIndex})`}
+                  />
+                );
+              })}
+              {(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") && arrowPoints.length > 0 && (
+                <polyline
+                  points={[...arrowPoints, ...(arrowPreviewPoint ? [arrowPreviewPoint] : [])]
+                    .map((p) => `${p.x},${p.y}`)
+                    .join(" ")}
+                  fill="none"
+                  stroke="#f97316"
+                  strokeWidth={activeDabsKey === "buildingDetail" ? "11" : "2.2"}
+                  strokeDasharray="6 6"
+                  vectorEffect="non-scaling-stroke"
+                  markerEnd={activeDabsKey === "buildingDetail" ? undefined : "url(#arrowhead)"}
+                />
+              )}
+              {(activeDabsKey === "equipmentFlow" || activeDabsKey === "buildingDetail") &&
+                arrowPoints.map((p, index) => (
+                  <circle key={`arrow-point-${index}`} cx={p.x} cy={p.y} r="1.3" fill="#f97316" />
+                ))}
+            </svg>
+            {activeDabsKey === "equipmentFlow" && people.map((person) => (
+              <div
+                key={person.id}
+                className="absolute"
+                style={{
+                  left: `${person.x}%`,
+                  top: `${person.y}%`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <div className="relative">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-12 w-12 drop-shadow lg:h-[4.5rem] lg:w-[4.5rem]"
+                    fill={person.personType === "guide" ? "#eab308" : "#ef4444"}
+                  >
+                    <circle cx="12" cy="5" r="3" />
+                    <path d="M12 9c-3 0-5.5 2-5.5 5v6h3v-5h5v5h3v-6c0-3-2.5-5-5.5-5z" />
+                  </svg>
+
+                  {!isCapturingImage && !isFullscreenViewer && canDeleteOwnItem(person) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        handleDeletePersonMarker(person.id);
+                      }}
+                      onTouchStart={(e) => e.stopPropagation()}
+                      onTouchEnd={(e) => e.stopPropagation()}
+                      style={{ touchAction: "manipulation" }}
+                      className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow lg:-top-3 lg:-right-3 lg:h-7 lg:w-7"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {markers.map((marker) => {
+              const markerKey = `${targetKey}-${marker.id}`;
+              const adjustedPosition = isFullscreenViewer ? undefined : adjustedOverlayPositions[markerKey];
+              const posX = adjustedPosition?.x ?? marker.x;
+const posY = adjustedPosition?.y ?? marker.y;
+              const color = getCompanyColorByList(marker.company || "-", overlayCompanyList);
+              const isHighRiskMarker = targetKey === "highRisk";
+              const isBuildingDetailMarker = targetKey.startsWith("buildingDetail::");
+              return (
+                <div
+  key={marker.id}
+  ref={(element) => {
+    if (!isFullscreenViewer) {
+      overlayMarkerRefs.current[markerKey] = element;
+    }
+  }}
+  className="absolute"
+  style={{
+    left: `${posX}%`,
+    top: `${posY}%`,
+    transform: "translate(-50%, -50%)",
+  }}
+>
+  <div
+    className={cn(
+  "relative origin-center rounded-md border shadow-sm backdrop-blur-[1px]",
+  compactMarkers
+    ? "px-[2px] py-[1px] lg:rounded-lg lg:px-1 lg:py-1"
+    : mobileMarkerClass("px-[1px] py-0 md:px-[3px] md:py-[2px] lg:rounded-xl lg:px-1.5 lg:py-1.5"),
+  color.bg,
+  color.text
+)}
+  >
+                  <div className={cn("flex flex-col items-center text-center", (isHighRiskMarker || isBuildingDetailMarker)
+  ? (compactMarkers
+      ? "min-w-[42px] max-w-[62px] gap-0.5 lg:min-w-[85px] lg:max-w-[125px] lg:gap-0.5"
+      : mobileMarkerClass("min-w-[19px] max-w-[28px] gap-0 md:min-w-[62px] md:max-w-[90px] md:gap-0.5 lg:min-w-[128px] lg:max-w-[188px] lg:gap-1"))
+  : (compactMarkers
+      ? "min-w-[50px] max-w-[70px] gap-0.5 lg:min-w-[120px] lg:max-w-[170px] lg:gap-0.5"
+      : mobileMarkerClass("min-w-[23px] max-w-[32px] gap-0 md:min-w-[74px] md:max-w-[102px] md:gap-0.5 lg:min-w-[180px] lg:max-w-[255px] lg:gap-1")))}>
+                    {marker.equipmentType ? <span className={cn("rounded-full bg-white/80 font-bold leading-none shadow-sm", compactMarkers ? "px-1 py-0.5 text-[7px] lg:text-[8px]" : mobileMarkerClass("px-0.5 py-0 text-[4px] md:px-1.5 md:py-0.5 md:text-[11px] lg:text-[12px]"))}>{getEquipmentLabel(marker.equipmentType)}</span> : null}
+                    {isHighRiskMarker ? (
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : mobileMarkerClass("px-[1px] py-0 md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5"))}>
+    <div className={cn("font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : mobileMarkerClass("text-[6px] md:text-[17px] lg:text-[20px]"))}>
+      {marker.building || "동 미선택"}
+    </div>
+    <div className={cn("mt-1 font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : mobileMarkerClass("text-[5px] md:text-[15px] lg:text-[16px]"))}>
+  {marker.company || "업체명 없음"}
+</div>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : mobileMarkerClass("text-[5px] md:text-[15px] lg:text-[16px]"))}>
+  {marker.note || "작업내용 없음"}
+</div>
+  </div>
+) : isBuildingDetailMarker ? (
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : mobileMarkerClass("px-[1px] py-0 md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5"))}>
+    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : mobileMarkerClass("text-[5px] md:text-[15px] lg:text-[16px]"))}>
+  {marker.company || "업체명 없음"}
+</div>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : mobileMarkerClass("text-[5px] md:text-[15px] lg:text-[16px]"))}>
+  {marker.note || "작업내용 없음"}
+</div>
+    <div className={cn("mt-1 font-bold leading-tight tracking-tight text-black", compactMarkers ? "text-[11px] lg:text-[13px]" : mobileMarkerClass("text-[6px] md:text-[17px] lg:text-[20px]"))}>
+  {marker.time ? `${marker.time}시~${marker.endTime || ""}시` : ""}
+</div>
+  </div>
+) : (
+  <div className={cn("w-full rounded-sm bg-white/65 shadow-sm", compactMarkers ? "px-[2px] py-[1px] lg:rounded-md lg:px-1 lg:py-1" : mobileMarkerClass("px-[1px] py-0 md:px-[3px] md:py-[2px] lg:rounded-md lg:px-1.5 lg:py-1.5"))}>
+    <div className={cn("font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : mobileMarkerClass("text-[5px] md:text-[15px] lg:text-[16px]"))}>
+  {marker.company || "업체명 없음"}
+</div>
+    <div className={cn("mt-1 break-words font-bold leading-tight", compactMarkers ? "text-[10px] lg:text-[11px]" : mobileMarkerClass("text-[5px] md:text-[15px] lg:text-[16px]"))}>
+  {marker.note || "작업내용 없음"}
+</div>
+  </div>
+)}
+                  </div>
+                  {!isCapturingImage && !isFullscreenViewer && (
+<div className="absolute -top-2 -right-0.5 z-20 flex gap-0.5 md:-top-4 md:-right-1 md:gap-1 lg:-top-3 lg:right-0.5">
+  {canAdminEditDabsItem && (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        setEditOverlayPopup({
+          open: true,
+          itemId: marker.id,
+          targetKey,
+          company: marker.company || "",
+          note: marker.note || "",
+          building: marker.building || "",
+          equipmentType: marker.equipmentType || "concrete_pump_truck",
+          time: marker.time || "06",
+          endTime: marker.endTime || getDefaultEndTime(marker.time || "06"),
+        });
+      }}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
+      style={{ touchAction: "manipulation" }}
+      className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[5px] font-semibold text-slate-600 shadow md:h-8 md:min-w-8 md:px-2 md:text-[10px] lg:h-5 lg:min-w-5 lg:px-1 lg:text-[9px]"
+    >
+      수정
+    </button>
+  )}
+
+  {canDeleteOwnItem(marker) && (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        handleDeleteOverlayItem(marker.id, targetKey);
+      }}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
+      style={{ touchAction: "manipulation" }}
+      className="flex h-4 w-4 items-center justify-center rounded-full bg-white shadow md:h-8 md:w-8 lg:h-5 lg:w-5"
+    >
+      <X className="h-2 w-2 md:h-4 md:w-4 lg:h-3 lg:w-3" />
+    </button>
+  )}
+</div>
+)}
+  </div>
+</div>
+              );
+            })}
+                      </>
+      </div>
+        )}
+      </div>
+      </div>
+      {selectedImage && isImageTab && compactMarkers && (
+        <div className="mt-3 flex items-center justify-center gap-2 lg:mt-4">
+          <div className="flex items-center gap-0.5 rounded-full bg-white/95 p-1 shadow-lg ring-1 ring-black/10 backdrop-blur">
+            {renderZoomControls(false)}
+          </div>
+        </div>
+      )}
+      {selectedImage && isImageTab && !compactMarkers && (
+        <div className="mt-3 flex items-center justify-center gap-2 lg:mt-4">
+          {!isFullscreenViewer && (
+            <button
+              type="button"
+              onClick={() => {
+                enterFullscreenLandscape();
+                setFullscreenOverlay({ selectedImage, targetKey, isImageTab });
+              }}
+              className="flex h-9 items-center gap-1 rounded-full bg-white px-3 text-[12px] font-semibold text-slate-700 shadow-lg ring-1 ring-black/10 hover:bg-slate-50 lg:h-8 lg:text-[11px]"
+            >
+              <Search className="h-3.5 w-3.5" />
+              확대
+            </button>
+          )}
+          <div className="flex items-center gap-0.5 rounded-full bg-white px-3 py-1.5 shadow-lg ring-1 ring-black/10">
+            {renderZoomControls(true)}
+          </div>
+        </div>
+      )}
+      </>
+    );
+  };
+
+  const renderAuthScreen = () => (
+    <div className="grid min-h-[80vh] place-items-center">
+      <div className="w-full max-w-5xl space-y-4 sm:space-y-6">
+        <div className="text-center">
+          <div className="text-sm font-medium text-slate-500">회원 전용 포털</div>
+          {mounted && isDemoMode && <div className="mt-3 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">데모 로그인: GH45 / 2706</div>}
+          <h1 className="mt-2 text-2xl font-bold text-slate-900 lg:text-3xl">HS 어울림 청주사직</h1>
+          <p className="mt-2 text-sm text-slate-500">로그인 또는 회원가입 후 메뉴를 선택해 이동할 수 있습니다.</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 md:gap-6">
+          <Card className="rounded-[24px] border-0 shadow-sm">
+            <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><ShieldCheck className="h-5 w-5" />로그인</CardTitle></CardHeader>
+            <CardContent className="space-y-3 py-3">
+              <form
+  onSubmit={(e) => {
+    e.preventDefault();
+    handleLogin();
+  }}
+  className="space-y-3 max-w-sm"
+>
+  <div className="space-y-2">
+    <label className="text-xs font-medium text-slate-600">아이디</label>
+    <Input
+      value={loginId}
+      onChange={(e) => setLoginId(e.target.value)}
+      placeholder={isDemoMode ? "GH45" : "이메일 입력"}
+      className="h-10"
+      disabled={loginLoading}
+    />
+  </div>
+
+  <div className="space-y-2">
+    <label className="text-xs font-medium text-slate-600">비밀번호</label>
+    <Input
+      type="password"
+      value={loginPassword}
+      onChange={(e) => setLoginPassword(e.target.value)}
+      placeholder={isDemoMode ? "2706" : "비밀번호 입력"}
+      className="h-10"
+      disabled={loginLoading}
+    />
+  </div>
+
+  <div className="flex gap-2">
+  <Button
+    type="submit"
+    className="h-10 flex-1"
+    disabled={loginLoading}
+  >
+    {loginLoading ? "로그인 중..." : "로그인"}
+  </Button>
+
+  <Button
+    type="button"
+    variant="outline"
+    className="h-10 flex-1"
+    onClick={handlePasswordReset}
+    disabled={loginLoading}
+  >
+    비밀번호 재설정
+  </Button>
+</div>
+</form>
+              {loginMessage && <div className="text-sm text-slate-600">{loginMessage}</div>}
+              {!isAuthReady && <div className="text-xs text-slate-400">로그인 상태 확인 중...</div>}
+            </CardContent>
+          </Card>
+          <Card className="rounded-[24px] border-0 shadow-sm">
+            <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><UserPlus className="h-5 w-5" />회원가입</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">업체명</label><Input value={signupCompanyName} onChange={(e) => setSignupCompanyName(e.target.value)} placeholder="업체명 입력" className="h-10" /></div>
+                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">이름</label><Input value={signupName} onChange={(e) => setSignupName(e.target.value)} placeholder="이름 입력" className="h-10" /></div>
+                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">{isDemoMode ? "아이디" : "아이디(이메일)"}</label><Input value={signupId} onChange={(e) => setSignupId(e.target.value)} placeholder={isDemoMode ? "아이디 입력" : "이메일 입력"} className="h-10" /></div>
+                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">비밀번호</label><Input type="password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} placeholder="비밀번호 입력" className="h-10" /></div>
+              </div>
+              <div className="space-y-2"><label className="text-xs font-medium text-slate-600">회원 등급 신청</label><select value={signupRole} onChange={(e) => setSignupRole(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"><option value="general">협력사</option><option value="admin">현대건설</option></select><div className="text-xs text-slate-500">협력사는 마스터 또는 현대건설이 승인 가능, 현대건설 계정은 마스터만 승인 가능합니다.</div></div>
+              <div className="flex justify-end"><Button className="w-full lg:w-auto" onClick={handleSignup}>가입 신청</Button></div>
+              {signupMessage && <div className="text-sm text-slate-600">{signupMessage}</div>}
+            </CardContent>
+          </Card>
+        </div>
+     
+      </div>
+    </div>
+  );
+
+  const renderMenuScreen = () => (
+    <div className="space-y-4 sm:space-y-6">
+      {renderTopBar()}
+
+      {canManualChangeSelectedDate && (
+        <Card className="border-slate-200 shadow-none">
+          <CardContent className="p-4">
+            <div className="text-sm font-semibold text-slate-900">
+              기준일 설정
+            </div>
+
+            <div className="mt-1 text-xs text-slate-500">
+              현재 기준일: {formatMonthDay(selectedDate)}
+            </div>
+
+            <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto] md:items-center">
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => handleManualSelectedDateChange(e.target.value)}
+                className="h-9 bg-white"
+              />
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResetSelectedDateToDefault}
+              >
+                자동 기준일로 복귀
+              </Button>
+            </div>
+
+            {manualSelectedDate && manualSelectedDateSavedToday === getTodayKey() && (
+              <div className="mt-2 text-[11px] text-amber-700">
+                오늘만 수동 기준일 적용 중입니다. 다음날 접속 시 자동 기준일로 돌아갑니다.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="border-slate-200 shadow-none">
+        <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-sm font-semibold text-slate-900">
+              전체화면 발표 모드
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              DAB&apos;s 회의와 단독작업자를 PPT처럼 넘겨서 볼 수 있습니다.
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+  <Button
+    variant="outline"
+    onClick={handleDownloadPortfolioImages}
+    disabled={isExportingPortfolioImages}
+  >
+    {isExportingPortfolioImages ? "저장 중..." : "발표 이미지 저장"}
+  </Button>
+
+  <Button
+    onClick={() => {
+      setPortfolioSlideIndex(0);
+      setCurrentPage("portfolio");
+    }}
+    disabled={isExportingPortfolioImages}
+  >
+    발표 모드 보기
+  </Button>
+</div>
+        </CardContent>
+      </Card>
+
+      {!isConfigured && (
+  <Card className="border-amber-300 bg-amber-50">
+    <CardContent className="p-4">
+      <div className="text-sm font-medium text-amber-900">
+        Firebase 환경변수가 설정되지 않았습니다.
+        <div className="mt-1 text-xs text-amber-800">
+          Firebase 미설정 상태입니다. 환경변수를 설정해야 로그인할 수 있습니다.
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+)}
+      <div className="grid gap-4 md:grid-cols-3 md:gap-6">{menuItems.map((item) => { const Icon = item.icon; return <button key={item.key} onClick={() => {
+  setCurrentPage(item.key);
+}} className="rounded-[24px] border border-black bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md sm:p-6"><div className="flex items-center gap-3"><div className="rounded-2xl bg-slate-100 p-3 text-slate-700"><Icon className="h-6 w-6" /></div><div><div className="text-base font-semibold text-slate-900 lg:text-lg">{item.title}</div><div className="mt-1 text-sm text-slate-500">{item.description}</div></div></div></button>; })}</div>
+    </div>
+  );
+
+  const renderBottomCalendar = () => (
+  <Card className="rounded-[24px] border-0 bg-white shadow-sm">
+    <CardHeader className="flex flex-row items-center justify-between">
+      <CardTitle>월간 달력</CardTitle>
+
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() =>
+            setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))
+          }
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+
+        <div className="min-w-28 text-center text-sm font-semibold lg:min-w-36 lg:text-base">
+          {monthLabel}
+        </div>
+
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() =>
+            setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))
+          }
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </CardHeader>
+
+    <CardContent>
+      <div className="grid grid-cols-7 gap-1 lg:gap-2">
+        {weekLabels.map((label) => (
+          <div key={label} className="rounded-xl bg-slate-100 py-2 text-center text-[10px] font-semibold text-slate-600 lg:text-xs">
+            {label}
+          </div>
+        ))}
+
+        {monthGrid.map((date) => {
+          const key = formatDateKey(date);
+          const isCurrentMonth = date.getMonth() === currentDate.getMonth();
+          const isToday = key === todayKey;
+          const isSelected = key === selectedDate;
+          const cellEntries = entries.filter((entry) => entry.date === key);
+
+          return (
+            <button
+              key={key}
+              onClick={() => setSelectedDate(key)}
+              className={cn(
+                "min-h-[72px] rounded-xl border p-1.5 text-left transition sm:min-h-[82px] sm:p-2",
+                isSelected
+                  ? "border-slate-900 bg-slate-100"
+                  : isCurrentMonth
+                    ? "border-slate-200 bg-white shadow-sm"
+                    : "border-slate-100 bg-slate-50 text-slate-400"
+              )}
+            >
+              <div className="mb-1 flex items-center justify-between sm:mb-2">
+                <div
+                  className={cn(
+                    "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold lg:h-6 lg:w-6 lg:text-xs",
+                    isToday ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                  )}
+                >
+                  {date.getDate()}
+                </div>
+
+                <Badge className="px-1.5 py-0">{cellEntries.length}</Badge>
+              </div>
+
+              <div className="space-y-1">
+                {cellEntries.map((entry) => (
+                  <div key={entry.id} className="rounded-lg bg-slate-50 p-1 text-[9px] text-slate-700 lg:p-1.5 lg:text-[10px]">
+                    <div className="font-semibold text-slate-900">
+                      {entry.startTime}
+                    </div>
+                    <div className="whitespace-pre-wrap break-words leading-tight">
+                      {entry.companyName}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </CardContent>
+  </Card>
+);
+
+const renderSectionMobileCards = (
+  columns: string[],
+  rows: Record<string, DabsRowItem[]>
+) => (
+  <div className="space-y-3 lg:hidden">
+    {columns.map((col) => {
+      const list = rows[col] || [];
+
+      return (
+        <MobileListCard key={col} title={col}>
+          {list.length === 0 ? (
+            <div className="text-slate-400">입력 없음</div>
+          ) : (
+            list.map((item) => (
+              <div key={item.id} className="rounded-xl bg-slate-50 p-3">
+                <div className="text-xs font-medium text-slate-500">
+                  {item.company}
+                </div>
+
+                <div className="mt-1 flex items-start justify-between gap-2">
+                  <span className="text-slate-900 whitespace-pre-wrap break-all leading-relaxed">
+                    {renderTextWithRedRanges(item.content, item.contentRedRanges)}
+                  </span>
+
+                  {!isCapturingImage && (
+                    <div className="flex shrink-0 gap-1">
+                      {canAdminEditDabsItem && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditSectionPopup({
+                              open: true,
+                              itemId: item.id,
+                              oldBuilding: col,
+                              building: col,
+                              company: item.company || "",
+                              content: item.content || "",
+                              contentRedRanges: item.contentRedRanges || [],
+                            })
+                          }
+                          className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100"
+                        >
+                          수정
+                        </button>
+                      )}
+
+                      {canDeleteOwnItem(item) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDabsItem(item.id, col)}
+                          className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </MobileListCard>
+      );
+    })}
+  </div>
+);
+
+  const renderMaterialsMobileCards = (list: DabsRowItem[]) => (
+  <div className="space-y-3 lg:hidden">
+    {MATERIAL_TIMES.map((time) => {
+      const row = list.filter((item) => item.time === time);
+      const gate1 = row.filter((item) => item.gate === "1");
+      const gate7 = row.filter((item) => item.gate === "7");
+      const isYellow = (item: DabsRowItem) => item.workerOnCargo && item.cargoHeight1m;
+
+      return (
+        <MobileListCard key={time} title={`${time}시`}>
+          <div className="space-y-4">
+            <div>
+              <div className="mb-2 text-2xl font-semibold text-slate-500">1게이트</div>
+              {gate1.length === 0 ? (
+                <div className="text-slate-400">입력 없음</div>
+              ) : (
+                gate1.map((item) => (
+                  <div key={item.id} className={cn("mb-2 rounded-xl p-3", isYellow(item) ? "bg-yellow-100 border border-yellow-300" : "bg-slate-50")}>
+                    <div className="text-xs font-medium text-slate-500">{item.company}</div>
+                    <div className="mt-1 text-sm">자재명: {item.material}</div>
+                    <div className="text-sm">차종: {item.vehicle}{item.vehicleCount ? ` (${item.vehicleCount}대)` : ""}</div>
+                    <div className="text-sm">하역장소: {item.location}</div>
+                    {(item.manager || item.phone) && (
+                      <div className="text-sm">
+                        {item.manager && `담당자: ${item.manager}`}
+                        {item.manager && item.phone && " / "}
+                        {item.phone && `연락처: ${item.phone}`}
+                      </div>
+                    )}
+                    {!isCapturingImage && (
+                      <div className="mt-2 flex shrink-0 gap-1">
+                        {canAdminEditDabsItem && (
+                          <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", vehicleCount: item.vehicleCount || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "", workerOnCargo: item.workerOnCargo || false, cargoHeight1m: item.cargoHeight1m || false })} className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100">수정</button>
+                        )}
+                        {canDeleteOwnItem(item) && (
+                          <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+            <div>
+              <div className="mb-2 text-2xl font-semibold text-slate-500">7게이트</div>
+              {gate7.length === 0 ? (
+                <div className="text-slate-400">입력 없음</div>
+              ) : (
+                gate7.map((item) => (
+                  <div key={item.id} className={cn("mb-2 rounded-xl p-3", isYellow(item) ? "bg-yellow-100 border border-yellow-300" : "bg-slate-50")}>
+                    <div className="text-xs font-medium text-slate-500">{item.company}</div>
+                    <div className="mt-1 text-sm">자재명: {item.material}</div>
+                    <div className="text-sm">차종: {item.vehicle}{item.vehicleCount ? ` (${item.vehicleCount}대)` : ""}</div>
+                    <div className="text-sm">하역장소: {item.location}</div>
+                    {(item.manager || item.phone) && (
+                      <div className="text-sm">
+                        {item.manager && `담당자: ${item.manager}`}
+                        {item.manager && item.phone && " / "}
+                        {item.phone && `연락처: ${item.phone}`}
+                      </div>
+                    )}
+                    {!isCapturingImage && (
+                      <div className="mt-2 flex shrink-0 gap-1">
+                        {canAdminEditDabsItem && (
+                          <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", vehicleCount: item.vehicleCount || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "", workerOnCargo: item.workerOnCargo || false, cargoHeight1m: item.cargoHeight1m || false })} className="rounded-full border border-slate-300 px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100">수정</button>
+                        )}
+                        {canDeleteOwnItem(item) && (
+                          <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </MobileListCard>
+      );
+    })}
+  </div>
+);
+
+  const renderSoloWorkerDesktopTable = () => {
+  const rows = getSoloWorkerRowsByCompany(soloRows, soloCompanyFilter);
+
+  const grouped = rows.reduce<Record<string, typeof rows>>((acc, item) => {
+    const key = item.company || "-";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+
+  return (
+    <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
+      <table className={TABLE_BASE_CLASS}>
+        <thead>
+          <tr className="bg-slate-100 text-slate-700">
+            <th className="border border-black px-3 py-2 text-left w-[16%]">업체명</th>
+            <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
+            <th className="border border-black px-3 py-2 text-left w-[16%]">성명</th>
+            <th className="border border-black px-3 py-2 text-left">작업 내용</th>
+            <th className="border border-black px-3 py-2 text-left w-[10%]">고령자</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td className="border border-black px-3 py-2 text-center text-slate-300" colSpan={5}>
+                입력 없음
+              </td>
+            </tr>
+          ) : (
+            Object.entries(grouped).map(([company, list]) =>
+              list.map((item, index) => {
+                const color = getCompanyColorByList(company, soloCompanyColorList);
+                const elderlyHighlight =
+                  item.elderly === "o"
+                    ? "bg-amber-50 text-amber-700 font-semibold"
+                    : "text-slate-600";
+
+                return (
+                  <tr key={`${item.building}-${item.id}`}>
+                    {index === 0 && (
+                      <td
+                        rowSpan={list.length}
+                        className={cn(
+                          "border border-black px-3 py-2 align-top font-semibold",
+                          color.bg,
+                          color.text
+                        )}
+                      >
+                        {company}
+                      </td>
+                    )}
+
+                    <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
+                      {item.building}
+                    </td>
+
+                    <td className="border border-black px-3 py-2 align-top">
+                      {item.name}
+                    </td>
+
+                    <td className="border border-black px-3 py-2 align-top">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="whitespace-pre-wrap break-all leading-relaxed">
+                          {item.content}
+                        </span>
+
+                        {!isCapturingImage && (
+                          <div className="flex shrink-0 gap-1">
+                            {canAdminEditDabsItem && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditSoloPopup({
+                                    open: true,
+                                    itemId: item.id,
+                                    oldBuilding: item.building || "",
+                                    building: item.building || "",
+                                    company: item.company || "",
+                                    name: item.name || "",
+                                    content: item.content || "",
+                                    elderly: item.elderly || "x",
+                                  })
+                                }
+                                className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                              >
+                                수정
+                              </button>
+                            )}
+
+                            {canDeleteOwnItem(item) && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeleteSoloWorker(item.id, item.building || "")
+                                }
+                                className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className={cn("border border-black px-3 py-2 align-top", elderlyHighlight)}>
+                      {item.elderly}
+                    </td>
+                  </tr>
+                );
+              })
+            )
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+  const renderSoloWorkerMobileCards = () => {
+  const blocks = getSoloWorkerRowsByCompany(soloRows, soloCompanyFilter);
+
+  return (
+    <div className="space-y-3 lg:hidden">
+      {blocks.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
+          조건에 맞는 단독작업자가 없습니다.
+        </div>
+      ) : (
+        blocks.map((item) => {
+          const color = getCompanyColorByList(item.company || "-", soloCompanyColorList);
+
+          return (
+            <div key={item.id} className="rounded-2xl border border-black bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">{item.building}</div>
+                  <div
+                    className={cn(
+                      "mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs font-medium",
+                      color.bg,
+                      color.border,
+                      color.text
+                    )}
+                  >
+                    {item.company}
+                  </div>
+                </div>
+
+                {!isCapturingImage && (
+                  <div className="flex shrink-0 gap-1">
+                    {canAdminEditDabsItem && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditSoloPopup({
+                            open: true,
+                            itemId: item.id,
+                            oldBuilding: item.building,
+                            building: item.building,
+                            company: item.company || "",
+                            name: item.name || "",
+                            content: item.content || "",
+                            elderly: item.elderly || "x",
+                          })
+                        }
+                        className="rounded-full border border-slate-300 px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
+                      >
+                        수정
+                      </button>
+                    )}
+
+                    {canDeleteOwnItem(item) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSoloWorker(item.id, item.building)}
+                        className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="mr-2 font-medium text-slate-500">성명</span>
+                  <span className="text-slate-900">{item.name}</span>
+                </div>
+
+                <div>
+                  <span className="mr-2 font-medium text-slate-500">작업</span>
+                  <span className="text-slate-900">{item.content}</span>
+                </div>
+
+                <div>
+                  <span className="mr-2 font-medium text-slate-500">고령자</span>
+                  <span
+                    className={cn(
+                      "inline-flex rounded-full px-2 py-0.5 text-xs font-semibold",
+                      item.elderly === "o"
+                        ? "bg-amber-100 text-amber-700"
+                        : "bg-slate-100 text-slate-600"
+                    )}
+                  >
+                    {item.elderly}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+};
+
+const renderEditPopups = () => (
+  <>
+    {editSectionPopup.open && (
+      <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+        <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+          <div className="text-base font-semibold text-slate-900">작업 내용 수정</div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">동 선택</label>
+            <select
+              value={editSectionPopup.building}
+              onChange={(e) =>
+                setEditSectionPopup((prev) => ({ ...prev, building: e.target.value }))
+              }
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="">동 선택</option>
+              {getDabsColumnsByTabKey(activeDabsKey).map((column) => (
+                <option key={column} value={column}>
+                  {column}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">업체명</label>
+            <Input
+              value={editSectionPopup.company}
+              onChange={(e) =>
+                setEditSectionPopup((prev) => ({ ...prev, company: e.target.value }))
+              }
+              placeholder="업체명 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">작업내용</label>
+            <Input
+              value={editSectionPopup.content}
+              onSelect={(e) =>
+                setEditSectionTextSelection({
+                  start: e.currentTarget.selectionStart || 0,
+                  end: e.currentTarget.selectionEnd || 0,
+                })
+              }
+              onChange={(e) =>
+                setEditSectionPopup((prev) => ({
+                  ...prev,
+                  content: e.target.value,
+                  contentRedRanges: normalizeTextColorRanges(
+                    prev.contentRedRanges,
+                    e.target.value.length
+                  ),
+                }))
+              }
+              placeholder="작업내용 입력"
+            />
+
+            {activeDabsKey !== "fireWork" && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() =>
+                    setEditSectionPopup((prev) => ({
+                      ...prev,
+                      contentRedRanges: addRedTextRange(
+                        prev.contentRedRanges,
+                        editSectionTextSelection.start,
+                        editSectionTextSelection.end,
+                        prev.content.length
+                      ),
+                    }))
+                  }
+                >
+                  선택 빨강
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() =>
+                    setEditSectionPopup((prev) => ({
+                      ...prev,
+                      contentRedRanges: removeRedTextRange(
+                        prev.contentRedRanges,
+                        editSectionTextSelection.start,
+                        editSectionTextSelection.end
+                      ),
+                    }))
+                  }
+                >
+                  선택 해제
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              className="w-full lg:w-auto"
+              onClick={() =>
+                setEditSectionPopup({
+                  open: false,
+                  itemId: "",
+                  oldBuilding: "",
+                  building: "",
+                  company: "",
+                  content: "",
+                  contentRedRanges: [],
+                })
+              }
+            >
+              취소
+            </Button>
+
+            <Button className="w-full lg:w-auto" onClick={handleUpdateSectionWork}>
+              저장
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {editHighRiskTablePopup.open && (
+      <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+        <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+          <div className="text-base font-semibold text-slate-900">고위험작업 표 수정</div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">동 선택</label>
+            <select
+              value={editHighRiskTablePopup.building}
+              onChange={(e) =>
+                setEditHighRiskTablePopup((prev) => ({ ...prev, building: e.target.value }))
+              }
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="">동 선택</option>
+              {HIGH_RISK_BUILDINGS.filter((building) => building !== ALL_BUILDING_LABEL).map((building) => (
+                <option key={building} value={building}>
+                  {building}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">업체명</label>
+            {(currentUser?.role === "master" || currentUser?.role === "admin") ? (
+              <Input
+                value={editHighRiskTablePopup.company}
+                onChange={(e) =>
+                  setEditHighRiskTablePopup((prev) => ({ ...prev, company: e.target.value }))
+                }
+                placeholder="업체명 입력"
+              />
+            ) : (
+              <Input value={editHighRiskTablePopup.company} disabled />
+            )}
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">작업내용</label>
+            <Input
+              value={editHighRiskTablePopup.content}
+              onChange={(e) =>
+                setEditHighRiskTablePopup((prev) => ({ ...prev, content: e.target.value }))
+              }
+              placeholder="작업내용 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">안전대책</label>
+            <Input
+              value={editHighRiskTablePopup.safety}
+              onChange={(e) =>
+                setEditHighRiskTablePopup((prev) => ({ ...prev, safety: e.target.value }))
+              }
+              placeholder="안전대책 입력"
+            />
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              className="w-full lg:w-auto"
+              onClick={() =>
+                setEditHighRiskTablePopup({
+                  open: false,
+                  itemId: "",
+                  oldBuilding: "",
+                  building: "",
+                  company: "",
+                  content: "",
+                  safety: "",
+                })
+              }
+            >
+              취소
+            </Button>
+
+            <Button className="w-full lg:w-auto" onClick={handleUpdateHighRiskTableItem}>
+              저장
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {editMaterialPopup.open && (
+      <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+        <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+          <div className="text-base font-semibold text-slate-900">자재반입 수정</div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">게이트</label>
+            <select
+              value={editMaterialPopup.gate}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, gate: e.target.value }))
+              }
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="1">1게이트</option>
+              <option value="7">7게이트</option>
+            </select>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">시간</label>
+            <select
+              value={editMaterialPopup.time}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, time: e.target.value }))
+              }
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              {MATERIAL_TIMES.map((time) => (
+                <option key={time} value={time}>
+                  {time}시
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">업체명</label>
+            <Input
+              value={editMaterialPopup.company}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, company: e.target.value }))
+              }
+              placeholder="업체명 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">자재명</label>
+            <Input
+              value={editMaterialPopup.material}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, material: e.target.value }))
+              }
+              placeholder="자재명 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">차종</label>
+            <Input
+              value={editMaterialPopup.vehicle}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, vehicle: e.target.value }))
+              }
+              placeholder="차종 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">대수</label>
+            <Input
+              value={editMaterialPopup.vehicleCount}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, vehicleCount: e.target.value }))
+              }
+              placeholder="대수 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">하역장소</label>
+            <Input
+              value={editMaterialPopup.location}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, location: e.target.value }))
+              }
+              placeholder="하역장소 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">담당자</label>
+            <Input
+              value={editMaterialPopup.manager}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, manager: e.target.value }))
+              }
+              placeholder="담당자 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">연락처</label>
+            <Input
+              value={editMaterialPopup.phone}
+              onChange={(e) =>
+                setEditMaterialPopup((prev) => ({ ...prev, phone: e.target.value }))
+              }
+              placeholder="연락처 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">안전 체크</label>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editMaterialPopup.workerOnCargo}
+                  onChange={(e) =>
+                    setEditMaterialPopup((prev) => ({
+                      ...prev,
+                      workerOnCargo: e.target.checked,
+                      cargoHeight1m: e.target.checked ? prev.cargoHeight1m : false,
+                    }))
+                  }
+                  className="h-4 w-4"
+                />
+                화물칸에 근로자가 올라감
+              </label>
+              <label className={cn("flex items-center gap-2 text-sm cursor-pointer", editMaterialPopup.workerOnCargo ? "text-slate-700" : "text-slate-300 cursor-not-allowed")}>
+                <input
+                  type="checkbox"
+                  checked={editMaterialPopup.cargoHeight1m}
+                  disabled={!editMaterialPopup.workerOnCargo}
+                  onChange={(e) =>
+                    setEditMaterialPopup((prev) => ({ ...prev, cargoHeight1m: e.target.checked }))
+                  }
+                  className="h-4 w-4"
+                />
+                화물칸 높이 1m 이상
+              </label>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              className="w-full lg:w-auto"
+              onClick={() =>
+                setEditMaterialPopup({
+                  open: false,
+                  itemId: "",
+                  gate: "",
+                  time: "",
+                  company: "",
+                  material: "",
+                  vehicle: "",
+                  vehicleCount: "",
+                  location: "",
+                  manager: "",
+                  phone: "",
+                  workerOnCargo: false,
+                  cargoHeight1m: false,
+                })
+              }
+            >
+              취소
+            </Button>
+
+            <Button className="w-full lg:w-auto" onClick={handleUpdateMaterial}>
+              저장
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {editSoloPopup.open && (
+      <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+        <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+          <div className="text-base font-semibold text-slate-900">단독작업자 수정</div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">동 선택</label>
+            <select
+              value={editSoloPopup.building}
+              onChange={(e) =>
+                setEditSoloPopup((prev) => ({ ...prev, building: e.target.value }))
+              }
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="">동 선택</option>
+              {SOLO_WORKER_COLUMNS.map((column) => (
+                <option key={column} value={column}>
+                  {column}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">업체명</label>
+            <Input
+              value={editSoloPopup.company}
+              onChange={(e) =>
+                setEditSoloPopup((prev) => ({ ...prev, company: e.target.value }))
+              }
+              placeholder="업체명 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">성명</label>
+            <Input
+              value={editSoloPopup.name}
+              onChange={(e) =>
+                setEditSoloPopup((prev) => ({ ...prev, name: e.target.value }))
+              }
+              placeholder="성명 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">작업내용</label>
+            <Input
+              value={editSoloPopup.content}
+              onChange={(e) =>
+                setEditSoloPopup((prev) => ({ ...prev, content: e.target.value }))
+              }
+              placeholder="작업내용 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">고령자</label>
+            <select
+              value={editSoloPopup.elderly}
+              onChange={(e) =>
+                setEditSoloPopup((prev) => ({ ...prev, elderly: e.target.value }))
+              }
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="o">고령자 o</option>
+              <option value="x">고령자 x</option>
+            </select>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              className="w-full lg:w-auto"
+              onClick={() =>
+                setEditSoloPopup({
+                  open: false,
+                  itemId: "",
+                  oldBuilding: "",
+                  building: "",
+                  company: "",
+                  name: "",
+                  content: "",
+                  elderly: "x",
+                })
+              }
+            >
+              취소
+            </Button>
+
+            <Button className="w-full lg:w-auto" onClick={handleUpdateSoloWorker}>
+              저장
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {manualPopup && (
+      <div
+        className="fixed inset-0 z-[150] flex items-end justify-center bg-black/50 p-3 sm:items-center sm:p-4"
+        onClick={() => setManualPopup(null)}
+      >
+        <div
+          className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-4">
+            <div className="text-base font-semibold text-slate-900">
+              {manualPopup.label} 사용 매뉴얼
+            </div>
+            <button
+              type="button"
+              onClick={() => setManualPopup(null)}
+              className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-auto bg-slate-50 p-3">
+            <img
+              src={manualPopup.src}
+              alt={`${manualPopup.label} 사용 매뉴얼`}
+              className="mx-auto w-full max-w-full rounded-xl border border-slate-200"
+            />
+          </div>
+
+          <div className="border-t border-slate-200 p-3 text-center text-xs text-slate-500">
+            움짤이 반복 재생됩니다. 화면을 눌러 입력 방법을 따라해보세요.
+          </div>
+        </div>
+      </div>
+    )}
+  </>
+);
+
+const renderDabsPage = () => {
+    const selectedTabValue = dabsData[selectedDate]?.[activeDabsKey];
+    const isImageTab =
+      activeDabsKey === "highRisk" ||
+      activeDabsKey === "equipmentFlow" ||
+      (activeDabsKey === "buildingDetail" && !!selectedBuildingDetail);
+    const isSectionTab = isSectionWorkTabKey(activeDabsKey);
+
+const isMaterialTab = activeDabsKey === "materialsAfter1" || activeDabsKey === "materialsAfter0";
+const isSoloWorkerTab = activeDabsKey === "soloWorker";
+
+const activeColumns = getDabsColumnsByTabKey(activeDabsKey);
+    const sectionRows = getMergedSectionRows(activeDabsKey);
+    const highRiskTableTabValue = dabsData[selectedDate]?.highRiskTable;
+    const highRiskTableStoredRows =
+      typeof highRiskTableTabValue === "object" && highRiskTableTabValue && "rows" in highRiskTableTabValue
+        ? highRiskTableTabValue.rows || {}
+        : {};
+    const highRiskTableRows = getHighRiskTableRows(highRiskTableStoredRows);
+    const highRiskTableEmptyRowCount = Math.max(0, HIGH_RISK_TABLE_MIN_ROWS - highRiskTableRows.length);
+    const materialList =
+  typeof selectedTabValue === "object" && selectedTabValue && "list" in selectedTabValue
+    ? selectedTabValue.list || []
+    : [];
+
+return (
+      <div className="space-y-4 sm:space-y-6">
+{renderTopBar()}
+{renderEditPopups()}
+
+{companyListPopupOpen && (
+  <div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-md rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-base font-semibold text-slate-900">
+            작업내용 업체명 목록
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            기준일: {formatMonthDay(selectedDate)}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setCompanyListPopupOpen(false)}
+          className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="mt-4 space-y-4">
+        {getCompanyListFromWorkTabs().map((tab) => (
+          <div key={tab.key} className="rounded-2xl border border-slate-200 p-3">
+            <div className="text-sm font-semibold text-slate-900">
+              {tab.label}
+            </div>
+
+            {tab.companies.length === 0 ? (
+              <div className="mt-2 text-sm text-slate-400">
+                입력된 업체명 없음
+              </div>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {tab.companies.map((company) => (
+                  <span
+                    key={company}
+                    className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700"
+                  >
+                    {company}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 flex justify-end">
+        <Button
+          variant="outline"
+          onClick={() => setCompanyListPopupOpen(false)}
+        >
+          닫기
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+
+        {fullscreenOverlay && (
+          <div className="fixed inset-0 z-[60] flex flex-col bg-black">
+            <div className="flex items-center justify-between px-3 py-2">
+              <div className="text-sm font-semibold text-white">사진 확대 보기</div>
+              <button
+                type="button"
+                onClick={() => {
+                  exitFullscreenLandscape();
+                  setFullscreenOverlay(null);
+                }}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow hover:bg-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-2 pb-4">
+              {renderOverlayImage(
+                fullscreenOverlay.selectedImage,
+                fullscreenOverlay.isImageTab,
+                fullscreenOverlay.targetKey,
+                true,
+                false,
+                true
+              )}
+            </div>
+          </div>
+        )}
+
+        {imagePopup.open && (
+  <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="text-base font-semibold text-slate-900">작업내용 입력</div>
+
+      {imagePopup.targetKey === "highRisk" && (
+        <div className="mt-4 space-y-2">
+          <label className="text-xs font-medium text-slate-600">동 선택</label>
+          <select
+            value={imagePopup.building}
+            onChange={(e) =>
+              setImagePopup((prev) => ({ ...prev, building: e.target.value }))
+            }
+            className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+          >
+            <option value="">동 선택</option>
+            {HIGH_RISK_BUILDINGS.map((building) => (
+              <option key={building} value={building}>
+                {building}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {imagePopup.targetKey === "equipmentFlow" && (
+        <div className="mt-4 space-y-2">
+          <label className="text-xs font-medium text-slate-600">장비 선택</label>
+          <select
+            value={imagePopup.equipmentType}
+            onChange={(e) =>
+              setImagePopup((prev) => ({ ...prev, equipmentType: e.target.value }))
+            }
+            className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+          >
+            {EQUIPMENT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {imagePopup.targetKey.startsWith("buildingDetail::") && (
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600">시작시간</label>
+            <select
+              value={imagePopup.time}
+              onChange={(e) => {
+                const nextStart = e.target.value;
+                setImagePopup((prev) => ({
+                  ...prev,
+                  time: nextStart,
+                  endTime:
+                    parseInt(prev.endTime, 10) > parseInt(nextStart, 10)
+                      ? prev.endTime
+                      : getDefaultEndTime(nextStart),
+                }));
+              }}
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              {MATERIAL_TIMES.map((time) => (
+                <option key={time} value={time}>
+                  {time}시
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-slate-600">종료시간</label>
+            <select
+              value={imagePopup.endTime}
+              onChange={(e) =>
+                setImagePopup((prev) => ({ ...prev, endTime: e.target.value }))
+              }
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              {MATERIAL_END_TIMES.filter((time) => parseInt(time, 10) > parseInt(imagePopup.time, 10)).map((time) => (
+                <option key={time} value={time}>
+                  {time}시
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {canAdminEditDabsItem && (
+        <div className="mt-4 space-y-2">
+          <label className="text-xs font-medium text-slate-600">업체명</label>
+          <Input
+            value={imagePopup.company}
+            onChange={(e) =>
+              setImagePopup((prev) => ({ ...prev, company: e.target.value }))
+            }
+            placeholder="업체명 입력"
+          />
+        </div>
+      )}
+
+      <div className="mt-4 space-y-2">
+        <label className="text-xs font-medium text-slate-600">작업내용</label>
+        <Input
+          value={imagePopup.note}
+          onChange={(e) =>
+            setImagePopup((prev) => ({ ...prev, note: e.target.value }))
+          }
+          placeholder="작업내용 입력"
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button variant="outline" className="w-full lg:w-auto" onClick={cancelMarkerPopup}>
+          취소
+        </Button>
+        <Button className="w-full lg:w-auto" onClick={submitMarkerPopup}>
+          입력
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+        <Card>
+          <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+  <CardTitle className="flex items-center gap-2">
+    <MessageSquare className="h-5 w-5" />DAB&apos;s회의
+  </CardTitle>
+
+  <div className="flex flex-wrap gap-2">
+    <Button
+      variant="outline"
+      onClick={() => setCompanyListPopupOpen(true)}
+    >
+      업체명 목록
+    </Button>
+
+    <Button
+      variant="outline"
+      onClick={() =>
+        handleDownloadCaptureImage(
+          dabsCaptureRef,
+          `${activeDabsTab.label}-${selectedDate}`
+        )
+      }
+    >
+      이미지 다운로드
+    </Button>
+
+    <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+      메뉴로 돌아가기
+    </Button>
+  </div>
+</CardHeader>
+          <CardContent className="space-y-5">
+            <div
+  className={cn(
+    "sticky top-0 z-30 -mx-1 flex gap-2 overflow-x-auto rounded-2xl border border-black bg-white/95 p-2 shadow-sm backdrop-blur [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:static lg:mx-0 lg:flex-wrap lg:overflow-visible lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none",
+    imagePopup.open && "hidden lg:flex"
+  )}
+>
+  {dabsTabs.map((tab, index) => (
+    <button
+      key={tab.key}
+      onClick={() => setDabsTabIndex(index)}
+      className={cn(
+        "shrink-0 whitespace-nowrap rounded-2xl px-3 py-2 text-sm font-medium transition lg:px-4",
+        dabsTabIndex === index
+          ? "bg-slate-900 text-white"
+          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+      )}
+    >
+      {tab.label}
+    </button>
+  ))}
+</div>
+            <Card className="border-slate-200 shadow-none">
+              <CardHeader className="flex flex-row items-center justify-between gap-2">
+                <CardTitle className="text-base">{activeDabsTab.label}</CardTitle>
+                {DABS_MANUAL_GIF[activeDabsKey] && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 text-xs"
+                    onClick={() =>
+                      setManualPopup({
+                        src: DABS_MANUAL_GIF[activeDabsKey],
+                        label: activeDabsTab.label,
+                      })
+                    }
+                  >
+                    <HelpCircle className="h-3.5 w-3.5" />
+                    사용 매뉴얼
+                  </Button>
+                )}
+              </CardHeader>
+<CardContent className="space-y-3 p-2 md:p-6">
+  <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+  선택 날짜: {formatMonthDay(selectedDate)}
+</div>
+  {activeDabsKey === "highRisk" && (
+    <div className="text-xs font-semibold text-red-600">고위험작업만 입력! 일반작업 입력 금지</div>
+  )}
+  {activeDabsKey === "buildingDetail" && (
+    <div className="text-xs font-semibold text-red-600">상하 동시작업 위험이 있는 작업만 입력!</div>
+  )}
+  {activeDabsKey === "equipmentFlow" && (
+    <div className="text-xs font-semibold text-red-600">믹서트럭/덤프트럭/수목반입만 입력!</div>
+  )}
+  {(activeDabsKey === "archWork" || activeDabsKey === "mepWork" || activeDabsKey === "fireWork" || isSoloWorkerTab) && (
+    <div className="text-xs font-semibold text-red-600">작업장소 정확히 입력!</div>
+  )}
+  {activeDabsKey === "buildingDetail" && (
+    !selectedBuildingDetail ? (
+      <div className="flex flex-col gap-2">
+        {BUILDING_DETAIL_LIST.map((building) => {
+          const buildingDetailBundle = getOverlayBundle(`buildingDetail::${building}`);
+          const hasBuildingDetailData =
+            (buildingDetailBundle.markers && buildingDetailBundle.markers.length > 0) ||
+            (buildingDetailBundle.arrows && buildingDetailBundle.arrows.length > 0);
+          return (
+            <Button
+              key={building}
+              type="button"
+              variant="outline"
+              className={cn(
+                "w-full justify-between",
+                hasBuildingDetailData && "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+              )}
+              onClick={() => setSelectedBuildingDetail(building)}
+            >
+              <span>{building}</span>
+              {hasBuildingDetailData && (
+                <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  입력됨
+                </span>
+              )}
+            </Button>
+          );
+        })}
+      </div>
+    ) : (
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setSelectedBuildingDetail("");
+            setArrowPoints([]);
+            setArrowPreviewPoint(null);
+          }}
+        >
+          ← 목록으로
+        </Button>
+        <div className="text-sm font-semibold text-slate-700">{selectedBuildingDetail} 상세도</div>
+      </div>
+    )
+  )}
+  {isImageTab && <>{activeDabsKey === "highRisk" && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">사진 업로드</label><Input type="file" accept="image/*" onChange={handleHighRiskImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 날짜와 관계없이 고위험작업과 장비동선 탭에 공통으로 표시됩니다.</div></div>}{activeDabsKey === "buildingDetail" && selectedBuildingDetail && canUploadDabsImage && <div className="space-y-2"><label className="text-xs font-medium text-slate-600">{selectedBuildingDetail} 사진 업로드</label><Input type="file" accept="image/*" onChange={handleBuildingDetailImageUpload} className="h-auto py-2" /><div className="text-xs text-slate-500">업로드한 사진은 {selectedBuildingDetail}의 동별 상세도에만 표시됩니다.</div></div>}{activeDabsKey === "equipmentFlow" && (
+  <div className="text-xs text-slate-500">
+    클릭할 때마다 경로에 점이 추가되며 이어서 화살표를 그릴 수 있습니다. 다 그렸으면 아래 &quot;완료&quot; 버튼을 눌러주세요. 이후 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요. 수정 시에도 화살표를 다시 지정한 뒤 상자 위치를 선택합니다.
+  </div>
+)}{activeDabsKey === "buildingDetail" && selectedBuildingDetail && (
+  <div className="text-xs text-slate-500">
+    클릭할 때마다 경로에 점이 추가되며 이어서 라인을 그릴 수 있습니다. 다 그렸으면 아래 &quot;완료&quot; 버튼을 눌러주세요. 이후 시간 선택 및 작업내용 입력 후 상자를 표시할 위치를 한 번 더 클릭하세요. 수정 시에도 라인을 다시 지정한 뒤 상자 위치를 선택합니다.
+  </div>
+)}{activeDabsKey === "highRisk" && <div className="text-xs text-slate-500">사진을 클릭하면 동, 업체명, 작업내용이 사진 위에 표시됩니다.</div>}
+
+{activeDabsKey === "equipmentFlow" && (
+  <div className="flex flex-wrap items-center gap-2">
+    <Button
+      type="button"
+      variant={personPlacementMode === "guide" ? "default" : "outline"}
+      size="sm"
+      disabled={!canEditDabs}
+      onClick={() =>
+        setPersonPlacementMode((prev) => (prev === "guide" ? null : "guide"))
+      }
+    >
+      유도자
+    </Button>
+
+    <Button
+      type="button"
+      variant={personPlacementMode === "signal" ? "default" : "outline"}
+      size="sm"
+      disabled={!canEditDabs}
+      onClick={() =>
+        setPersonPlacementMode((prev) => (prev === "signal" ? null : "signal"))
+      }
+    >
+      신호수
+    </Button>
+
+    {personPlacementMode && (
+      <span className="text-xs text-slate-500">
+        {personPlacementMode === "guide" ? "유도자" : "신호수"} 배치 모드입니다. 표시할 위치를 클릭하세요.
+      </span>
+    )}
+
+    {arrowPoints.length > 0 && (
+      <>
+        <Button
+          type="button"
+          size="sm"
+          disabled={arrowPoints.length < 2}
+          onClick={completeEquipmentArrow}
+        >
+          완료
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleUndoLastEquipmentArrowPoint}
+        >
+          마지막 점 취소
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleCancelEquipmentArrowDraw}
+        >
+          다시 그리기
+        </Button>
+
+        <span className="text-xs text-slate-500">
+          화살표 그리는 중 (점 {arrowPoints.length}개)
+        </span>
+      </>
+    )}
+  </div>
+)}
+
+{activeDabsKey === "buildingDetail" && selectedBuildingDetail && (
+  <div className="flex flex-wrap items-center gap-2">
+    {arrowPoints.length > 0 && (
+      <>
+        <Button
+          type="button"
+          size="sm"
+          disabled={arrowPoints.length < 2}
+          onClick={completeEquipmentArrow}
+        >
+          완료
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleUndoLastEquipmentArrowPoint}
+        >
+          마지막 점 취소
+        </Button>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleCancelEquipmentArrowDraw}
+        >
+          다시 그리기
+        </Button>
+
+        <span className="text-xs text-slate-500">
+          라인 그리는 중 (점 {arrowPoints.length}개)
+        </span>
+      </>
+    )}
+  </div>
+)}
+
+{activeDabsKey === "highRisk" && (
+  <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[140px_160px_1fr_1fr_auto] md:items-end">
+    <div className="space-y-2">
+      <label className="text-xs font-medium text-slate-600 md:hidden">동 선택</label>
+      <select
+        value={highRiskTableInput.building}
+        onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, building: e.target.value })}
+        className="h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+      >
+        <option value="">동 선택</option>
+        {HIGH_RISK_BUILDINGS.filter((building) => building !== ALL_BUILDING_LABEL).map((building) => (
+          <option key={building} value={building}>
+            {building}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    {(currentUser?.role === "master" || currentUser?.role === "admin") ? (
+      <Input
+        value={highRiskTableInput.company}
+        onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, company: e.target.value })}
+        placeholder="업체명 입력"
+      />
+    ) : (
+      <Input value={currentUser?.companyName || ""} disabled placeholder="업체명" />
+    )}
+
+    <Input
+      value={highRiskTableInput.content}
+      onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, content: e.target.value })}
+      placeholder="작업내용 입력"
+    />
+
+    <Input
+      value={highRiskTableInput.safety}
+      onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, safety: e.target.value })}
+      placeholder="안전대책 입력"
+    />
+
+    <Button onClick={handleAddHighRiskTableItem} disabled={!canEditDabs} className="w-full md:w-auto">
+      추가
+    </Button>
+  </div>
+)}
+
+<div ref={dabsCaptureRef} className="-mx-2 bg-white md:mx-0">
+  {activeDabsKey === "highRisk" ? (
+    <div className="flex flex-col gap-3">
+      <div className="w-full">
+        {renderOverlayImage(dabsImages?.highRisk, isImageTab)}
+      </div>
+
+      <div className="w-full">
+        <div className="overflow-x-auto rounded-xl border border-black bg-white md:rounded-2xl">
+          <table className="w-full table-fixed border-collapse text-[22px] md:text-2xl">
+            <colgroup>
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "40%" }} />
+              <col style={{ width: "40%" }} />
+            </colgroup>
+
+            <thead>
+              <tr className="bg-slate-100 text-slate-700">
+                <th className="border border-black px-1 py-1 text-center">위치</th>
+                <th className="border border-black px-1 py-1 text-center">업체명</th>
+                <th className="border border-black px-1 py-1 text-center">작업내용</th>
+                <th className="border border-black px-1 py-1 text-center">안전대책</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {highRiskTableRows.map((item) => (
+                <tr key={item.id}>
+                  <td className="border border-black px-1 py-1 align-top break-all">{item.building}</td>
+                  <td className="border border-black px-1 py-1 align-top break-all">{item.company}</td>
+                  <td className="border border-black px-1 py-1 align-top whitespace-pre-wrap break-all">
+                    {item.content}
+                  </td>
+                  <td className="border border-black px-1 py-1 align-top whitespace-pre-wrap break-all">
+                    <div className="flex items-start justify-between gap-1">
+                      <span className="block w-full whitespace-pre-wrap break-all">{item.safety}</span>
+
+                      {!isCapturingImage && canManageHighRiskTableItem(item) && (
+                        <div className="flex shrink-0 flex-col items-end gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditHighRiskTablePopup({
+                                open: true,
+                                itemId: item.id,
+                                oldBuilding: item.building,
+                                building: item.building,
+                                company: item.company || "",
+                                content: item.content || "",
+                                safety: item.safety || "",
+                              })
+                            }
+                            className="rounded-full border border-slate-300 px-1 text-[10px] leading-4 text-slate-500 hover:bg-slate-100"
+                            title="수정"
+                          >
+                            수정
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteHighRiskTableItem(item.id, item.building)}
+                            className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                            title="삭제"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+
+              {Array.from({ length: highRiskTableEmptyRowCount }).map((_, index) => (
+                <tr key={`highrisk-empty-${index}`}>
+                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  ) : activeDabsKey === "buildingDetail" ? (
+    <div className="mx-auto w-1/2">
+      {renderOverlayImage(
+        buildingDetailImages?.[selectedBuildingDetail],
+        isImageTab,
+        `buildingDetail::${selectedBuildingDetail}`
+      )}
+    </div>
+  ) : (
+    renderOverlayImage(dabsImages?.equipmentFlow, isImageTab)
+  )}
+</div></>}
+                {isSectionTab && <>
+  <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
+    <div className="space-y-2">
+      <label className="text-xs font-medium text-slate-600">이전 날짜 선택</label>
+      <Input
+        type="date"
+        value={loadSourceDate}
+        onChange={(e) => setLoadSourceDate(e.target.value)}
+        className="h-9"
+      />
+    </div>
+    <Button
+      variant="outline"
+      onClick={() =>
+  handleLoadPreviousCompanyData(activeDabsKey)
+}
+    >
+      내 업체 작업 불러오기
+    </Button>
+  </div>
+
+  <div className="grid gap-3 md:grid-cols-[180px_200px_1fr_auto]">
+  <select
+    value={sectionInput.building}
+    onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })}
+    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+  >
+    <option value="">동 선택</option>
+    {activeColumns.map((column) => (
+      <option key={column} value={column}>
+        {column}
+      </option>
+    ))}
+  </select>
+
+  {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+    <Input
+      value={sectionInput.company}
+      onChange={(e) => setSectionInput({ ...sectionInput, company: e.target.value })}
+      placeholder="업체명 입력"
+    />
+  )}
+
+  <div className="space-y-2">
+    <Input
+      value={sectionInput.content}
+      onSelect={(e) =>
+        setSectionTextSelection({
+          start: e.currentTarget.selectionStart || 0,
+          end: e.currentTarget.selectionEnd || 0,
+        })
+      }
+      onChange={(e) =>
+        setSectionInput({
+          ...sectionInput,
+          content: e.target.value,
+          contentRedRanges: normalizeTextColorRanges(
+            sectionInput.contentRedRanges,
+            e.target.value.length
+          ),
+        })
+      }
+      placeholder="작업내용 입력"
+    />
+
+    {activeDabsKey !== "fireWork" && (
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() =>
+            setSectionInput((prev) => ({
+              ...prev,
+              contentRedRanges: addRedTextRange(
+                prev.contentRedRanges,
+                sectionTextSelection.start,
+                sectionTextSelection.end,
+                prev.content.length
+              ),
+            }))
+          }
+        >
+          선택 빨강
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() =>
+            setSectionInput((prev) => ({
+              ...prev,
+              contentRedRanges: removeRedTextRange(
+                prev.contentRedRanges,
+                sectionTextSelection.start,
+                sectionTextSelection.end
+              ),
+            }))
+          }
+        >
+          선택 해제
+        </Button>
+      </div>
+    )}
+  </div>
+
+  <Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="w-full md:w-auto">
+    추가
+  </Button>
+</div>
+
+<div
+  ref={dabsCaptureRef}
+  className={cn(
+    "bg-white",
+  )}
+>
+  {renderSectionMobileCards(activeColumns, sectionRows)}
+
+  <div
+    className={cn(
+  "hidden rounded-2xl border border-black bg-white lg:block",
+  !isCapturingImage && "overflow-x-auto"
+)}
+    
+  >
+    <table
+      className={TABLE_BASE_CLASS}
+      
+    >
+      <colgroup>
+  <col style={{ width: "13%" }} />
+  <col style={{ width: "27%" }} />
+  <col style={{ width: "60%" }} />
+</colgroup>
+
+      <thead>
+        <tr className="bg-slate-100 text-slate-700">
+          <th className="border border-black px-3 py-2 text-left">동</th>
+          <th className="border border-black px-3 py-2 text-left">업체명</th>
+          <th className="border border-black px-3 py-2 text-left">작업내용</th>
+        </tr>
+      </thead>
+
+      <tbody>
+  {activeColumns.flatMap((col) => {
+    const list = sectionRows[col] || [];
+
+    if (list.length === 0) {
+      return [
+        <tr key={col}>
+          <td className="border border-black px-3 py-2 font-medium text-slate-700">
+            {col}
+          </td>
+
+          <td className="border border-black px-3 py-2 text-slate-300">
+            -
+          </td>
+
+          <td className="border border-black px-3 py-2 text-slate-300">
+            -
+          </td>
+        </tr>,
+      ];
+    }
+
+    return list.map((item, index) => (
+      <tr key={`${col}-${item.id}`}>
+        {index === 0 && (
+          <td
+            rowSpan={list.length}
+            className="border border-black px-3 py-2 align-top font-medium text-slate-700"
+          >
+            {col}
+          </td>
+        )}
+
+        <td
+          className={cn(
+            "border border-black px-3 py-2 align-top",
+            index > 0 && "border-t border-dashed border-black"
+          )}
+        >
+          {item.company}
+        </td>
+
+        <td
+          className={cn(
+            "border border-black px-3 py-2 align-top",
+            index > 0 && "border-t border-dashed border-black"
+          )}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span className="block w-full whitespace-pre-wrap break-all leading-relaxed">
+              {renderTextWithRedRanges(item.content, item.contentRedRanges)}
+            </span>
+
+            {!isCapturingImage && (
+              <div className="flex shrink-0 items-center gap-1">
+                {canAdminEditDabsItem && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditSectionPopup({
+                        open: true,
+                        itemId: item.id,
+                        oldBuilding: col,
+                        building: col,
+                        company: item.company || "",
+                        content: item.content || "",
+                        contentRedRanges: item.contentRedRanges || [],
+                      })
+                    }
+                    className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                    title="수정"
+                  >
+                    수정
+                  </button>
+                )}
+
+                {canDeleteOwnItem(item) && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteDabsItem(item.id, col)}
+                    className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                    title="삭제"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </td>
+      </tr>
+    ));
+  })}
+</tbody>
+    </table>
+  </div>
+</div></>}
+                {isMaterialTab && <><div className="space-y-3">
+  <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[120px_100px_160px_1fr_1fr_70px_1fr_1fr_1fr]">
+    <select
+      value={materialsInput.gate}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })}
+      className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+    >
+      <option value="1">1게이트</option>
+      <option value="7">7게이트</option>
+    </select>
+
+    <select
+      value={materialsInput.time}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })}
+      className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+    >
+      {MATERIAL_TIMES.map((time) => (
+        <option key={time} value={time}>{time}시</option>
+      ))}
+    </select>
+
+    {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+      <Input
+        value={materialsInput.company}
+        onChange={(e) => setMaterialsInput({ ...materialsInput, company: e.target.value })}
+        placeholder="업체명"
+      />
+    )}
+
+    <Input
+      value={materialsInput.material}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })}
+      placeholder="자재명"
+    />
+
+    <Input
+      value={materialsInput.vehicle}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })}
+      placeholder="차종"
+    />
+
+    <Input
+      value={materialsInput.vehicleCount}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, vehicleCount: e.target.value })}
+      placeholder="대수"
+    />
+
+    <Input
+      value={materialsInput.location}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })}
+      placeholder="하역장소"
+    />
+
+    <Input
+      value={materialsInput.manager}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, manager: e.target.value })}
+      placeholder="담당자"
+    />
+
+    <Input
+      value={materialsInput.phone}
+      onChange={(e) => setMaterialsInput({ ...materialsInput, phone: e.target.value })}
+      placeholder="연락처"
+    />
+  </div>
+
+  <div className="flex flex-wrap items-center gap-4">
+    <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={materialsInput.workerOnCargo}
+        onChange={(e) =>
+          setMaterialsInput({
+            ...materialsInput,
+            workerOnCargo: e.target.checked,
+            cargoHeight1m: e.target.checked ? materialsInput.cargoHeight1m : false,
+          })
+        }
+        className="h-4 w-4"
+      />
+      화물칸에 근로자가 올라감
+    </label>
+
+    <label className={cn("flex items-center gap-2 text-sm select-none", materialsInput.workerOnCargo ? "text-slate-700 cursor-pointer" : "text-slate-300 cursor-not-allowed")}>
+      <input
+        type="checkbox"
+        checked={materialsInput.cargoHeight1m}
+        disabled={!materialsInput.workerOnCargo}
+        onChange={(e) =>
+          setMaterialsInput({ ...materialsInput, cargoHeight1m: e.target.checked })
+        }
+        className="h-4 w-4"
+      />
+      화물칸 높이 1m 이상
+    </label>
+
+    <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="ml-auto">
+      추가
+    </Button>
+  </div>
+</div><div ref={dabsCaptureRef} className="bg-white">
+  {renderMaterialsMobileCards(materialList)}
+  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block">
+    <table className={TABLE_BASE_CLASS}>
+      <colgroup>
+        <col style={{ width: "6%" }} />
+        <col style={{ width: "7%" }} />
+        <col style={{ width: "11%" }} />
+        <col style={{ width: "9%" }} />
+        <col style={{ width: "11%" }} />
+        <col style={{ width: "6%" }} />
+        <col style={{ width: "12%" }} />
+        <col style={{ width: "10%" }} />
+        <col style={{ width: "28%" }} />
+      </colgroup>
+      <thead>
+        <tr className="bg-slate-100 text-slate-700">
+          <th className="border border-black px-2 py-2 text-left">시간</th>
+          <th className="border border-black px-2 py-2 text-left">게이트</th>
+          <th className="border border-black px-2 py-2 text-left">업체명</th>
+          <th className="border border-black px-2 py-2 text-left">자재명</th>
+          <th className="border border-black px-2 py-2 text-left">차종</th>
+          <th className="border border-black px-2 py-2 text-left">대수</th>
+          <th className="border border-black px-2 py-2 text-left">하역장소</th>
+          <th className="border border-black px-2 py-2 text-left">담당자</th>
+          <th className="border border-black px-2 py-2 text-left">연락처</th>
+        </tr>
+      </thead>
+      <tbody>
+        {MATERIAL_TIMES.map((time) => {
+          const row = materialList.filter((item) => item.time === time);
+          const gate1 = row.filter((item) => item.gate === "1");
+          const gate7 = row.filter((item) => item.gate === "7");
+
+          const isYellow = (item: DabsRowItem) => item.workerOnCargo && item.cargoHeight1m;
+
+          const actionBtns = (item: DabsRowItem) => !isCapturingImage ? (
+            <div className="flex shrink-0 gap-1">
+              {canAdminEditDabsItem && (
+                <button type="button" onClick={() => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", vehicleCount: item.vehicleCount || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "", workerOnCargo: item.workerOnCargo || false, cargoHeight1m: item.cargoHeight1m || false })} className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100">수정</button>
+              )}
+              {canDeleteOwnItem(item) && (
+                <button type="button" onClick={() => handleDeleteDabsItem(item.id)} className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"><X className="h-3 w-3" /></button>
+              )}
+            </div>
+          ) : null;
+
+          // 시간별로 표시할 총 행 수 계산 (각 게이트 최소 1행씩)
+          const gate1Rows = Math.max(gate1.length, 1);
+          const gate7Rows = Math.max(gate7.length, 1);
+          const totalRows = gate1Rows + gate7Rows;
+
+          const renderDataRow = (item: DabsRowItem) => (
+            <>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.company}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.material}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicle}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicleCount}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.location}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.manager || ""}</td>
+              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>
+                <div className="flex items-start justify-between gap-1">
+                  <span>{item.phone || ""}</span>
+                  {actionBtns(item)}
+                </div>
+              </td>
+            </>
+          );
+
+          const emptyDataCells = (
+            <>
+              <td colSpan={7} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>
+            </>
+          );
+
+          // 각 게이트의 행들을 생성
+          const gate1RowEls: React.ReactNode[] = gate1.length === 0
+            ? [<React.Fragment key="g1-empty">{emptyDataCells}</React.Fragment>]
+            : gate1.map((item) => <React.Fragment key={item.id}>{renderDataRow(item)}</React.Fragment>);
+
+          const gate7RowEls: React.ReactNode[] = gate7.length === 0
+            ? [<React.Fragment key="g7-empty">{emptyDataCells}</React.Fragment>]
+            : gate7.map((item) => <React.Fragment key={item.id}>{renderDataRow(item)}</React.Fragment>);
+
+          const rows: React.ReactNode[] = [];
+
+          // 1게이트 행들
+          gate1RowEls.forEach((cells, idx) => {
+            const item = gate1[idx];
+            rows.push(
+              <tr key={`${time}-g1-${idx}`} className={item && isYellow(item) ? "bg-yellow-100" : ""}>
+                {idx === 0 && (
+                  <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">
+                    {time}시
+                  </td>
+                )}
+                {idx === 0 && (
+                  <td rowSpan={gate1Rows} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">
+                    1게이트
+                  </td>
+                )}
+                {cells}
+              </tr>
+            );
+          });
+
+          // 7게이트 행들
+          gate7RowEls.forEach((cells, idx) => {
+            const item = gate7[idx];
+            rows.push(
+              <tr key={`${time}-g7-${idx}`} className={item && isYellow(item) ? "bg-yellow-100" : ""}>
+                {idx === 0 && (
+                  <td rowSpan={gate7Rows} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">
+                    7게이트
+                  </td>
+                )}
+                {cells}
+              </tr>
+            );
+          });
+
+          return <React.Fragment key={time}>{rows}</React.Fragment>;
+        })}
+      </tbody>
+    </table>
+  </div>
+</div></>}
+                {isSoloWorkerTab && (
+                  <>
+                    <div className="grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-[1fr_auto] md:items-end">
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-slate-600">
+                          이전 날짜 선택
+                        </label>
+                        <Input
+                          type="date"
+                          value={loadSourceDate}
+                          onChange={(e) => setLoadSourceDate(e.target.value)}
+                          className="h-9"
+                        />
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        onClick={() => handleLoadPreviousCompanyData("soloWorker")}
+                      >
+                        내 업체 단독작업자 불러오기
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
+                      <select
+                        value={soloWorkerInput.building}
+                        onChange={(e) =>
+                          setSoloWorkerInput({
+                            ...soloWorkerInput,
+                            building: e.target.value,
+                          })
+                        }
+                        className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+                      >
+                        <option value="">동 선택</option>
+                        {SOLO_WORKER_COLUMNS.map((column) => (
+                          <option key={column} value={column}>
+                            {column}
+                          </option>
+                        ))}
+                      </select>
+
+                      {(currentUser?.role === "master" ||
+                        currentUser?.role === "admin") && (
+                        <Input
+                          value={soloWorkerInput.company}
+                          onChange={(e) =>
+                            setSoloWorkerInput({
+                              ...soloWorkerInput,
+                              company: e.target.value,
+                            })
+                          }
+                          placeholder="업체명 입력"
+                        />
+                      )}
+
+                      <Input
+                        value={soloWorkerInput.name}
+                        onChange={(e) =>
+                          setSoloWorkerInput({
+                            ...soloWorkerInput,
+                            name: e.target.value,
+                          })
+                        }
+                        placeholder="성명 입력"
+                      />
+
+                      <Input
+                        value={soloWorkerInput.content}
+                        onChange={(e) =>
+                          setSoloWorkerInput({
+                            ...soloWorkerInput,
+                            content: e.target.value,
+                          })
+                        }
+                        placeholder="작업내용 입력"
+                      />
+
+                      <select
+                        value={soloWorkerInput.elderly}
+                        onChange={(e) =>
+                          setSoloWorkerInput({
+                            ...soloWorkerInput,
+                            elderly: e.target.value,
+                          })
+                        }
+                        className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+                      >
+                        <option value="x">고령자 x</option>
+                        <option value="o">고령자 o</option>
+                      </select>
+
+                      <Button onClick={handleAddSoloWorker} disabled={!canEditDabs}>
+                        추가
+                      </Button>
+                    </div>
+
+                    <Input
+                      value={soloCompanyFilter}
+                      onChange={(e) => setSoloCompanyFilter(e.target.value)}
+                      placeholder="업체명 검색"
+                      className="max-w-sm"
+                    />
+
+                    <div ref={dabsCaptureRef} className="bg-white">
+                      {renderSoloWorkerMobileCards()}
+                      {renderSoloWorkerDesktopTable()}
+                    </div>
+                  </>
+                )}
+                {!isImageTab && !isSectionTab && !isMaterialTab && !isSoloWorkerTab && <><TextArea value={dabsDraft} onChange={(e) => setDabsDraft(e.target.value)} placeholder="회의 내용, 작업사항, 확인사항 등을 입력하세요." /><div className="flex justify-end"><Button onClick={handleSaveDabsText} disabled={!canEditDabs} className="w-full lg:w-auto">저장</Button></div></>}
+                {dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
+              </CardContent>
+            </Card>
+            <Card className="border-slate-200 shadow-none"><CardHeader><CardTitle className="text-base">하단 달력</CardTitle></CardHeader><CardContent><div className="grid grid-cols-7 gap-1 text-xs">{weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}{monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}</div></CardContent></Card>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+const renderPortfolioActionButtons = (
+  item: DabsRowItem,
+  onEdit: () => void,
+  onDelete: () => void
+) => {
+  if (isExportingPortfolioImages) return null;
+
+  return (
+    <div className="flex shrink-0 gap-1">
+      {canAdminEditDabsItem && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-600 shadow-sm"
+        >
+          수정
+        </button>
+      )}
+
+      {canDeleteOwnItem(item) && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-red-600 shadow-sm"
+        >
+          삭제
+        </button>
+      )}
+    </div>
+  );
+};
+
+const renderPortfolioInputPanel = () => {
+  if (isExportingPortfolioImages) return null;
+
+  const currentSlide = portfolioSlides[portfolioSlideIndex];
+  const isSoloTab = currentSlide?.type === "soloWorker";
+  const inputKey = isSoloTab ? "soloWorker" : currentSlide?.tabKey || activeDabsKey;
+
+  const isSectionTab = !isSoloTab && isSectionWorkTabKey(inputKey);
+  const isMaterialTab =
+    !isSoloTab && (inputKey === "materialsAfter0" || inputKey === "materialsAfter1");
+
+  return (
+    <div className="shrink-0 border-b border-black bg-slate-50 p-2 text-slate-900">
+      {isSectionTab && (
+        <div className="grid gap-2 md:grid-cols-[130px_160px_1fr_auto]">
+          <select
+            value={sectionInput.building}
+            onChange={(e) =>
+              setSectionInput({ ...sectionInput, building: e.target.value })
+            }
+            className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm"
+          >
+            <option value="">동 선택</option>
+            {getDabsColumnsByTabKey(inputKey).map((column) => (
+              <option key={column} value={column}>
+                {column}
+              </option>
+            ))}
+          </select>
+
+          {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+            <Input
+              value={sectionInput.company}
+              onChange={(e) =>
+                setSectionInput({ ...sectionInput, company: e.target.value })
+              }
+              placeholder="업체명"
+              className="h-9"
+            />
+          )}
+
+          <Input
+            value={sectionInput.content}
+            onChange={(e) =>
+              setSectionInput({
+                ...sectionInput,
+                content: e.target.value,
+                contentRedRanges: normalizeTextColorRanges(
+                  sectionInput.contentRedRanges,
+                  e.target.value.length
+                ),
+              })
+            }
+            placeholder="작업내용"
+            className="h-9"
+          />
+
+          <Button onClick={handleAddSectionWork} disabled={!canEditDabs} className="h-9">
+            추가
+          </Button>
+        </div>
+      )}
+
+      {isMaterialTab && (
+        <div className="space-y-2">
+          <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[100px_100px_140px_1fr_1fr_70px_1fr_1fr_1fr]">
+            <select value={materialsInput.gate} onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })} className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm">
+              <option value="1">1게이트</option>
+              <option value="7">7게이트</option>
+            </select>
+            <select value={materialsInput.time} onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })} className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm">
+              {MATERIAL_TIMES.map((time) => (<option key={time} value={time}>{time}시</option>))}
+            </select>
+            {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+              <Input value={materialsInput.company} onChange={(e) => setMaterialsInput({ ...materialsInput, company: e.target.value })} placeholder="업체명" className="h-9" />
+            )}
+            <Input value={materialsInput.material} onChange={(e) => setMaterialsInput({ ...materialsInput, material: e.target.value })} placeholder="자재명" className="h-9" />
+            <Input value={materialsInput.vehicle} onChange={(e) => setMaterialsInput({ ...materialsInput, vehicle: e.target.value })} placeholder="차종" className="h-9" />
+            <Input value={materialsInput.vehicleCount} onChange={(e) => setMaterialsInput({ ...materialsInput, vehicleCount: e.target.value })} placeholder="대수" className="h-9" />
+            <Input value={materialsInput.location} onChange={(e) => setMaterialsInput({ ...materialsInput, location: e.target.value })} placeholder="하역장소" className="h-9" />
+            <Input value={materialsInput.manager} onChange={(e) => setMaterialsInput({ ...materialsInput, manager: e.target.value })} placeholder="담당자" className="h-9" />
+            <Input value={materialsInput.phone} onChange={(e) => setMaterialsInput({ ...materialsInput, phone: e.target.value })} placeholder="연락처" className="h-9" />
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer select-none">
+              <input type="checkbox" checked={materialsInput.workerOnCargo} onChange={(e) => setMaterialsInput({ ...materialsInput, workerOnCargo: e.target.checked, cargoHeight1m: e.target.checked ? materialsInput.cargoHeight1m : false })} className="h-3.5 w-3.5" />
+              화물칸에 근로자가 올라감
+            </label>
+            <label className={cn("flex items-center gap-2 text-xs select-none", materialsInput.workerOnCargo ? "text-slate-700 cursor-pointer" : "text-slate-300 cursor-not-allowed")}>
+              <input type="checkbox" checked={materialsInput.cargoHeight1m} disabled={!materialsInput.workerOnCargo} onChange={(e) => setMaterialsInput({ ...materialsInput, cargoHeight1m: e.target.checked })} className="h-3.5 w-3.5" />
+              화물칸 높이 1m 이상
+            </label>
+            <Button onClick={handleAddMaterial} disabled={!canEditDabs} className="h-9 ml-auto">추가</Button>
+          </div>
+        </div>
+      )}
+
+      {isSoloTab && (
+        <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[110px_150px_130px_1fr_110px_auto]">
+          <select
+            value={soloWorkerInput.building}
+            onChange={(e) =>
+              setSoloWorkerInput({ ...soloWorkerInput, building: e.target.value })
+            }
+            className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm"
+          >
+            <option value="">동 선택</option>
+            {SOLO_WORKER_COLUMNS.map((column) => (
+              <option key={column} value={column}>
+                {column}
+              </option>
+            ))}
+          </select>
+
+          {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+            <Input
+              value={soloWorkerInput.company}
+              onChange={(e) =>
+                setSoloWorkerInput({ ...soloWorkerInput, company: e.target.value })
+              }
+              placeholder="업체명"
+              className="h-9"
+            />
+          )}
+
+          <Input
+            value={soloWorkerInput.name}
+            onChange={(e) =>
+              setSoloWorkerInput({ ...soloWorkerInput, name: e.target.value })
+            }
+            placeholder="성명"
+            className="h-9"
+          />
+
+          <Input
+            value={soloWorkerInput.content}
+            onChange={(e) =>
+              setSoloWorkerInput({ ...soloWorkerInput, content: e.target.value })
+            }
+            placeholder="작업 내용"
+            className="h-9"
+          />
+
+          <select
+            value={soloWorkerInput.elderly}
+            onChange={(e) =>
+              setSoloWorkerInput({ ...soloWorkerInput, elderly: e.target.value })
+            }
+            className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm"
+          >
+            <option value="o">고령자 o</option>
+            <option value="x">고령자 x</option>
+          </select>
+
+          <Button onClick={handleAddSoloWorker} disabled={!canEditDabs} className="h-9">
+            추가
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const renderPortfolioSectionTable = (tabKey: string, columns: string[], title: string) => {
+
+  const rows = getMergedSectionRows(tabKey);
+
+  return (
+    <div className="flex h-full w-full items-start justify-center overflow-auto p-1">
+  <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[26px] xl:text-[27px]">
+  <caption className="caption-top pb-1 text-left font-bold text-slate-900">
+    {title}
+  </caption>
+        <colgroup>
+  <col style={{ width: "13%" }} />
+  <col style={{ width: "27%" }} />
+  <col style={{ width: "60%" }} />
+</colgroup>
+
+        <thead>
+          <tr className="bg-slate-100 text-slate-800">
+            <th className="border border-black px-3 py-2 text-left">동</th>
+            <th className="border border-black px-3 py-2 text-left">업체명</th>
+            <th className="border border-black px-3 py-2 text-left">작업내용</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {columns.flatMap((col) => {
+            const list = rows[col] || [];
+
+            if (list.length === 0) {
+              return [
+                <tr key={col}>
+                  <td className="border border-black px-3 py-2 font-semibold text-slate-700">
+                    {col}
+                  </td>
+                  <td className="border border-black px-3 py-2 text-slate-300">-</td>
+                  <td className="border border-black px-3 py-2 text-slate-300">-</td>
+                </tr>,
+              ];
+            }
+
+            return list.map((item, index) => (
+              <tr key={`${col}-${item.id}`}>
+                {index === 0 && (
+                  <td
+                    rowSpan={list.length}
+                    className="border border-black px-3 py-2 align-top font-semibold text-slate-700"
+                  >
+                    {col}
+                  </td>
+                )}
+
+                <td
+                  className={cn(
+                    "border border-black px-3 py-2 align-top font-semibold",
+                    index > 0 && "border-t border-dashed border-black"
+                  )}
+                >
+                  {item.company}
+                </td>
+
+                <td
+                  className={cn(
+                    "border border-black px-3 py-2 align-top",
+                    index > 0 && "border-t border-dashed border-black"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+  <span className="whitespace-pre-wrap break-all leading-relaxed">
+    {renderTextWithRedRanges(item.content, item.contentRedRanges)}
+  </span>
+
+  {renderPortfolioActionButtons(
+    item,
+    () =>
+      setEditSectionPopup({
+        open: true,
+        itemId: item.id,
+        oldBuilding: col,
+        building: col,
+        company: item.company || "",
+        content: item.content || "",
+        contentRedRanges: item.contentRedRanges || [],
+      }),
+    () => handleDeleteDabsItem(item.id, col)
+  )}
+</div>
+                </td>
+              </tr>
+            ));
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
+  const tabValue = dabsData[selectedDate]?.[tabKey];
+  const list =
+    typeof tabValue === "object" && tabValue && "list" in tabValue
+      ? tabValue.list || []
+      : [];
+
+  const isYellow = (item: DabsRowItem) => item.workerOnCargo && item.cargoHeight1m;
+
+  return (
+    <div className="flex h-full w-full items-start justify-center overflow-auto p-4">
+      <table className="w-[96vw] table-fixed border-collapse bg-white text-[26px] xl:text-[27px]">
+        <caption className="caption-top pb-1 text-left font-bold text-slate-900">
+          {title}
+        </caption>
+        <colgroup>
+          <col style={{ width: "5%" }} />
+          <col style={{ width: "6%" }} />
+          <col style={{ width: "11%" }} />
+          <col style={{ width: "9%" }} />
+          <col style={{ width: "11%" }} />
+          <col style={{ width: "6%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "30%" }} />
+        </colgroup>
+        <thead>
+          <tr className="bg-slate-100 text-slate-800">
+            <th className="border border-black px-2 py-2 text-left">시간</th>
+            <th className="border border-black px-2 py-2 text-left">게이트</th>
+            <th className="border border-black px-2 py-2 text-left">업체명</th>
+            <th className="border border-black px-2 py-2 text-left">자재명</th>
+            <th className="border border-black px-2 py-2 text-left">차종</th>
+            <th className="border border-black px-2 py-2 text-left">대수</th>
+            <th className="border border-black px-2 py-2 text-left">하역장소</th>
+            <th className="border border-black px-2 py-2 text-left">담당자</th>
+            <th className="border border-black px-2 py-2 text-left">연락처</th>
+          </tr>
+        </thead>
+        <tbody>
+          {MATERIAL_TIMES.map((time) => {
+            const row = list.filter((item) => item.time === time);
+            const gate1 = row.filter((item) => item.gate === "1");
+            const gate7 = row.filter((item) => item.gate === "7");
+
+            const gate1Rows = Math.max(gate1.length, 1);
+            const gate7Rows = Math.max(gate7.length, 1);
+            const totalRows = gate1Rows + gate7Rows;
+
+            const renderActionBtns = (item: DabsRowItem) =>
+              renderPortfolioActionButtons(
+                item,
+                () => setEditMaterialPopup({ open: true, itemId: item.id, gate: item.gate || "", time: item.time || "", company: item.company || "", material: item.material || "", vehicle: item.vehicle || "", vehicleCount: item.vehicleCount || "", location: item.location || "", manager: item.manager || "", phone: item.phone || "", workerOnCargo: item.workerOnCargo || false, cargoHeight1m: item.cargoHeight1m || false }),
+                () => handleDeleteDabsItem(item.id)
+              );
+
+            const renderDataCells = (item: DabsRowItem) => (
+              <>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.company}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.material}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicle}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicleCount}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.location}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.manager || ""}</td>
+                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>
+                  <div className="flex items-start justify-between gap-1">
+                    <span>{item.phone || ""}</span>
+                    {renderActionBtns(item)}
+                  </div>
+                </td>
+              </>
+            );
+
+            const emptyDataCells = <td colSpan={7} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>;
+
+            const rows: React.ReactNode[] = [];
+
+            // 1게이트 행들
+            if (gate1.length === 0) {
+              rows.push(
+                <tr key={`${time}-g1-empty`}>
+                  <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>
+                  <td className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">1게이트</td>
+                  {emptyDataCells}
+                </tr>
+              );
+            } else {
+              gate1.forEach((item, idx) => {
+                rows.push(
+                  <tr key={item.id} className={isYellow(item) ? "bg-yellow-100" : ""}>
+                    {idx === 0 && <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>}
+                    {idx === 0 && <td rowSpan={gate1.length} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">1게이트</td>}
+                    {renderDataCells(item)}
+                  </tr>
+                );
+              });
+            }
+
+            // 7게이트 행들
+            if (gate7.length === 0) {
+              rows.push(
+                <tr key={`${time}-g7-empty`}>
+                  {gate1.length === 0 && <>{/* 시간 셀은 위에서 rowspan으로 이미 처리 */}</>}
+                  <td className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">7게이트</td>
+                  {emptyDataCells}
+                </tr>
+              );
+            } else {
+              gate7.forEach((item, idx) => {
+                rows.push(
+                  <tr key={item.id} className={isYellow(item) ? "bg-yellow-100" : ""}>
+                    {idx === 0 && <td rowSpan={gate7.length} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">7게이트</td>}
+                    {renderDataCells(item)}
+                  </tr>
+                );
+              });
+            }
+
+            return <React.Fragment key={time}>{rows}</React.Fragment>;
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const renderPortfolioSoloWorkerTable = (
+  items: Array<DabsRowItem & { building: string }>,
+  title: string
+) => {
+  const grouped = items.reduce<Record<string, Array<DabsRowItem & { building: string }>>>(
+    (acc, item) => {
+      const key = item.company || "-";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    },
+    {}
+  );
+
+  return (
+    <div className="flex h-full w-full items-start justify-center overflow-auto p-1">
+      <table className="w-[96vw] max-w-[100vw] table-fixed border-collapse bg-white text-[26px] xl:text-[27px]">
+        <caption className="caption-top pb-1 text-left font-bold text-slate-900">
+          {title}
+        </caption>
+
+        <colgroup>
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "6%" }} />
+          <col style={{ width: "14%" }} />
+          <col />
+          <col style={{ width: "8%" }} />
+        </colgroup>
+
+        <thead>
+          <tr className="bg-slate-100 text-slate-800">
+            <th className="border border-black px-3 py-2 text-left">업체명</th>
+            <th className="border border-black px-3 py-2 text-left">동</th>
+            <th className="border border-black px-3 py-2 text-left">성명</th>
+            <th className="border border-black px-3 py-2 text-left">작업내용</th>
+            <th className="border border-black px-3 py-2 text-left">고령자</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {items.length === 0 ? (
+            <tr>
+              <td
+                className="border border-black px-3 py-2 text-center text-slate-300"
+                colSpan={5}
+              >
+                입력 없음
+              </td>
+            </tr>
+          ) : (
+            Object.entries(grouped).map(([company, list]) =>
+              list.map((item, index) => (
+                <tr key={`${item.building}-${item.id}`}>
+                  {index === 0 && (
+                    <td
+                      rowSpan={list.length}
+                      className="border border-black px-3 py-2 align-top font-semibold"
+                    >
+                      {company}
+                    </td>
+                  )}
+
+                  <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
+                    {item.building}
+                  </td>
+
+                  <td className="border border-black px-3 py-2 align-top">
+                    {item.name}
+                  </td>
+
+                  <td className="border border-black px-3 py-2 align-top">
+                    <div className="flex items-start justify-between gap-2">
+  <span className="whitespace-pre-wrap break-all leading-relaxed">
+    {item.content}
+  </span>
+
+  {renderPortfolioActionButtons(
+    item,
+    () =>
+      setEditSoloPopup({
+        open: true,
+        itemId: item.id,
+        oldBuilding: item.building || "",
+        building: item.building || "",
+        company: item.company || "",
+        name: item.name || "",
+        content: item.content || "",
+        elderly: item.elderly || "x",
+      }),
+    () => handleDeleteSoloWorker(item.id, item.building || "")
+  )}
+</div>
+                  </td>
+
+                  <td
+                    className={cn(
+                      "border border-black px-3 py-2 align-top",
+                      item.elderly === "o"
+                        ? "bg-amber-50 font-semibold text-amber-700"
+                        : "text-slate-600"
+                    )}
+                  >
+                    {item.elderly}
+                  </td>
+                </tr>
+              ))
+            )
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+const renderPortfolioPage = () => {
+  const slide = portfolioSlides[portfolioSlideIndex];
+
+  if (!slide) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        표시할 페이지가 없습니다.
+      </div>
+    );
+  }
+
+  const goPrev = () => {
+    setPortfolioSlideIndex((prev) =>
+      prev <= 0 ? portfolioSlides.length - 1 : prev - 1
+    );
+  };
+
+  const goNext = () => {
+    setPortfolioSlideIndex((prev) =>
+      prev >= portfolioSlides.length - 1 ? 0 : prev + 1
+    );
+  };
+
+  return (
+  <>
+    {renderEditPopups()}
+
+    <div
+      ref={portfolioCaptureRef}
+      className="fixed inset-0 z-[80] flex flex-col bg-slate-950 text-white"
+    >
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-white/10 px-3">
+        <div>
+          <div className="text-sm font-bold leading-tight">{slide.label}</div>
+          <div className="text-[10px] leading-tight text-slate-300">
+            기준일: {formatMonthDay(selectedDate)} · {portfolioSlideIndex + 1} / {portfolioSlides.length}
+          </div>
+        </div>
+
+        {!isExportingPortfolioImages && (
+  <div className="flex gap-2">
+    <Button variant="outline" onClick={goPrev}>
+      이전
+    </Button>
+    <Button variant="outline" onClick={goNext}>
+      다음
+    </Button>
+    <Button
+      onClick={() => {
+        setCurrentPage("menu");
+        setPortfolioSlideIndex(0);
+      }}
+    >
+      종료
+    </Button>
+  </div>
+)}
+      </div>
+
+      {renderPortfolioInputPanel()}
+
+<div className="min-h-0 flex-1 bg-white text-slate-900">
+        {slide.type === "overlay" && (
+  <div className="flex h-full w-full items-center justify-center overflow-hidden bg-white p-4">
+    {renderOverlayImage(dabsImages?.equipmentFlow, true, slide.key, true, true)}
+  </div>
+)}
+
+        {slide.type === "overlayWithTable" && (
+  <div className="flex h-full w-full items-center justify-center overflow-hidden bg-white p-4">
+  <div className="flex w-full max-h-full flex-col gap-3 lg:flex-row lg:items-stretch">
+    <div className="lg:w-3/5">
+      {renderOverlayImage(dabsImages?.highRisk, true, "highRisk", false, true)}
+    </div>
+
+    <div className="flex min-h-0 flex-col lg:w-2/5">
+      <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-black">
+        <table className="w-full table-fixed border-collapse text-lg">
+          <colgroup>
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "40%" }} />
+            <col style={{ width: "40%" }} />
+          </colgroup>
+
+          <thead>
+            <tr className="bg-slate-100 text-slate-700">
+              <th className="border border-black px-3 py-2 text-center">위치</th>
+              <th className="border border-black px-3 py-2 text-center">업체명</th>
+              <th className="border border-black px-3 py-2 text-center">작업내용</th>
+              <th className="border border-black px-3 py-2 text-center">안전대책</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {(slide.highRiskTableItems || []).length === 0 ? (
+              <tr>
+                <td colSpan={4} className="border border-black px-3 py-4 text-center text-slate-300">
+                  입력된 내용이 없습니다.
+                </td>
+              </tr>
+            ) : (
+              (slide.highRiskTableItems || []).map((item) => (
+                <tr key={item.id}>
+                  <td className="border border-black px-3 py-2 align-top break-all">{item.building}</td>
+                  <td className="border border-black px-3 py-2 align-top break-all">{item.company}</td>
+                  <td className="border border-black px-3 py-2 align-top whitespace-pre-wrap break-all">
+                    {item.content}
+                  </td>
+                  <td className="border border-black px-3 py-2 align-top whitespace-pre-wrap break-all">
+                    {item.safety}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  </div>
+)}
+
+        {slide.type === "section" &&
+          slide.tabKey &&
+          renderPortfolioSectionTable(slide.tabKey, slide.columns || [], slide.label)}
+
+        {slide.type === "material" &&
+          slide.tabKey &&
+          renderPortfolioMaterialTable(slide.tabKey, slide.label)}
+
+        {slide.type === "soloWorker" &&
+          renderPortfolioSoloWorkerTable(slide.soloItems || [], slide.label)}
+      </div>
+
+      {!isExportingPortfolioImages && (
+  <div className="flex h-6 shrink-0 items-center justify-center gap-1 border-t border-white/10 bg-slate-950 px-2">
+        {portfolioSlides.map((item, index) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => setPortfolioSlideIndex(index)}
+            className={cn(
+              "h-1.5 rounded-full transition-all",
+              index === portfolioSlideIndex
+                ? "w-5 bg-white"
+: "w-1.5 bg-white/30 hover:bg-white/60"
+            )}
+            title={item.label}
+          />
+        ))}
+        </div>
+)}
+        </div>
+  </>
+  );
+};
+const renderHeatwavePage = () => {
+  const myCompanyName = String(currentUser?.companyName || "").trim();
+  const myStatus = myCompanyName ? getHeatwaveCompanyStatus(myCompanyName, heatwaveDateKey) : null;
+const myImageTarget = myCompanyName ? heatwaveImageSelectedCompanies.includes(myCompanyName) : false;
+const myComplete = myImageTarget &&
+  (myStatus?.thermoPhotoCount || 0) >= 4 &&
+  (myStatus?.thermoLedgerCount || 0) >= 1;
+
+    return (
+    <div className="space-y-4 sm:space-y-6">
+      {renderTopBar()}
+{renderEditPopups()}
+
+{heatwaveStatusPopupOpen && (
+  <div className="fixed inset-0 z-[140] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-base font-semibold text-slate-900">
+            혹서기 업로드 현황
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            조회 기준일: {formatMonthDay(heatwaveViewDateKey)}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setHeatwaveStatusPopupOpen(false)}
+          className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-black">
+        <table className="w-full table-fixed border-collapse text-sm">
+          <thead>
+            <tr className="bg-slate-100 text-slate-700">
+              <th className="w-[30%] border border-black px-3 py-2 text-left">업체명</th>
+              <th className="w-[25%] border border-black px-3 py-2 text-left">온습도계 사진</th>
+              <th className="w-[25%] border border-black px-3 py-2 text-left">온습도계 관리대장</th>
+              <th className="border border-black px-3 py-2 text-left">상태</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {heatwaveImageSelectedCompanies
+  .filter((companyName) => isHeatwaveAdmin || companyName === myCompanyName)
+  .sort((a, b) => a.localeCompare(b, "ko"))
+  .map((companyName) => {
+                const status = getHeatwaveCompanyStatus(companyName);
+                const imageTarget = heatwaveImageSelectedCompanies.includes(companyName);
+                const complete = imageTarget && status.thermoPhotoCount >= 4 && status.thermoLedgerCount >= 1;
+
+                return (
+                  <tr key={companyName}>
+                    <td className="border border-black px-3 py-2 font-semibold">
+                      {companyName}
+                    </td>
+
+                    <td className={cn("border border-black px-3 py-2 font-semibold", imageTarget && status.thermoPhotoCount >= 4 ? "bg-green-100 text-green-700" : imageTarget ? "bg-red-50 text-red-700" : "")}>
+                      {imageTarget ? `${Math.min(status.thermoPhotoCount, 4)}/4` : "대상 아님"}
+                    </td>
+
+                    <td className={cn("border border-black px-3 py-2 font-semibold", imageTarget && status.thermoLedgerCount >= 1 ? "bg-green-100 text-green-700" : imageTarget ? "bg-red-50 text-red-700" : "")}>
+                      {imageTarget ? `${Math.min(status.thermoLedgerCount, 1)}/1` : "대상 아님"}
+                    </td>
+
+                    <td className="border border-black px-3 py-2 font-semibold">
+                      {complete ? "완료" : "미완료"}
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-5 flex justify-end">
+        <Button variant="outline" onClick={() => setHeatwaveStatusPopupOpen(false)}>
+          닫기
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+
+<Card>
+        <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <CalendarDays className="h-5 w-5" />
+            혹서기
+          </CardTitle>
+
+          <div className="flex flex-wrap gap-2">
+  {isHeatwaveAdmin && (
+  <Button variant="outline" onClick={() => setHeatwaveStatusPopupOpen(true)}>
+    업로드 현황
+  </Button>
+)}
+
+  <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+    메뉴로 돌아가기
+  </Button>
+</div>
+        </CardHeader>
+
+                <CardContent className="space-y-5">
+          <div className="flex flex-wrap gap-2">
+            {[
+              { key: "upload", label: "혹서기 업로드" },
+              { key: "sensitive", label: "고령자 관리" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setHeatwaveActiveTab(tab.key as typeof heatwaveActiveTab)}
+                className={cn(
+                  "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                  heatwaveActiveTab === tab.key
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {heatwaveActiveTab === "upload" && (
+            <>
+              <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+                조회 날짜: {formatMonthDay(heatwaveViewDateKey)} · 오늘 업로드 기준일: {formatMonthDay(heatwaveDateKey)} · 온습도계 사진 4개, 온습도계 관리대장 1개 업로드
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="mb-2 text-xs font-semibold text-slate-600">
+                  혹서기 업로드 조회 날짜
+                </div>
+                <Input
+                  type="date"
+                  value={heatwaveViewDateKey}
+                  onChange={(e) => setHeatwaveViewDateKey(e.target.value || getTodayKey())}
+                  className="max-w-xs"
+                />
+              </div>
+
+              {/* 마스터/관리자 전용: 기간별 다운로드 */}
+              {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+                <Card className="border-slate-200 shadow-none">
+                  <CardHeader>
+                    <CardTitle className="text-base">기간별 파일 다운로드 (관리자·마스터)</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">시작 날짜</label>
+                        <Input type="date" value={heatwaveDownloadStartDate} onChange={(e) => setHeatwaveDownloadStartDate(e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-slate-600">종료 날짜</label>
+                        <Input type="date" value={heatwaveDownloadEndDate} onChange={(e) => setHeatwaveDownloadEndDate(e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-slate-600">파일 종류 선택</div>
+                      <div className="flex flex-wrap gap-4">
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={heatwaveDownloadTypes.thermoPhoto} onChange={(e) => setHeatwaveDownloadTypes((prev) => ({ ...prev, thermoPhoto: e.target.checked }))} className="h-4 w-4" />
+                          온습도계 사진
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={heatwaveDownloadTypes.thermoLedger} onChange={(e) => setHeatwaveDownloadTypes((prev) => ({ ...prev, thermoLedger: e.target.checked }))} className="h-4 w-4" />
+                          온습도계 관리대장
+                        </label>
+                      </div>
+                    </div>
+                    <Button onClick={handleHeatwaveDownload} disabled={heatwaveDownloadLoading} className="w-full md:w-auto">
+                      {heatwaveDownloadLoading ? "다운로드 중..." : "선택 파일 다운로드"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 마스터 전용: 전체 파일 일괄 삭제 */}
+              {currentUser?.role === "master" && (
+                <Card className="border-red-200 shadow-none">
+                  <CardHeader>
+                    <CardTitle className="text-base text-red-700">전체 파일 일괄 삭제 (마스터 전용)</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="rounded-2xl bg-red-50 p-3 text-xs text-red-700">
+                      업로드된 모든 혹서기 파일을 Firebase Storage에서도 완전히 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+                    </div>
+                    <Button variant="outline" onClick={handleHeatwaveDeleteAll} disabled={heatwaveDeleteAllLoading} className="border-red-300 text-red-700 hover:bg-red-50 w-full md:w-auto">
+                      {heatwaveDeleteAllLoading ? "삭제 중..." : "전체 파일 일괄 삭제"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card className="border-slate-200 shadow-none">
+                <CardHeader>
+                  <CardTitle className="text-base">내 업체 업로드</CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-4">
+                  {!myCompanyName ? (
+                    <div className="text-sm text-slate-500">업체 정보가 없습니다.</div>
+                  ) : !myImageTarget ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                      현재 업체는 온습도계 업로드 대상 업체로 체크되어 있지 않습니다.
+                    </div>
+                  ) : (
+                    <>
+  <div className="grid gap-3 md:grid-cols-1">
+  {myImageTarget && (
+    <div className="grid gap-3">
+      <div className="rounded-2xl border border-slate-200 p-4">
+        <div className="text-sm font-semibold text-slate-900">온습도계 사진 업로드</div>
+        <div className="mt-1 text-xs text-slate-500">
+          현재 {myStatus?.thermoPhotoCount || 0}/4개
+        </div>
+        <Input
+          type="file"
+          accept="image/*"
+          onChange={(event) => handleHeatwaveUpload(event, "thermoPhoto")}
+          className="mt-3 h-auto py-2"
+          disabled={(myStatus?.thermoPhotoCount || 0) >= 4}
+        />
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 p-4">
+        <div className="text-sm font-semibold text-slate-900">온습도계 관리대장 업로드</div>
+        <div className="mt-1 text-xs text-slate-500">
+          현재 {myStatus?.thermoLedgerCount || 0}/1개
+        </div>
+        <Input
+          type="file"
+          accept=".xls,.xlsx,.pdf,image/*"
+          onChange={(event) => handleHeatwaveUpload(event, "thermoLedger")}
+          className="mt-3 h-auto py-2"
+          disabled={(myStatus?.thermoLedgerCount || 0) >= 1}
+        />
+      </div>
+    </div>
+  )}
+</div>
+                      <div
+                        className={cn(
+                          "rounded-2xl p-4 text-sm font-semibold",
+                          myComplete
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-red-50 text-red-700"
+                        )}
+                      >
+                        {myComplete ? "오늘 혹서기 업로드 완료" : "오늘 혹서기 업로드 미완료"}
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-200 p-4">
+                        <div className="mb-3 text-sm font-semibold text-slate-900">
+                          내 업체 업로드 파일
+                        </div>
+                        {renderHeatwaveUploadFileList(myCompanyName)}
+                      </div>
+                    </>
+                  )}
+
+                  {heatwaveMessage && <div className="text-sm text-slate-600">{heatwaveMessage}</div>}
+                </CardContent>
+              </Card>
+
+                                {isHeatwaveAdmin && (
+                  <Card className="border-slate-200 shadow-none">
+                    <CardHeader>
+                      <CardTitle className="text-base">전체 업체 업로드 파일</CardTitle>
+                    </CardHeader>
+
+                    <CardContent className="space-y-3">
+                      <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+                        조회 날짜: {formatMonthDay(heatwaveViewDateKey)}
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {heatwaveImageSelectedCompanies
+                          .slice()
+                          .sort((a, b) => a.localeCompare(b, "ko"))
+                          .map((companyName) => (
+                            <div key={companyName} className="rounded-2xl border border-slate-200 bg-white p-4">
+                              <div className="mb-3 text-sm font-semibold text-slate-900">
+                                {companyName}
+                              </div>
+                              {renderHeatwaveUploadFileList(companyName)}
+                            </div>
+                          ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {canManageHeatwaveCompanies && (
+  <Card className="border-slate-200 shadow-none">
+    <CardHeader>
+      <CardTitle className="text-base">혹서기 대상 업체 선택</CardTitle>
+                  </CardHeader>
+
+                  <CardContent className="space-y-3">
+                    <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                      {approvedCompanyNames.map((companyName) => {
+                        const imageChecked = heatwaveImageSelectedCompanies.includes(companyName);
+
+                        return (
+                          <label
+                            key={companyName}
+                            className={cn(
+                              "flex cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3 text-sm transition",
+                              imageChecked ? "border-slate-900 bg-white" : "border-slate-200 bg-slate-50"
+                            )}
+                          >
+                            <span className="truncate font-semibold">{companyName}</span>
+                            <input
+                              type="checkbox"
+                              checked={imageChecked}
+                              onChange={() => handleToggleHeatwaveCompany(companyName, "image")}
+                              className="h-4 w-4 shrink-0"
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+</Card>
+)}
+
+                    </>
+          )}
+
+          {heatwaveActiveTab === "sensitive" && (
+            <Card className="border-slate-200 shadow-none">
+              <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <CardTitle className="text-base">고령자 관리</CardTitle>
+
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    handleDownloadCaptureImage(
+                      heatSensitiveCaptureRef,
+                      `고령자관리-${selectedDate}`
+                    )
+                  }
+                >
+                  이미지 다운로드
+                </Button>
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+                  선택 날짜: {formatMonthDay(selectedDate)}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[140px_180px_150px_1fr_auto]">
+                  <select
+                    value={heatSensitiveInput.building}
+                    onChange={(e) =>
+                      setHeatSensitiveInput({ ...heatSensitiveInput, building: e.target.value })
+                    }
+                    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+                  >
+                    <option value="">동 선택</option>
+                    {SOLO_WORKER_COLUMNS.map((column) => (
+                      <option key={column} value={column}>
+                        {column}
+                      </option>
+                    ))}
+                  </select>
+
+                  {(currentUser?.role === "master" || currentUser?.role === "admin") && (
+                    <Input
+                      value={heatSensitiveInput.company}
+                      onChange={(e) =>
+                        setHeatSensitiveInput({ ...heatSensitiveInput, company: e.target.value })
+                      }
+                      placeholder="업체명 입력"
+                    />
+                  )}
+
+                  <Input
+                    value={heatSensitiveInput.name}
+                    onChange={(e) =>
+                      setHeatSensitiveInput({ ...heatSensitiveInput, name: e.target.value })
+                    }
+                    placeholder="성명 입력"
+                  />
+
+                  <div className="space-y-2">
+  <Input
+    value={heatSensitiveInput.content}
+    onChange={(e) =>
+      setHeatSensitiveInput({ ...heatSensitiveInput, content: e.target.value })
+    }
+    placeholder="작업 내용 입력"
+  />
+
+                  </div>
+
+                  <Button onClick={handleAddHeatSensitive} disabled={!canEditDabs} className="w-full xl:w-auto">
+                    추가
+                  </Button>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      className="pl-9"
+                      value={heatSensitiveCompanyFilter}
+                      onChange={(e) => setHeatSensitiveCompanyFilter(e.target.value)}
+                      placeholder="업체명 검색"
+                    />
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    업체별 색상이 자동 적용됩니다.
+                  </div>
+                </div>
+
+                {dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
+
+                <div ref={heatSensitiveCaptureRef} className="bg-white">
+                  <div className="space-y-3 lg:hidden">
+                    {heatSensitiveList.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
+                        조건에 맞는 고령자 관리이 없습니다.
+                      </div>
+                    ) : (
+                      heatSensitiveList.map((item) => {
+                        const color = getCompanyColorByList(item.company || "-", heatSensitiveCompanyColorList);
+
+                        return (
+                          <div key={item.id} className="rounded-2xl border border-black bg-white p-4 shadow-sm">
+                            <div className="mb-3 flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-slate-900">{item.building}</div>
+                                <div
+                                  className={cn(
+                                    "mt-1 inline-flex rounded-full border px-2 py-0.5 text-xs font-medium",
+                                    color.bg,
+                                    color.border,
+                                    color.text
+                                  )}
+                                >
+                                  {item.company}
+                                </div>
+                              </div>
+
+                              {!isCapturingImage && (
+                                <div className="flex shrink-0 gap-1">
+                                  {canAdminEditDabsItem && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setEditHeatSensitivePopup({
+                                          open: true,
+                                          itemId: item.id,
+                                          oldBuilding: item.building,
+                                          building: item.building,
+                                          company: item.company || "",
+                                          name: item.name || "",
+                                          content: item.content || "",
+                                        })
+                                      }
+                                      className="rounded-full border border-slate-300 px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
+                                    >
+                                      수정
+                                    </button>
+                                  )}
+
+                                  {canDeleteOwnItem(item) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteHeatSensitive(item.id, item.building)}
+                                      className="rounded-full border border-slate-300 p-1 text-slate-500 hover:bg-slate-100"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="space-y-2 text-sm">
+                              <div>
+                                <span className="mr-2 font-medium text-slate-500">성명</span>
+                                <span className="text-slate-900">{item.name}</span>
+                              </div>
+
+                              <div>
+                                <span className="mr-2 font-medium text-slate-500">작업</span>
+                                <span className="text-slate-900">{item.content}</span>
+                              </div>
+
+                              
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
+                    <table className={TABLE_BASE_CLASS}>
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700">
+                          <th className="border border-black px-3 py-2 text-left w-[16%]">업체명</th>
+                          <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
+                          <th className="border border-black px-3 py-2 text-left w-[16%]">성명</th>
+                          <th className="border border-black px-3 py-2 text-left">작업 내용</th>
+                          
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {heatSensitiveList.length === 0 ? (
+                          <tr>
+                            <td className="border border-black px-3 py-2 text-center text-slate-300" colSpan={4}>
+                              입력 없음
+                            </td>
+                          </tr>
+                        ) : (
+                          Object.entries(heatSensitiveGrouped).map(([company, list]) =>
+                            list.map((item, index) => {
+                              const color = getCompanyColorByList(company, heatSensitiveCompanyColorList);
+                              
+
+                              return (
+                                <tr key={`${item.building}-${item.id}`}>
+                                  {index === 0 && (
+                                    <td
+                                      rowSpan={list.length}
+                                      className={cn(
+                                        "border border-black px-3 py-2 align-top font-semibold",
+                                        color.bg,
+                                        color.text
+                                      )}
+                                    >
+                                      {company}
+                                    </td>
+                                  )}
+
+                                  <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
+                                    {item.building}
+                                  </td>
+
+                                  <td className="border border-black px-3 py-2 align-top">
+                                    {item.name}
+                                  </td>
+
+                                  <td className="border border-black px-3 py-2 align-top">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="whitespace-pre-wrap break-all leading-relaxed">
+                                        {item.content}
+                                      </span>
+
+                                      {!isCapturingImage && (
+                                        <div className="flex shrink-0 gap-1">
+                                          {canAdminEditDabsItem && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setEditHeatSensitivePopup({
+                                                  open: true,
+                                                  itemId: item.id,
+                                                  oldBuilding: item.building || "",
+                                                  building: item.building || "",
+                                                  company: item.company || "",
+                                                  name: item.name || "",
+                                                  content: item.content || "",
+                                                })
+                                              }
+                                              className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                                            >
+                                              수정
+                                            </button>
+                                          )}
+
+                                          {canDeleteOwnItem(item) && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleDeleteHeatSensitive(item.id, item.building || "")
+                                              }
+                                              className="rounded-full border border-slate-300 p-0.5 text-slate-500 hover:bg-slate-100"
+                                            >
+                                              <X className="h-3 w-3" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  
+                                </tr>
+                              );
+                            })
+                          )
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                            </CardContent>
+            </Card>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-200 shadow-none">
+        <CardHeader>
+          <CardTitle className="text-base">하단 달력</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between mb-3">
+            <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="text-sm font-semibold">{monthLabel}</div>
+            <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="grid grid-cols-7 gap-1 text-xs">
+            {weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}
+            {monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+  const renderEducationPage = () => (
+    <div className="space-y-4 sm:space-y-6">
+      {renderTopBar()}
+{editEntryPopup.open && (
+  <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="text-base font-semibold text-slate-900">교육일정 수정</div>
+
+      <div className="mt-4 space-y-2">
+        <label className="text-xs font-medium text-slate-600">일자 선택</label>
+        <Input
+          type="date"
+          value={editEntryPopup.date}
+          onChange={(e) =>
+            setEditEntryPopup((prev) => ({
+              ...prev,
+              date: e.target.value,
+            }))
+          }
+          className="h-9"
+        />
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <label className="text-xs font-medium text-slate-600">업체명</label>
+        <Input
+          value={editEntryPopup.companyName}
+          onChange={(e) =>
+            setEditEntryPopup((prev) => ({
+              ...prev,
+              companyName: e.target.value,
+            }))
+          }
+          placeholder="업체명 입력"
+        />
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <label className="text-xs font-medium text-slate-600">시간 선택</label>
+        <select
+          value={editEntryPopup.startTime}
+          onChange={(e) =>
+            setEditEntryPopup((prev) => ({
+              ...prev,
+              startTime: e.target.value,
+            }))
+          }
+          className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+        >
+          {timeOptions.map((time) => (
+            <option key={time} value={time}>
+              {time} ~ {getEndTime(time)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button
+          variant="outline"
+          className="w-full lg:w-auto"
+          onClick={() =>
+            setEditEntryPopup({
+              open: false,
+              entryId: "",
+              date: "",
+              startTime: "09:00",
+              companyName: "",
+            })
+          }
+        >
+          취소
+        </Button>
+
+        <Button className="w-full lg:w-auto" onClick={handleUpdateEntry}>
+          저장
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+      {deleteNoticeOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"><div className="text-lg font-semibold text-slate-900">안내</div><div className="mt-3 text-sm text-slate-600">삭제는 관리자에게 요청</div><div className="mt-6 flex justify-end"><Button onClick={() => setDeleteNoticeOpen(false)}>확인</Button></div></div></div>}
+      <div className="flex flex-wrap justify-between gap-3">
+  <div className="flex flex-wrap gap-2">
+    <Button
+      variant="outline"
+      onClick={() =>
+        handleDownloadCaptureImage(
+          educationCaptureRef,
+          `교육일정-${selectedDate}`
+        )
+      }
+    >
+      이미지 다운로드
+    </Button>
+
+    <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+  메뉴로 돌아가기
+</Button>
+  </div>
+</div>
+      <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr] lg:gap-6"><div className="space-y-6"><div ref={educationCaptureRef} className="bg-white">
+  {renderBottomCalendar()}
+</div></div><div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>일정 입력</CardTitle></CardHeader><CardContent className="space-y-4">{!currentUser ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">일정 등록은 승인된 계정으로 로그인한 뒤 사용할 수 있습니다.</div> : <><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><label className="text-xs font-medium text-slate-600">일자 선택</label><Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9" /></div><div className="space-y-2"><label className="text-xs font-medium text-slate-600">시간 선택</label><select value={effectiveSelectedTime} onChange={(e) => setSelectedTime(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100" disabled={availableTimes.length === 0}>{availableTimes.length === 0 ? <option value="">선택 가능한 시간이 없습니다</option> : availableTimes.map((time) => <option key={time} value={time}>{time}</option>)}</select><div className="text-xs text-slate-500">{availableTimes.length === 0 ? "해당 일자는 선택 가능한 시간이 없습니다" : `자동 표기 시간: ${effectiveSelectedTime} ~ ${effectiveEndTime}`}</div></div></div><div className="flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-slate-500">작성자: {currentUser.name} · {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}</div><Button className="w-full lg:w-auto" onClick={addEntry} disabled={availableTimes.length === 0}>일정 등록</Button></div></>}{entryMessage && (
+  <div className="text-sm text-slate-600">{entryMessage}</div>
+)}
+
+<div className="mt-2 text-xs text-slate-400">시간 중복 불가</div></CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>선택 일자 등록 목록</CardTitle></CardHeader><CardContent className="space-y-3"><div><div className="text-sm text-slate-500">현재 선택 일자</div><div className="text-xl font-bold text-slate-900">{formatMonthDay(selectedDate)}</div></div>{dayEntries.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">등록된 일정이 없습니다.</div> : dayEntries.map((entry) => <motion.div key={entry.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-black bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-4"><div><div className="text-base font-semibold text-slate-900">{entry.companyName}</div><div className="mt-1 text-sm text-slate-600">{formatMonthDay(entry.date)}</div><div className="mt-1 text-sm text-slate-600">{entry.startTime} ~ {entry.endTime}</div><div className="mt-1 text-xs text-slate-500">작성자: {entry.createdByName || "-"} ({getRoleLabel(entry.createdByRole || "general")})</div></div><div className="flex shrink-0 gap-1">
+  <button
+    type="button"
+    onClick={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setEditEntryPopup({
+        open: true,
+        entryId: entry.id,
+        date: entry.date,
+        startTime: entry.startTime,
+        companyName: entry.companyName || "",
+      });
+    }}
+    className="inline-flex h-10 items-center justify-center rounded-2xl px-3 text-xs font-semibold text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+    disabled={!canDeleteOwnItem(entry)}
+    title="일정 수정"
+  >
+    수정
+  </button>
+
+  <button
+    type="button"
+    onClick={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteEntry(entry.id);
+    }}
+    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-slate-500 hover:bg-slate-100 hover:text-red-600 disabled:opacity-50"
+    disabled={!canDeleteOwnItem(entry)}
+    title="일정 삭제"
+  >
+    <Trash2 className="h-4 w-4" />
+  </button>
+</div></div></motion.div>)}</CardContent></Card></div></div>
+    </div>
+  );
+
+  const formatActivityLogTime = (value: any) => {
+  if (!value) return "-";
+
+  const date =
+    typeof value?.toDate === "function"
+      ? value.toDate()
+      : new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes()
+  ).padStart(2, "0")}`;
+};
+
+const renderActivityLogPage = () => (
+  <div className="space-y-4 sm:space-y-6">
+    {renderTopBar()}
+
+    <div className="flex flex-wrap justify-between gap-3">
+      <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+        메뉴로 돌아가기
+      </Button>
+    </div>
+
+    <Card className="rounded-[24px] border-0 shadow-sm">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <LayoutGrid className="h-5 w-5" />
+          활동 로그
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent>
+        {!canViewActivityLogs ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+            활동 로그는 마스터만 볼 수 있습니다.
+          </div>
+        ) : activityLogs.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+            기록된 로그가 없습니다.
+          </div>
+        ) : (
+          <>
+            <div className="space-y-3 lg:hidden">
+              {activityLogs.map((log) => (
+                <div key={log.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-slate-500">{formatActivityLogTime(log.createdAt)}</span>
+                    <Badge>{log.action}</Badge>
+                  </div>
+                  <div className="mt-2 text-sm font-medium">{log.page || "-"}</div>
+                  <div className="mt-2 border-t border-slate-100 pt-2">
+                    <div className="font-medium">{log.actorName || "-"}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {log.actorCompany || "-"} · {getRoleLabel(log.actorRole || "general")}
+                    </div>
+                  </div>
+                  <div className="mt-2 border-t border-slate-100 pt-2">
+                    <div className="font-medium">{log.target || "-"}</div>
+                    <div className="mt-1 whitespace-pre-wrap break-all text-xs text-slate-600">
+                      {log.detail || "-"}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
+              <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-700">
+                    <th className="w-[17%] border border-black px-3 py-2 text-left">시간</th>
+                    <th className="w-[10%] border border-black px-3 py-2 text-left">구분</th>
+                    <th className="w-[14%] border border-black px-3 py-2 text-left">페이지</th>
+                    <th className="w-[18%] border border-black px-3 py-2 text-left">작성자</th>
+                    <th className="border border-black px-3 py-2 text-left">내용</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {activityLogs.map((log) => (
+                    <tr key={log.id}>
+                      <td className="border border-black px-3 py-2 align-top">
+                        {formatActivityLogTime(log.createdAt)}
+                      </td>
+
+                      <td className="border border-black px-3 py-2 align-top font-semibold">
+                        {log.action}
+                      </td>
+
+                      <td className="border border-black px-3 py-2 align-top">
+                        {log.page || "-"}
+                      </td>
+
+                      <td className="border border-black px-3 py-2 align-top">
+                        <div className="font-medium">{log.actorName || "-"}</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {log.actorCompany || "-"} · {getRoleLabel(log.actorRole || "general")}
+                        </div>
+                      </td>
+
+                      <td className="border border-black px-3 py-2 align-top">
+                        <div className="font-medium">{log.target || "-"}</div>
+                        <div className="mt-1 whitespace-pre-wrap break-all text-xs text-slate-600">
+                          {log.detail || "-"}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  </div>
+);
+
+const renderApprovalPage = () => (
+    <div className="space-y-4 sm:space-y-6">
+      {renderTopBar()}
+
+      <div className="flex flex-wrap justify-between gap-3">
+        <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+          메뉴로 돌아가기
+        </Button>
+      </div>
+
+      <Card className="rounded-[24px] border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LayoutGrid className="h-5 w-5" />
+            가입 승인 관리
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent>
+          {!canManageApprovals ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+              가입 승인 관리는 관리자 또는 마스터만 접근할 수 있습니다.
+            </div>
+          ) : pendingUsers.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+              현재 승인 대기 중인 계정이 없습니다.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pendingUsers.map((user) => {
+                const canApproveThisUser =
+                  user.role === "admin" ? canApproveAdmin : canApproveGeneral;
+
+                return (
+                  <div
+                    key={user.uid}
+                    className="rounded-2xl border border-black bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                      <div className="space-y-1">
+                        <div className="text-base font-semibold text-slate-900">
+                          {user.name} ({user.email || user.uid})
+                        </div>
+                        <div className="text-sm text-slate-600">
+                          업체명: {user.companyName}
+                        </div>
+                        <div className="text-sm text-slate-600">
+                          신청 권한: {getRoleLabel(user.role || "general")}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          상태: {getStatusLabel(user.status || "pending")}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => rejectUser(user.uid)}
+                          disabled={!canApproveThisUser}
+                        >
+                          반려
+                        </Button>
+                        <Button
+                          onClick={() => approveUser(user.uid)}
+                          disabled={!canApproveThisUser}
+                        >
+                          승인
+                        </Button>
+                      </div>
+                    </div>
+
+                    {!canApproveThisUser && (
+                      <div className="mt-3 text-xs text-red-500">
+                        이 계정은 현재 로그인한 권한으로 승인할 수 없습니다.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-[24px] border-0 shadow-sm">
+        <CardHeader>
+          <CardTitle>승인된 회원 목록</CardTitle>
+        </CardHeader>
+
+        <CardContent className="space-y-3">
+          {approvedUsers.map((user) => {
+            const canCancelThisUser =
+              user.role === "admin" ? canApproveAdmin : canApproveGeneral;
+
+            return (
+              <div
+                key={user.uid}
+                className="rounded-2xl border border-black bg-white p-3 text-sm shadow-sm"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="font-semibold text-slate-900">
+                      {user.name} ({user.email || user.uid})
+                    </div>
+                    <div className="text-slate-600">{user.companyName}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {getRoleLabel(user.role || "general")} ·{" "}
+                      {getStatusLabel(user.status || "pending")}
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => cancelApprovalUser(user.uid)}
+                    disabled={!canCancelThisUser || user.uid === currentUser?.uid}
+                  >
+                    승인 취소
+                  </Button>
+                </div>
+
+                {user.uid === currentUser?.uid && (
+                  <div className="mt-2 text-xs text-slate-400">
+                    본인 계정은 승인 취소할 수 없습니다.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+const renderSupplementWorkPage = () => (
+  <div className="space-y-4 sm:space-y-6">
+    {renderTopBar()}
+
+    {editSupplementNightMorningPopup.open && (
+  <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-2xl rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="text-base font-semibold text-slate-900">
+        금일야간/명일조출 수정
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <Input
+          value={editSupplementNightMorningPopup.company}
+          onChange={(e) =>
+            setEditSupplementNightMorningPopup((prev) => ({ ...prev, company: e.target.value }))
+          }
+          placeholder="업체명"
+        />
+
+        <TextArea
+          value={editSupplementNightMorningPopup.nightText}
+          onChange={(e) =>
+            setEditSupplementNightMorningPopup((prev) => ({ ...prev, nightText: e.target.value }))
+          }
+          placeholder="금일 야간"
+        />
+
+        <TextArea
+          value={editSupplementNightMorningPopup.morningText}
+          onChange={(e) =>
+            setEditSupplementNightMorningPopup((prev) => ({ ...prev, morningText: e.target.value }))
+          }
+          placeholder="명일 조출"
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button
+          variant="outline"
+          className="w-full lg:w-auto"
+          onClick={() =>
+            setEditSupplementNightMorningPopup({
+              open: false,
+              id: "",
+              company: "",
+              nightText: "",
+              morningText: "",
+            })
+          }
+        >
+          취소
+        </Button>
+
+        <Button className="w-full lg:w-auto" onClick={handleUpdateSupplementNightMorningRow}>
+          저장
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+
+{editSupplementWeekendPopup.open && (
+  <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+    <div className="w-full max-w-2xl rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div className="text-base font-semibold text-slate-900">
+        주말 보충작업 수정
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <Input value="주말" disabled />
+
+        <Input
+          value={editSupplementWeekendPopup.company}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, company: e.target.value }))
+          }
+          placeholder="업체명"
+        />
+
+        <Input
+          value={editSupplementWeekendPopup.location}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, location: e.target.value }))
+          }
+          placeholder="작업위치"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={editSupplementWeekendPopup.workerCount}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, workerCount: e.target.value }))
+          }
+          placeholder="작업인원"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={editSupplementWeekendPopup.supervisorCount}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, supervisorCount: e.target.value }))
+          }
+          placeholder="관리감독자"
+        />
+
+        <Input
+          value={editSupplementWeekendPopup.content}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, content: e.target.value }))
+          }
+          placeholder="작업내용"
+        />
+
+        <Input
+          value={editSupplementWeekendPopup.safetyAction}
+          onChange={(e) =>
+            setEditSupplementWeekendPopup((prev) => ({ ...prev, safetyAction: e.target.value }))
+          }
+          placeholder="안전대책, 조치사항"
+          className="md:col-span-2"
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button
+          variant="outline"
+          className="w-full lg:w-auto"
+          onClick={() =>
+            setEditSupplementWeekendPopup({
+              open: false,
+              id: "",
+              company: "",
+              location: "",
+              workerCount: "",
+              supervisorCount: "",
+              content: "",
+              safetyAction: "",
+            })
+          }
+        >
+          취소
+        </Button>
+
+        <Button className="w-full lg:w-auto" onClick={handleUpdateSupplementWeekendRow}>
+          저장
+        </Button>
+      </div>
+    </div>
+  </div>
+)}
+
+    <Card>
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <CardTitle className="flex items-center gap-2">
+          <CalendarDays className="h-5 w-5" />
+          보충작업
+        </CardTitle>
+
+        <Button variant="outline" onClick={() => setCurrentPage("menu")}>
+          메뉴로 돌아가기
+        </Button>
+      </CardHeader>
+
+      <CardContent className="space-y-5">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: "nightMorning", label: "금일야간/명일조출" },
+            { key: "tomorrow", label: "명일 보충작업" },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setSupplementTab(tab.key as typeof supplementTab)}
+              className={cn(
+                "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                supplementTab === tab.key
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {supplementTab === "nightMorning" && (
+          <Card className="border-slate-200 shadow-none">
+            <CardHeader>
+              <CardTitle className="text-base">금일야간/명일조출</CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-5">
+              <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+                선택 날짜: {formatMonthDay(selectedDate)}
+              </div>
+
+              {canManageSupplementNotice && (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-sm font-semibold text-slate-900">
+                    관리자 공지 입력
+                  </div>
+
+                  <TextArea
+                    value={supplementNoticeText}
+                    onChange={(e) => setSupplementNoticeText(e.target.value)}
+                    placeholder="공지 내용을 입력하세요."
+                  />
+
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleSupplementNoticeImageUpload}
+                    className="h-auto py-2"
+                  />
+
+                  <Button onClick={handleSaveSupplementNotice}>
+                    공지 저장
+                  </Button>
+                </div>
+              )}
+
+              {(supplementNoticeText || supplementNoticeImage) && (
+                <div className="space-y-3 rounded-2xl border border-black bg-white p-4">
+                  <div className="text-sm font-semibold text-slate-900">
+                    공지
+                  </div>
+
+                  {supplementNoticeText && (
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+                      {supplementNoticeText}
+                    </div>
+                  )}
+
+                  {supplementNoticeImage && (
+                    <img
+                      src={supplementNoticeImage}
+                      alt="보충작업 공지 이미지"
+                      className="max-h-80 rounded-2xl border border-slate-200 object-contain"
+                    />
+                  )}
+                </div>
+              )}
+
+              <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+  이 탭은 선택 날짜({formatMonthDay(selectedDate)}) 기준으로 저장됩니다.
+</div>
+
+<div className="grid gap-4 lg:grid-cols-2">
+  <div className="space-y-2">
+    <label className="text-xs font-medium text-slate-600">
+      금일 야간
+    </label>
+    <TextArea
+  value={supplementNightText}
+  onChange={(e) => setSupplementNightText(e.target.value)}
+  className="min-h-[260px]"
+/>
+  </div>
+
+  <div className="space-y-2">
+    <label className="text-xs font-medium text-slate-600">
+      명일 조출
+    </label>
+    <TextArea
+  value={supplementMorningText}
+  onChange={(e) => setSupplementMorningText(e.target.value)}
+  className="min-h-[260px]"
+/>
+  </div>
+</div>
+
+<div className="flex flex-wrap gap-2">
+  <Button onClick={handleSaveSupplementNightMorning}>
+    입력
+  </Button>
+
+  <Button variant="outline" onClick={handleCopySupplementNightMorning}>
+    표 내용 복사
+  </Button>
+</div>
+
+{supplementMessage && (
+  <div className="text-sm text-slate-600">
+    {supplementMessage}
+  </div>
+)}
+
+{supplementNightMorningRows.length === 0 ? (
+  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
+    입력 없음
+  </div>
+) : (
+  <>
+    <div className="space-y-3 lg:hidden">
+      {supplementNightMorningRows.map((row) => (
+        <div key={row.id} className="rounded-2xl border border-black bg-white p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="font-semibold">{row.company}</div>
+            <div className="flex flex-wrap gap-1">
+              {canAdminEditDabsItem && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditSupplementNightMorningPopup({
+                      open: true,
+                      id: row.id,
+                      company: row.company || "",
+                      nightText: row.nightText || "",
+                      morningText: row.morningText || "",
+                    })
+                  }
+                  className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                >
+                  수정
+                </button>
+              )}
+
+              {canDeleteOwnItem(row) && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSupplementNightMorningRow(row.id)}
+                  className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                >
+                  삭제
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div>
+              <div className="text-xs font-medium text-slate-500">금일 야간</div>
+              <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">
+                {row.nightText || "입력 없음"}
+              </pre>
+            </div>
+            <div>
+              <div className="text-xs font-medium text-slate-500">명일 조출</div>
+              <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">
+                {row.morningText || "입력 없음"}
+              </pre>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+    <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
+      <table className="w-full min-w-[900px] table-fixed border-collapse text-sm">
+        <thead>
+          <tr className="bg-slate-100 text-slate-700">
+            <th className="w-[150px] border border-black px-3 py-2 text-left">업체명</th>
+            <th className="border border-black px-3 py-2 text-left">금일 야간</th>
+            <th className="border border-black px-3 py-2 text-left">명일 조출</th>
+            <th className="w-[100px] border border-black px-3 py-2 text-left">관리</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {supplementNightMorningRows.map((row) => (
+            <tr key={row.id}>
+              <td className="border border-black px-3 py-2 align-top font-semibold">
+                {row.company}
+              </td>
+
+              <td className="border border-black px-3 py-2 align-top">
+                <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+                  {row.nightText || "입력 없음"}
+                </pre>
+              </td>
+
+              <td className="border border-black px-3 py-2 align-top">
+                <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+                  {row.morningText || "입력 없음"}
+                </pre>
+              </td>
+
+              <td className="border border-black px-3 py-2 align-top">
+                <div className="flex flex-wrap gap-1">
+                  {canAdminEditDabsItem && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditSupplementNightMorningPopup({
+                          open: true,
+                          id: row.id,
+                          company: row.company || "",
+                          nightText: row.nightText || "",
+                          morningText: row.morningText || "",
+                        })
+                      }
+                      className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                    >
+                      수정
+                    </button>
+                  )}
+
+                  {canDeleteOwnItem(row) && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSupplementNightMorningRow(row.id)}
+                      className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                    >
+                      삭제
+                    </button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </>
+)}
+            </CardContent>
+          </Card>
+        )}
+
+        {supplementTab === "tomorrow" && (
+  <Card className="border-slate-200 shadow-none">
+    <CardHeader>
+      <CardTitle className="text-base">명일 보충작업</CardTitle>
+    </CardHeader>
+
+    <CardContent className="space-y-5">
+      <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">
+        선택 날짜: {formatMonthDay(selectedDate)}
+      </div>
+
+      {canManageSupplementNotice && (
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-sm font-semibold text-slate-900">
+            관리자 공지 입력
+          </div>
+
+          <TextArea
+            value={supplementTomorrowNoticeText}
+            onChange={(e) => setSupplementTomorrowNoticeText(e.target.value)}
+            placeholder="명일 보충작업 공지 내용을 입력하세요."
+          />
+
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={handleSupplementTomorrowNoticeImageUpload}
+            className="h-auto py-2"
+          />
+
+          <Button onClick={handleSaveSupplementTomorrowNotice}>
+            공지 저장
+          </Button>
+        </div>
+      )}
+
+      {(supplementTomorrowNoticeText || supplementTomorrowNoticeImage) && (
+        <div className="space-y-3 rounded-2xl border border-black bg-white p-4">
+          <div className="text-sm font-semibold text-slate-900">
+            공지
+          </div>
+
+          {supplementTomorrowNoticeText && (
+            <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
+              {supplementTomorrowNoticeText}
+            </div>
+          )}
+
+          {supplementTomorrowNoticeImage && (
+            <img
+              src={supplementTomorrowNoticeImage}
+              alt="명일 보충작업 공지 이미지"
+              className="max-h-80 rounded-2xl border border-slate-200 object-contain"
+            />
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[110px_1fr_100px_110px_1fr_1fr_auto]">
+        <select
+          value={supplementTomorrowInput.workType}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, workType: e.target.value }))
+          }
+          className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+        >
+          <option value="조출">조출</option>
+          <option value="점심">점심</option>
+          <option value="야간">야간</option>
+          <option value="주말">주말</option>
+        </select>
+
+        <Input
+          value={supplementTomorrowInput.location}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, location: e.target.value }))
+          }
+          placeholder="작업위치"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={supplementTomorrowInput.workerCount}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, workerCount: e.target.value }))
+          }
+          placeholder="작업인원"
+        />
+
+        <Input
+          type="number"
+          min="0"
+          value={supplementTomorrowInput.supervisorCount}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, supervisorCount: e.target.value }))
+          }
+          placeholder="관리감독자"
+        />
+
+        <Input
+          value={supplementTomorrowInput.content}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, content: e.target.value }))
+          }
+          placeholder="작업내용"
+        />
+
+        <Input
+          value={supplementTomorrowInput.safetyAction}
+          onChange={(e) =>
+            setSupplementTomorrowInput((prev) => ({ ...prev, safetyAction: e.target.value }))
+          }
+          placeholder="안전대책, 조치사항"
+        />
+
+        <Button onClick={handleAddSupplementTomorrowRow}>
+  입력
+</Button>
+
+<Button variant="outline" onClick={handleDownloadSupplementTomorrowExcel}>
+  엑셀 다운로드
+</Button>
+      </div>
+
+      {supplementMessage && (
+        <div className="text-sm text-slate-600">
+          {supplementMessage}
+        </div>
+      )}
+
+      {supplementTomorrowRows.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
+          입력 없음
+        </div>
+      ) : (
+        <>
+          <div className="space-y-3 lg:hidden">
+            {supplementTomorrowRows.map((row) => (
+              <div key={row.id} className="rounded-2xl border border-black bg-white p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Badge>{row.workType}</Badge>
+                  <div className="flex flex-wrap gap-1">
+                    {canAdminEditDabsItem && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditSupplementTomorrowPopup({
+                            open: true,
+                            id: row.id,
+                            workType: row.workType || "조출",
+                            company: row.company || "",
+                            location: row.location || "",
+                            workerCount: row.workerCount || "",
+                            supervisorCount: row.supervisorCount || "",
+                            content: row.content || "",
+                            safetyAction: row.safetyAction || "",
+                          })
+                        }
+                        className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                      >
+                        수정
+                      </button>
+                    )}
+
+                    {canDeleteOwnItem(row) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSupplementTomorrowRow(row.id)}
+                        className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                      >
+                        삭제
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-2 font-semibold">{row.company}</div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs font-medium text-slate-500">작업위치</div>
+                    <div className="text-sm">{row.location}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-slate-500">작업인원 / 관리감독자</div>
+                    <div className="text-sm">{row.workerCount} / {row.supervisorCount}</div>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <div className="text-xs font-medium text-slate-500">작업내용</div>
+                  <div className="whitespace-pre-wrap break-words text-sm">{row.content}</div>
+                </div>
+                <div className="mt-2">
+                  <div className="text-xs font-medium text-slate-500">안전대책, 조치사항</div>
+                  <div className="whitespace-pre-wrap break-words text-sm">{row.safetyAction}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
+            <table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-100 text-slate-700">
+                  <th className="w-[90px] border border-black px-2 py-2 text-left">작업구분</th>
+                  <th className="w-[140px] border border-black px-2 py-2 text-left">업체명</th>
+                  <th className="w-[150px] border border-black px-2 py-2 text-left">작업위치</th>
+                  <th className="w-[90px] border border-black px-2 py-2 text-left">작업인원</th>
+                  <th className="w-[100px] border border-black px-2 py-2 text-left">관리감독자</th>
+                  <th className="border border-black px-2 py-2 text-left">작업내용</th>
+                  <th className="border border-black px-2 py-2 text-left">안전대책, 조치사항</th>
+                  <th className="w-[100px] border border-black px-2 py-2 text-left">관리</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {supplementTomorrowRows.map((row) => (
+                  <tr key={row.id}>
+                    <td className="border border-black px-2 py-2 align-top">{row.workType}</td>
+                    <td className="border border-black px-2 py-2 align-top">{row.company}</td>
+                    <td className="border border-black px-2 py-2 align-top">{row.location}</td>
+                    <td className="border border-black px-2 py-2 align-top">{row.workerCount}</td>
+                    <td className="border border-black px-2 py-2 align-top">{row.supervisorCount}</td>
+                    <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.content}</td>
+                    <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.safetyAction}</td>
+                    <td className="border border-black px-2 py-2 align-top">
+                      <div className="flex flex-wrap gap-1">
+                        {canAdminEditDabsItem && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditSupplementTomorrowPopup({
+                                open: true,
+                                id: row.id,
+                                workType: row.workType || "조출",
+                                company: row.company || "",
+                                location: row.location || "",
+                                workerCount: row.workerCount || "",
+                                supervisorCount: row.supervisorCount || "",
+                                content: row.content || "",
+                                safetyAction: row.safetyAction || "",
+                              })
+                            }
+                            className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                          >
+                            수정
+                          </button>
+                        )}
+
+                        {canDeleteOwnItem(row) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSupplementTomorrowRow(row.id)}
+                            className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </CardContent>
+  </Card>
+)}
+
+        {/* 불러오기 기능 */}
+        <Card className="border-slate-200 shadow-none">
+          <CardContent className="p-4 space-y-3">
+            <div className="text-sm font-semibold text-slate-900">이전 날짜 데이터 불러오기</div>
+            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-600">불러올 날짜 선택</label>
+                <Input
+                  type="date"
+                  value={loadSourceDate}
+                  onChange={(e) => setLoadSourceDate(e.target.value)}
+                  className="h-9 bg-white"
+                />
+              </div>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  if (!currentUser?.companyName) return;
+                  if (!loadSourceDate || loadSourceDate === selectedDate) {
+                    setSupplementMessage("불러올 날짜를 확인하세요.");
+                    return;
+                  }
+                  if (!db) {
+                    setSupplementMessage("Firebase 연결이 없습니다.");
+                    return;
+                  }
+                  try {
+                    const sourceSnap = await getDoc(doc(db, "supplementWorks", loadSourceDate));
+                    if (!sourceSnap.exists()) {
+                      setSupplementMessage("해당 날짜의 데이터가 없습니다.");
+                      return;
+                    }
+                    const sourceData = sourceSnap.data();
+                    const companyName = String(currentUser.companyName || "").trim();
+                    if (supplementTab === "nightMorning") {
+                      const rows = Array.isArray(sourceData.nightMorningRows) ? sourceData.nightMorningRows : [];
+                      const myRows = rows.filter((r: any) => r.company === companyName);
+                      if (myRows.length === 0) { setSupplementMessage("해당 날짜에 내 업체 데이터가 없습니다."); return; }
+                      const nextRows = [...supplementNightMorningRows, ...myRows.map((r: any) => ({ ...r, id: createLocalId("supplement-night-morning"), createdByUid: currentUser.uid, createdByName: currentUser.name }))];
+                      await saveSupplementNightMorningRows(nextRows, "불러오기", companyName, `${formatMonthDay(loadSourceDate)} 금일야간/명일조출 불러오기`);
+                    } else {
+                      const rows = Array.isArray(sourceData.tomorrowRows) ? sourceData.tomorrowRows : [];
+                      const myRows = rows.filter((r: any) => r.company === companyName);
+                      if (myRows.length === 0) { setSupplementMessage("해당 날짜에 내 업체 데이터가 없습니다."); return; }
+                      const nextRows = [...supplementTomorrowRows, ...myRows.map((r: any) => ({ ...r, id: createLocalId("supplement-tomorrow"), createdByUid: currentUser.uid, createdByName: currentUser.name }))];
+                      await saveSupplementTomorrowRows(nextRows, "불러오기", companyName, `${formatMonthDay(loadSourceDate)} 명일보충작업 불러오기`);
+                    }
+                    setSupplementMessage(`${formatMonthDay(loadSourceDate)} 데이터를 불러왔습니다.`);
+                  } catch {
+                    setSupplementMessage("데이터 불러오기 중 오류가 발생했습니다.");
+                  }
+                }}
+              >
+                내 업체 데이터 불러오기
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 하단 달력 - DAB's 회의와 동일 */}
+        <Card className="border-slate-200 shadow-none">
+          <CardHeader>
+            <CardTitle className="text-base">하단 달력</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between mb-3">
+              <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="text-sm font-semibold">{monthLabel}</div>
+              <Button variant="outline" size="icon" onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-7 gap-1 text-xs">
+              {weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}
+              {monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}
+            </div>
+          </CardContent>
+        </Card>
+      </CardContent>
+    </Card>
+  </div>
+);
+
+  
+  if (!mounted) return null;
+
+return (
+  <div className="min-h-screen bg-slate-50 p-2 pb-28 sm:p-4 md:p-8">
+    {editOverlayPopup.open && (
+      <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
+        <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+          <div className="text-base font-semibold text-slate-900">
+            {editOverlayPopup.targetKey === "equipmentFlow"
+              ? "장비동선 수정"
+              : editOverlayPopup.targetKey.startsWith("buildingDetail::")
+              ? "동별 상세도 수정"
+              : "고위험작업 수정"}
+          </div>
+
+          {editOverlayPopup.targetKey === "highRisk" && (
+            <div className="mt-4 space-y-2">
+              <label className="text-xs font-medium text-slate-600">동 선택</label>
+              <select
+                value={editOverlayPopup.building}
+                onChange={(e) =>
+                  setEditOverlayPopup((prev) => ({
+                    ...prev,
+                    building: e.target.value,
+                  }))
+                }
+                className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              >
+                <option value="">동 선택</option>
+                {HIGH_RISK_BUILDINGS.map((building) => (
+                  <option key={building} value={building}>
+                    {building}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {editOverlayPopup.targetKey === "equipmentFlow" && (
+            <div className="mt-4 space-y-2">
+              <label className="text-xs font-medium text-slate-600">장비 선택</label>
+              <select
+                value={editOverlayPopup.equipmentType}
+                onChange={(e) =>
+                  setEditOverlayPopup((prev) => ({
+                    ...prev,
+                    equipmentType: e.target.value,
+                  }))
+                }
+                className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              >
+                {EQUIPMENT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {editOverlayPopup.targetKey.startsWith("buildingDetail::") && (
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-slate-600">시작시간</label>
+                <select
+                  value={editOverlayPopup.time}
+                  onChange={(e) => {
+                    const nextStart = e.target.value;
+                    setEditOverlayPopup((prev) => ({
+                      ...prev,
+                      time: nextStart,
+                      endTime:
+                        parseInt(prev.endTime, 10) > parseInt(nextStart, 10)
+                          ? prev.endTime
+                          : getDefaultEndTime(nextStart),
+                    }));
+                  }}
+                  className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                >
+                  {MATERIAL_TIMES.map((time) => (
+                    <option key={time} value={time}>
+                      {time}시
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-slate-600">종료시간</label>
+                <select
+                  value={editOverlayPopup.endTime}
+                  onChange={(e) =>
+                    setEditOverlayPopup((prev) => ({
+                      ...prev,
+                      endTime: e.target.value,
+                    }))
+                  }
+                  className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                >
+                  {MATERIAL_END_TIMES.filter((time) => parseInt(time, 10) > parseInt(editOverlayPopup.time, 10)).map((time) => (
+                    <option key={time} value={time}>
+                      {time}시
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">업체명</label>
+            <Input
+              value={editOverlayPopup.company}
+              onChange={(e) =>
+                setEditOverlayPopup((prev) => ({
+                  ...prev,
+                  company: e.target.value,
+                }))
+              }
+              placeholder="업체명 입력"
+            />
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <label className="text-xs font-medium text-slate-600">작업내용</label>
+            <Input
+              value={editOverlayPopup.note}
+              onChange={(e) =>
+                setEditOverlayPopup((prev) => ({
+                  ...prev,
+                  note: e.target.value,
+                }))
+              }
+              placeholder="작업내용 입력"
+            />
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              className="w-full lg:w-auto"
+              onClick={() =>
+                setEditOverlayPopup({
+                  open: false,
+                  itemId: "",
+                  targetKey: "highRisk",
+                  company: "",
+                  note: "",
+                  building: "",
+                  equipmentType: "concrete_pump_truck",
+                  time: "",
+                  endTime: "",
+                })
+              }
+            >
+              취소
+            </Button>
+
+            <Button className="w-full lg:w-auto" onClick={handleUpdateOverlayInfo}>
+              저장 후 위치 수정
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {!currentUser ? (
+  renderAuthScreen()
+) : currentPage === "menu" ? (
+  renderMenuScreen()
+) : currentPage === "dabs" ? (
+  renderDabsPage()
+) : currentPage === "portfolio" ? (
+  renderPortfolioPage()
+) : currentPage === "heatwave" ? (
+  renderHeatwavePage()
+) : currentPage === "supplementWork" ? (
+  renderSupplementWorkPage()
+) : currentPage === "approval" ? (
+  renderApprovalPage()
+) : currentPage === "activityLog" ? (
+  renderActivityLogPage()
+) : (
+  renderEducationPage()
+)}
+  </div>
+);
+}
