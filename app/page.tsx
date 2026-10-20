@@ -4284,6 +4284,8 @@ const handleDownloadCaptureImage = async (
     return;
   }
 
+  let titleEl: HTMLDivElement | null = null;
+
   try {
 
     setIsCapturingImage(true);
@@ -4291,6 +4293,12 @@ await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
     const safeFileName = fileName.replace(/[\\/:*?"<>|]/g, "-");
+
+    titleEl = document.createElement("div");
+    titleEl.textContent = fileName;
+    titleEl.style.cssText =
+      "padding:10px 4px 18px;font-size:20px;line-height:1.3;font-weight:700;color:#0f172a;text-align:center;background-color:#ffffff;";
+    target.insertBefore(titleEl, target.firstChild);
 
     const image = await toJpeg(target, {
       cacheBust: true,
@@ -4312,6 +4320,9 @@ await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
     console.log("IMAGE DOWNLOAD ERROR:", error);
     alert("이미지 저장 중 오류가 발생했습니다. 콘솔을 확인하세요.");
   } finally {
+    if (titleEl && titleEl.parentNode) {
+      titleEl.parentNode.removeChild(titleEl);
+    }
     setIsCapturingImage(false);
   }
 };
@@ -9760,7 +9771,7 @@ return (
                 {dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
               </CardContent>
             </Card>
-            <Card className="border-slate-200 shadow-none"><CardHeader><CardTitle className="text-base">하단 달력</CardTitle></CardHeader><CardContent><div className="grid grid-cols-7 gap-1 text-xs">{weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}{monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}</div></CardContent></Card>
+            <Card className="border-slate-200 shadow-none mb-44 lg:mb-0"><CardHeader><CardTitle className="text-base">하단 달력</CardTitle></CardHeader><CardContent><div className="grid grid-cols-7 gap-1 text-xs">{weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}{monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}</div></CardContent></Card>
           </CardContent>
         </Card>
       </div>
