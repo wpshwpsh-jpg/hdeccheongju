@@ -7029,7 +7029,7 @@ handleAddEquipmentArrowPoint(point);
   const BOTTOM_NAV_PRIMARY_KEYS = ["menu", "dabs", "education"];
 
   const renderBottomNav = () => {
-    if (!currentUser) return null;
+    if (!currentUser || fullscreenOverlay) return null;
     const primaryItems = shellNavItems.filter((item) => BOTTOM_NAV_PRIMARY_KEYS.includes(item.key));
     const moreItems = shellNavItems.filter((item) => !BOTTOM_NAV_PRIMARY_KEYS.includes(item.key));
     const isMoreActive = moreItems.some((item) => item.key === currentPage);
@@ -7072,7 +7072,7 @@ handleAddEquipmentArrowPoint(point);
   };
 
   const renderMoreSheet = () => {
-    if (!currentUser || !shellMoreOpen) return null;
+    if (!currentUser || !shellMoreOpen || fullscreenOverlay) return null;
     const moreItems = shellNavItems.filter((item) => !BOTTOM_NAV_PRIMARY_KEYS.includes(item.key));
     return (
       <div className="fixed inset-0 z-[110] flex items-end bg-black/40 lg:hidden" onClick={() => setShellMoreOpen(false)}>
@@ -8793,7 +8793,7 @@ return (
 )}
 
         {fullscreenOverlay && (
-          <div className="fixed inset-0 z-[60] flex flex-col bg-black">
+          <div className="fixed inset-0 z-[100] flex h-[100dvh] w-screen flex-col bg-black">
             <div className="flex items-center justify-between px-3 py-2">
               <div className="text-sm font-semibold text-white">사진 확대 보기</div>
               <button
