@@ -1134,6 +1134,7 @@ const [editEntryPopup, setEditEntryPopup] = useState({
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [currentPage, setCurrentPage] = useState("menu");
   const [shellMoreOpen, setShellMoreOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 const [portfolioSlideIndex, setPortfolioSlideIndex] = useState(0);
 const [isExportingPortfolioImages, setIsExportingPortfolioImages] = useState(false);
   const [dabsTabIndex, setDabsTabIndex] = useState(0);
@@ -7010,15 +7011,36 @@ handleAddEquipmentArrowPoint(point);
   const renderSidebar = () => {
     if (!currentUser) return null;
     return (
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200 bg-white p-4 lg:flex">
-        <div className="flex items-center gap-2 px-2 pb-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-slate-200 bg-white p-4 transition-[width] duration-200 ease-in-out lg:flex",
+          sidebarCollapsed ? "w-[76px] px-2" : "w-60"
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed((prev) => !prev)}
+          aria-label={sidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
+          title={sidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
+          className="absolute -right-3 top-7 z-40 flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+        >
+          {sidebarCollapsed ? (
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : (
+            <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
+        </button>
+
+        <div className={cn("flex items-center gap-2 pb-4", sidebarCollapsed ? "justify-center px-0" : "px-2")}>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">
             HS
           </div>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-bold text-slate-900">어울림 청주사직</div>
-            <div className="truncate text-[11px] text-slate-500">현장 안전정보 통합 시스템</div>
-          </div>
+          {!sidebarCollapsed && (
+            <div className="min-w-0">
+              <div className="truncate text-sm font-bold text-slate-900">어울림 청주사직</div>
+              <div className="truncate text-[11px] text-slate-500">현장 안전정보 통합 시스템</div>
+            </div>
+          )}
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto py-2">
@@ -7030,35 +7052,58 @@ handleAddEquipmentArrowPoint(point);
                 key={item.key}
                 type="button"
                 onClick={() => setCurrentPage(item.key)}
+                title={sidebarCollapsed ? item.title : undefined}
+                aria-label={item.title}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-medium transition",
+                  "flex w-full items-center rounded-2xl py-2.5 text-left text-sm font-medium transition",
+                  sidebarCollapsed ? "justify-center px-0" : "gap-3 px-3",
                   isActive
                     ? "bg-blue-50 text-blue-700"
                     : "text-slate-600 hover:bg-slate-100"
                 )}
               >
                 <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-blue-600" : "text-slate-400")} />
-                <span className="truncate">{item.title}</span>
+                {!sidebarCollapsed && <span className="truncate">{item.title}</span>}
               </button>
             );
           })}
         </nav>
 
-        <div className="mt-2 rounded-2xl border border-slate-200 p-3">
-          <div className="truncate text-sm font-semibold text-slate-900">{currentUser.name}</div>
-          <div className="truncate text-xs text-slate-500">
-            {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}
+        {sidebarCollapsed ? (
+          <div className="mt-2 flex flex-col items-center gap-2 rounded-2xl border border-slate-200 p-2">
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700"
+              title={`${currentUser.name} · ${currentUser.companyName}`}
+            >
+              {currentUser.name?.slice(0, 1) || "U"}
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="로그아웃"
+              aria-label="로그아웃"
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleLogout}
-            className="mt-3 w-full"
-          >
-            <LogOut className="mr-1.5 h-3.5 w-3.5" />
-            로그아웃
-          </Button>
-        </div>
+        ) : (
+          <div className="mt-2 rounded-2xl border border-slate-200 p-3">
+            <div className="truncate text-sm font-semibold text-slate-900">{currentUser.name}</div>
+            <div className="truncate text-xs text-slate-500">
+              {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLogout}
+              className="mt-3 w-full"
+            >
+              <LogOut className="mr-1.5 h-3.5 w-3.5" />
+              로그아웃
+            </Button>
+          </div>
+        )}
       </aside>
     );
   };
@@ -12549,7 +12594,12 @@ const renderSupplementWorkPage = () => (
   if (!mounted) return null;
 
 return (
-  <div className={cn("min-h-screen bg-slate-50 p-2 pb-28 sm:p-4 md:p-8", currentUser && "lg:pl-60")}>
+  <div
+    className={cn(
+      "min-h-screen bg-slate-50 p-2 pb-28 transition-[padding-left] duration-200 ease-in-out sm:p-4 md:p-8",
+      currentUser && (sidebarCollapsed ? "lg:pl-[100px]" : "lg:pl-[264px]")
+    )}
+  >
     {renderSidebar()}
     {renderBottomNav()}
     {renderMoreSheet()}
