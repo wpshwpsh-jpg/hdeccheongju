@@ -3707,6 +3707,15 @@ const handleDownloadSupplementWeekendExcel = () => {
     : []),
 ];
 
+const menuItemTints: Record<string, { bg: string; text: string }> = {
+  dabs: { bg: "bg-blue-50", text: "text-blue-600" },
+  education: { bg: "bg-emerald-50", text: "text-emerald-600" },
+  heatwave: { bg: "bg-orange-50", text: "text-orange-600" },
+  supplementWork: { bg: "bg-purple-50", text: "text-purple-600" },
+  approval: { bg: "bg-rose-50", text: "text-rose-600" },
+  activityLog: { bg: "bg-slate-100", text: "text-slate-600" },
+};
+
   const selectedDateObject = useMemo(() => {
   const [year, month, day] = selectedDate.split("-").map(Number);
   return new Date(year, month - 1, day);
@@ -3739,6 +3748,34 @@ const soloRows = useMemo<Record<string, DabsRowItem[]>>(
   () => dabsData[selectedDate]?.soloWorker?.rows || {},
   [dabsData, selectedDate]
 );
+
+const homeStats = useMemo(() => {
+  const highRiskTabValue = dabsData[selectedDate]?.highRiskTable;
+  const highRiskStoredRows =
+    typeof highRiskTabValue === "object" && highRiskTabValue && "rows" in highRiskTabValue
+      ? highRiskTabValue.rows || {}
+      : {};
+  const highRiskCount = getHighRiskTableRows(highRiskStoredRows).length;
+
+  const soloWorkerCount = Object.values(soloRows).reduce(
+    (sum, items) => sum + (items?.length || 0),
+    0
+  );
+
+  const materialsTabValue = dabsData[selectedDate]?.materialsAfter0;
+  const materialsCount =
+    typeof materialsTabValue === "object" && materialsTabValue && "list" in materialsTabValue
+      ? (materialsTabValue.list || []).length
+      : 0;
+
+  return { highRiskCount, soloWorkerCount, materialsCount };
+}, [dabsData, selectedDate, soloRows]);
+
+const goToDabsTab = (tabKey: string) => {
+  const targetIndex = dabsTabs.findIndex((tab) => tab.key === tabKey);
+  setCurrentPage("dabs");
+  setDabsTabIndex(targetIndex === -1 ? 0 : targetIndex);
+};
 
 const getMergedSectionRows = (tabKey: string) => {
   const mergedRows: Record<string, DabsRowItem[]> = {};
@@ -7620,6 +7657,70 @@ const posY = adjustedPosition?.y ?? marker.y;
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
 
+      <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr] sm:gap-4">
+        <button
+          type="button"
+          onClick={() => goToDabsTab("highRisk")}
+          aria-label={`오늘 고위험작업 ${homeStats.highRiskCount}건, 눌러서 바로 확인`}
+          className="group flex flex-col justify-between rounded-[24px] border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 sm:p-6"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-orange-700">
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              오늘 고위험작업
+            </div>
+            <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-bold text-orange-700">
+              최우선 확인
+            </span>
+          </div>
+
+          <div className="mt-3 flex items-end justify-between gap-2">
+            <div className="text-4xl font-extrabold leading-none text-slate-900 sm:text-5xl">
+              {homeStats.highRiskCount}
+              <span className="ml-1 text-base font-semibold text-slate-500">건</span>
+            </div>
+            <div className="flex items-center gap-1 text-sm font-semibold text-orange-600 group-hover:underline">
+              바로 확인
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </div>
+          </div>
+        </button>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => goToDabsTab("soloWorker")}
+            aria-label={`오늘 단독작업자 ${homeStats.soloWorkerCount}명, 눌러서 바로 확인`}
+            className="flex flex-col justify-between rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+          >
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+              <Users className="h-3.5 w-3.5" aria-hidden="true" />
+              단독작업
+            </div>
+            <div className="mt-2 text-2xl font-extrabold leading-none text-slate-900 sm:text-3xl">
+              {homeStats.soloWorkerCount}
+              <span className="ml-1 text-sm font-semibold text-slate-500">명</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => goToDabsTab("materialsAfter0")}
+            aria-label={`오늘 자재반입 ${homeStats.materialsCount}건, 눌러서 바로 확인`}
+            className="flex flex-col justify-between rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+          >
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+              <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" />
+              자재반입
+            </div>
+            <div className="mt-2 text-2xl font-extrabold leading-none text-slate-900 sm:text-3xl">
+              {homeStats.materialsCount}
+              <span className="ml-1 text-sm font-semibold text-slate-500">건</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
       {canManualChangeSelectedDate && (
         <Card className="border-slate-200 shadow-none">
           <CardContent className="p-4">
@@ -7702,9 +7803,9 @@ const posY = adjustedPosition?.y ?? marker.y;
     </CardContent>
   </Card>
 )}
-      <div className="grid gap-4 md:grid-cols-3 md:gap-6">{menuItems.map((item) => { const Icon = item.icon; return <button key={item.key} onClick={() => {
+      <div className="grid gap-4 md:grid-cols-3 md:gap-6">{menuItems.map((item) => { const Icon = item.icon; const tint = menuItemTints[item.key] || menuItemTints.activityLog; return <button key={item.key} type="button" onClick={() => {
   setCurrentPage(item.key);
-}} className="rounded-[24px] border border-slate-300 bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md sm:p-6"><div className="flex items-center gap-3"><div className="rounded-2xl bg-slate-100 p-3 text-slate-700"><Icon className="h-6 w-6" /></div><div><div className="text-base font-semibold text-slate-900 lg:text-lg">{item.title}</div><div className="mt-1 text-sm text-slate-500">{item.description}</div></div></div></button>; })}</div>
+}} className="rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 sm:p-6"><div className="flex items-center gap-3"><div className={cn("rounded-2xl p-3", tint.bg, tint.text)}><Icon className="h-6 w-6" aria-hidden="true" /></div><div><div className="text-base font-semibold text-slate-900 lg:text-lg">{item.title}</div><div className="mt-1 text-sm text-slate-500">{item.description}</div></div></div></button>; })}</div>
     </div>
   );
 
