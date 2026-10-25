@@ -3729,7 +3729,15 @@ const selectedDatePlusOne = useMemo(() => {
   d.setDate(d.getDate() + 1);
   return d;
 }, [selectedDateObject]);
- 
+
+const previousDateObject = useMemo(() => {
+  const d = new Date(selectedDateObject);
+  d.setDate(d.getDate() - 1);
+  return d;
+}, [selectedDateObject]);
+
+const previousDateKey = useMemo(() => formatDateKey(previousDateObject), [previousDateObject]);
+
   const dabsTabs = useMemo(() => [
   { key: "highRisk", label: "고위험작업" },
   { key: "buildingDetail", label: "동별 상세도" },
@@ -3751,26 +3759,34 @@ const soloRows = useMemo<Record<string, DabsRowItem[]>>(
 );
 
 const homeStats = useMemo(() => {
-  const highRiskTabValue = dabsData[selectedDate]?.highRiskTable;
+  const previousDayData = dabsData[previousDateKey];
+
+  const highRiskTabValue = previousDayData?.highRiskTable;
   const highRiskStoredRows =
     typeof highRiskTabValue === "object" && highRiskTabValue && "rows" in highRiskTabValue
       ? highRiskTabValue.rows || {}
       : {};
-  const highRiskCount = getHighRiskTableRows(highRiskStoredRows).length;
+  const highRiskRows = getHighRiskTableRows(highRiskStoredRows);
+  const highRiskCompanySet = new Set(
+    highRiskRows.map((row) => (row.company || "").trim() || "업체 미지정")
+  );
+  const highRiskCount = highRiskCompanySet.size;
 
-  const soloWorkerCount = Object.values(soloRows).reduce(
+  const previousSoloRows: Record<string, DabsRowItem[]> =
+    previousDayData?.soloWorker?.rows || {};
+  const soloWorkerCount = Object.values(previousSoloRows).reduce(
     (sum, items) => sum + (items?.length || 0),
     0
   );
 
-  const materialsTabValue = dabsData[selectedDate]?.materialsAfter0;
+  const materialsTabValue = previousDayData?.materialsAfter0;
   const materialsCount =
     typeof materialsTabValue === "object" && materialsTabValue && "list" in materialsTabValue
       ? (materialsTabValue.list || []).length
       : 0;
 
   return { highRiskCount, soloWorkerCount, materialsCount };
-}, [dabsData, selectedDate, soloRows]);
+}, [dabsData, previousDateKey]);
 
 const goToDabsTab = (tabKey: string) => {
   const targetIndex = dabsTabs.findIndex((tab) => tab.key === tabKey);
@@ -7706,13 +7722,13 @@ const posY = adjustedPosition?.y ?? marker.y;
         <button
           type="button"
           onClick={() => goToDabsTab("highRisk")}
-          aria-label={`오늘 고위험작업 ${homeStats.highRiskCount}건, 눌러서 바로 확인`}
+          aria-label={`${formatShortDate(previousDateObject)} 기준 고위험작업 ${homeStats.highRiskCount}개 업체, 눌러서 바로 확인`}
           className="group flex flex-col justify-between rounded-[24px] border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 sm:p-6"
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-sm font-semibold text-orange-700">
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-              오늘 고위험작업
+              {formatShortDate(previousDateObject)} 고위험작업
             </div>
             <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-bold text-orange-700">
               최우선 확인
@@ -7722,7 +7738,7 @@ const posY = adjustedPosition?.y ?? marker.y;
           <div className="mt-3 flex items-end justify-between gap-2">
             <div className="text-4xl font-extrabold leading-none text-slate-900 sm:text-5xl">
               {homeStats.highRiskCount}
-              <span className="ml-1 text-base font-semibold text-slate-500">건</span>
+              <span className="ml-1 text-base font-semibold text-slate-500">개 업체</span>
             </div>
             <div className="flex items-center gap-1 text-sm font-semibold text-orange-600 group-hover:underline">
               바로 확인
@@ -7735,12 +7751,12 @@ const posY = adjustedPosition?.y ?? marker.y;
           <button
             type="button"
             onClick={() => goToDabsTab("soloWorker")}
-            aria-label={`오늘 단독작업자 ${homeStats.soloWorkerCount}명, 눌러서 바로 확인`}
+            aria-label={`${formatShortDate(previousDateObject)} 기준 단독작업 ${homeStats.soloWorkerCount}명, 눌러서 바로 확인`}
             className="flex flex-col justify-between rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
           >
             <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
               <Users className="h-3.5 w-3.5" aria-hidden="true" />
-              단독작업
+              {formatShortDate(previousDateObject)} 단독작업
             </div>
             <div className="mt-2 text-2xl font-extrabold leading-none text-slate-900 sm:text-3xl">
               {homeStats.soloWorkerCount}
@@ -7751,12 +7767,12 @@ const posY = adjustedPosition?.y ?? marker.y;
           <button
             type="button"
             onClick={() => goToDabsTab("materialsAfter0")}
-            aria-label={`오늘 자재반입 ${homeStats.materialsCount}건, 눌러서 바로 확인`}
+            aria-label={`${formatShortDate(previousDateObject)} 기준 자재반입 ${homeStats.materialsCount}건, 눌러서 바로 확인`}
             className="flex flex-col justify-between rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
           >
             <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
               <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" />
-              자재반입
+              {formatShortDate(previousDateObject)} 자재반입
             </div>
             <div className="mt-2 text-2xl font-extrabold leading-none text-slate-900 sm:text-3xl">
               {homeStats.materialsCount}
