@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   HelpCircle,
+  Home,
   LayoutGrid,
   LogOut,
   MessageSquare,
@@ -112,7 +113,7 @@ function cn(...classes: Array<string | false | null | undefined>) {
 }
 
 function Card({ className = "", children }: { className?: string; children?: ReactNode }) {
-  return <div className={cn("rounded-[24px] border border-black bg-white shadow-sm", className)}>{children}</div>;
+  return <div className={cn("rounded-[24px] border border-slate-300 bg-white shadow-sm", className)}>{children}</div>;
 }
 
 function CardHeader({ className = "", children }: { className?: string; children?: ReactNode }) {
@@ -142,7 +143,7 @@ function Button({
   children?: ReactNode;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
   const variantClass = {
-    default: "bg-slate-900 text-white hover:bg-slate-800 border-slate-900",
+    default: "bg-blue-600 text-white hover:bg-blue-700 border-blue-600",
     outline: "bg-white text-slate-700 hover:bg-slate-50 border-slate-300",
     ghost: "bg-transparent text-slate-600 hover:bg-slate-100 border-transparent",
     secondary: "bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200",
@@ -179,7 +180,7 @@ function Input({
   return (
     <input
       className={cn(
-        "h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200 [font-family:inherit]",
+        "h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 [font-family:inherit]",
         className
       )}
       {...props}
@@ -196,7 +197,7 @@ function TextArea({
   return (
     <textarea
       className={cn(
-        "min-h-[140px] w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:ring-2 focus:ring-slate-200",
+        "min-h-[140px] w-full rounded-2xl border border-slate-300 bg-white px-3 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100",
         className
       )}
       {...props}
@@ -984,7 +985,7 @@ function EquipmentIcon({
 
 function MobileListCard({ title, children, action }: { title: ReactNode; children?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="rounded-2xl border border-black bg-white p-4 shadow-sm lg:hidden">
+    <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm lg:hidden">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="text-sm font-semibold text-slate-900">{title}</div>
         {action}
@@ -997,7 +998,7 @@ function MobileListCard({ title, children, action }: { title: ReactNode; childre
 const TABLE_BASE_CLASS = "w-full table-fixed border-collapse text-[32px]";
 
 const dottedRow = (index: number) =>
-  index > 0 ? "border-t border-dashed border-black pt-2" : "";
+  index > 0 ? "border-t border-dashed border-slate-300 pt-2" : "";
 
 type TextColorRange = {
   start: number;
@@ -1132,6 +1133,8 @@ const [editEntryPopup, setEditEntryPopup] = useState({
 });
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [currentPage, setCurrentPage] = useState("menu");
+  const [shellMoreOpen, setShellMoreOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 const [portfolioSlideIndex, setPortfolioSlideIndex] = useState(0);
 const [isExportingPortfolioImages, setIsExportingPortfolioImages] = useState(false);
   const [dabsTabIndex, setDabsTabIndex] = useState(0);
@@ -3705,6 +3708,15 @@ const handleDownloadSupplementWeekendExcel = () => {
     : []),
 ];
 
+const menuItemTints: Record<string, { bg: string; text: string }> = {
+  dabs: { bg: "bg-blue-50", text: "text-blue-600" },
+  education: { bg: "bg-emerald-50", text: "text-emerald-600" },
+  heatwave: { bg: "bg-orange-50", text: "text-orange-600" },
+  supplementWork: { bg: "bg-purple-50", text: "text-purple-600" },
+  approval: { bg: "bg-rose-50", text: "text-rose-600" },
+  activityLog: { bg: "bg-slate-100", text: "text-slate-600" },
+};
+
   const selectedDateObject = useMemo(() => {
   const [year, month, day] = selectedDate.split("-").map(Number);
   return new Date(year, month - 1, day);
@@ -3717,7 +3729,54 @@ const selectedDatePlusOne = useMemo(() => {
   d.setDate(d.getDate() + 1);
   return d;
 }, [selectedDateObject]);
- 
+
+const previousDateObject = useMemo(() => {
+  const d = new Date(selectedDateObject);
+  d.setDate(d.getDate() - 1);
+  return d;
+}, [selectedDateObject]);
+
+const previousDateKey = useMemo(() => formatDateKey(previousDateObject), [previousDateObject]);
+
+useEffect(() => {
+  if (isDemoMode || !db || !currentUser) return undefined;
+
+  const unsubscribePrevDabs = onSnapshot(doc(db, "dabsMeetings", previousDateKey), (snap) => {
+    if (!snap.exists()) return;
+
+    const data = snap.data() as DabsDateValue;
+
+    setDabsData((prev) => ({
+      ...prev,
+      [previousDateKey]: {
+        ...(prev[previousDateKey] || {}),
+        ...data,
+      },
+    }));
+  });
+
+  const unsubscribePrevSolo = onSnapshot(doc(db, "soloWorkers", previousDateKey), (snap) => {
+    if (!snap.exists()) return;
+
+    const data = snap.data() as { rows?: Record<string, DabsRowItem[]> };
+
+    setDabsData((prev) => ({
+      ...prev,
+      [previousDateKey]: {
+        ...(prev[previousDateKey] || {}),
+        soloWorker: {
+          rows: data.rows || {},
+        },
+      },
+    }));
+  });
+
+  return () => {
+    unsubscribePrevDabs();
+    unsubscribePrevSolo();
+  };
+}, [db, isDemoMode, currentUser, previousDateKey]);
+
   const dabsTabs = useMemo(() => [
   { key: "highRisk", label: "고위험작업" },
   { key: "buildingDetail", label: "동별 상세도" },
@@ -3737,6 +3796,42 @@ const soloRows = useMemo<Record<string, DabsRowItem[]>>(
   () => dabsData[selectedDate]?.soloWorker?.rows || {},
   [dabsData, selectedDate]
 );
+
+const homeStats = useMemo(() => {
+  const previousDayData = dabsData[previousDateKey];
+
+  const highRiskTabValue = previousDayData?.highRiskTable;
+  const highRiskStoredRows =
+    typeof highRiskTabValue === "object" && highRiskTabValue && "rows" in highRiskTabValue
+      ? highRiskTabValue.rows || {}
+      : {};
+  const highRiskRows = getHighRiskTableRows(highRiskStoredRows);
+  const highRiskCompanySet = new Set(
+    highRiskRows.map((row) => (row.company || "").trim() || "업체 미지정")
+  );
+  const highRiskCount = highRiskCompanySet.size;
+
+  const previousSoloRows: Record<string, DabsRowItem[]> =
+    previousDayData?.soloWorker?.rows || {};
+  const soloWorkerCount = Object.values(previousSoloRows).reduce(
+    (sum, items) => sum + (items?.length || 0),
+    0
+  );
+
+  const materialsTabValue = previousDayData?.materialsAfter0;
+  const materialsCount =
+    typeof materialsTabValue === "object" && materialsTabValue && "list" in materialsTabValue
+      ? (materialsTabValue.list || []).length
+      : 0;
+
+  return { highRiskCount, soloWorkerCount, materialsCount };
+}, [dabsData, previousDateKey]);
+
+const goToDabsTab = (tabKey: string) => {
+  const targetIndex = dabsTabs.findIndex((tab) => tab.key === tabKey);
+  setCurrentPage("dabs");
+  setDabsTabIndex(targetIndex === -1 ? 0 : targetIndex);
+};
 
 const getMergedSectionRows = (tabKey: string) => {
   const mergedRows: Record<string, DabsRowItem[]> = {};
@@ -6963,6 +7058,206 @@ handleAddEquipmentArrowPoint(point);
     );
   };
 
+  const shellNavItems = [
+    { key: "menu", title: "홈", icon: Home },
+    ...menuItems,
+  ];
+
+  const renderSidebar = () => {
+    if (!currentUser) return null;
+    return (
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-slate-200 bg-white p-4 transition-[width] duration-200 ease-in-out lg:flex",
+          sidebarCollapsed ? "w-[76px] px-2" : "w-60"
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed((prev) => !prev)}
+          aria-label={sidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
+          title={sidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
+          className="absolute -right-3 top-7 z-40 flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+        >
+          {sidebarCollapsed ? (
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : (
+            <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
+        </button>
+
+        <div className={cn("flex items-center gap-2 pb-4", sidebarCollapsed ? "justify-center px-0" : "px-2")}>
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">
+            HS
+          </div>
+          {!sidebarCollapsed && (
+            <div className="min-w-0">
+              <div className="truncate text-sm font-bold text-slate-900">어울림 청주사직</div>
+              <div className="truncate text-[11px] text-slate-500">현장 안전정보 통합 시스템</div>
+            </div>
+          )}
+        </div>
+
+        <nav className="flex-1 space-y-1 overflow-y-auto py-2">
+          {shellNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = currentPage === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setCurrentPage(item.key)}
+                title={sidebarCollapsed ? item.title : undefined}
+                aria-label={item.title}
+                className={cn(
+                  "flex w-full items-center rounded-2xl py-2.5 text-left text-sm font-medium transition",
+                  sidebarCollapsed ? "justify-center px-0" : "gap-3 px-3",
+                  isActive
+                    ? "bg-blue-50 text-blue-700"
+                    : "text-slate-600 hover:bg-slate-100"
+                )}
+              >
+                <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-blue-600" : "text-slate-400")} />
+                {!sidebarCollapsed && <span className="truncate">{item.title}</span>}
+              </button>
+            );
+          })}
+        </nav>
+
+        {sidebarCollapsed ? (
+          <div className="mt-2 flex flex-col items-center gap-2 rounded-2xl border border-slate-200 p-2">
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700"
+              title={`${currentUser.name} · ${currentUser.companyName}`}
+            >
+              {currentUser.name?.slice(0, 1) || "U"}
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="로그아웃"
+              aria-label="로그아웃"
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="mt-2 rounded-2xl border border-slate-200 p-3">
+            <div className="truncate text-sm font-semibold text-slate-900">{currentUser.name}</div>
+            <div className="truncate text-xs text-slate-500">
+              {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLogout}
+              className="mt-3 w-full"
+            >
+              <LogOut className="mr-1.5 h-3.5 w-3.5" />
+              로그아웃
+            </Button>
+          </div>
+        )}
+      </aside>
+    );
+  };
+
+  const BOTTOM_NAV_PRIMARY_KEYS = ["menu", "dabs", "education"];
+
+  const renderBottomNav = () => {
+    if (!currentUser || fullscreenOverlay) return null;
+    const primaryItems = shellNavItems.filter((item) => BOTTOM_NAV_PRIMARY_KEYS.includes(item.key));
+    const moreItems = shellNavItems.filter((item) => !BOTTOM_NAV_PRIMARY_KEYS.includes(item.key));
+    const isMoreActive = moreItems.some((item) => item.key === currentPage);
+    return (
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex items-stretch justify-around border-t border-slate-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_12px_rgba(15,23,42,0.06)] backdrop-blur lg:hidden">
+        {primaryItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = currentPage === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setCurrentPage(item.key)}
+              className={cn(
+                "flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[11px] font-medium transition",
+                isActive ? "text-blue-600" : "text-slate-500"
+              )}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="truncate">{item.title}</span>
+            </button>
+          );
+        })}
+
+        {moreItems.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShellMoreOpen(true)}
+            className={cn(
+              "flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[11px] font-medium transition",
+              isMoreActive ? "text-blue-600" : "text-slate-500"
+            )}
+          >
+            <LayoutGrid className="h-5 w-5" />
+            <span className="truncate">더보기</span>
+          </button>
+        )}
+      </nav>
+    );
+  };
+
+  const renderMoreSheet = () => {
+    if (!currentUser || !shellMoreOpen || fullscreenOverlay) return null;
+    const moreItems = shellNavItems.filter((item) => !BOTTOM_NAV_PRIMARY_KEYS.includes(item.key));
+    return (
+      <div className="fixed inset-0 z-[110] flex items-end bg-black/40 lg:hidden" onClick={() => setShellMoreOpen(false)}>
+        <div
+          className="w-full rounded-t-3xl bg-white p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200" />
+          <div className="mb-2 text-sm font-semibold text-slate-900">더보기</div>
+          <div className="space-y-1">
+            {moreItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentPage === item.key;
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    setCurrentPage(item.key);
+                    setShellMoreOpen(false);
+                  }}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-medium transition",
+                    isActive ? "bg-blue-50 text-blue-700" : "text-slate-700 hover:bg-slate-100"
+                  )}
+                >
+                  <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-blue-600" : "text-slate-400")} />
+                  {item.title}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => {
+                setShellMoreOpen(false);
+                handleLogout();
+              }}
+              className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50"
+            >
+              <LogOut className="h-4 w-4 shrink-0" />
+              로그아웃
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderOverlayImage = (
   selectedImage: string | undefined,
   isImageTab: boolean,
@@ -7068,7 +7363,7 @@ return (
   <div
     ref={isFullscreenViewer ? fsImageAreaRef : imageAreaRef}
     className={cn(
-      "relative overflow-hidden rounded-xl border border-black bg-slate-50 touch-none md:rounded-2xl",
+      "relative overflow-hidden rounded-xl border border-slate-300 bg-slate-50 touch-none md:rounded-2xl",
       fillHeight ? "inline-flex max-h-full max-w-full items-center justify-center" : "w-full"
     )}
     style={isFullscreenViewer && fsFitSize ? { width: fsFitSize.width, height: fsFitSize.height } : undefined}
@@ -7380,7 +7675,7 @@ const posY = adjustedPosition?.y ?? marker.y;
           <h1 className="mt-2 text-2xl font-bold text-slate-900 lg:text-3xl">HS 어울림 청주사직</h1>
           <p className="mt-2 text-sm text-slate-500">로그인 또는 회원가입 후 메뉴를 선택해 이동할 수 있습니다.</p>
         </div>
-        <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
+        <div className="grid gap-4 md:grid-cols-2 md:gap-6">
           <Card className="rounded-[24px] border-0 shadow-sm">
             <CardHeader className="pb-2"><CardTitle className="flex items-center gap-2 text-base"><ShieldCheck className="h-5 w-5" />로그인</CardTitle></CardHeader>
             <CardContent className="space-y-3 py-3">
@@ -7397,7 +7692,7 @@ const posY = adjustedPosition?.y ?? marker.y;
       value={loginId}
       onChange={(e) => setLoginId(e.target.value)}
       placeholder={isDemoMode ? "GH45" : "이메일 입력"}
-      className="h-9"
+      className="h-10"
       disabled={loginLoading}
     />
   </div>
@@ -7409,7 +7704,7 @@ const posY = adjustedPosition?.y ?? marker.y;
       value={loginPassword}
       onChange={(e) => setLoginPassword(e.target.value)}
       placeholder={isDemoMode ? "2706" : "비밀번호 입력"}
-      className="h-9"
+      className="h-10"
       disabled={loginLoading}
     />
   </div>
@@ -7417,7 +7712,7 @@ const posY = adjustedPosition?.y ?? marker.y;
   <div className="flex gap-2">
   <Button
     type="submit"
-    className="h-9 flex-1"
+    className="h-10 flex-1"
     disabled={loginLoading}
   >
     {loginLoading ? "로그인 중..." : "로그인"}
@@ -7426,7 +7721,7 @@ const posY = adjustedPosition?.y ?? marker.y;
   <Button
     type="button"
     variant="outline"
-    className="h-9 flex-1"
+    className="h-10 flex-1"
     onClick={handlePasswordReset}
     disabled={loginLoading}
   >
@@ -7442,12 +7737,12 @@ const posY = adjustedPosition?.y ?? marker.y;
             <CardHeader><CardTitle className="flex items-center gap-2 text-lg"><UserPlus className="h-5 w-5" />회원가입</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">업체명</label><Input value={signupCompanyName} onChange={(e) => setSignupCompanyName(e.target.value)} placeholder="업체명 입력" className="h-9" /></div>
-                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">이름</label><Input value={signupName} onChange={(e) => setSignupName(e.target.value)} placeholder="이름 입력" className="h-9" /></div>
-                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">{isDemoMode ? "아이디" : "아이디(이메일)"}</label><Input value={signupId} onChange={(e) => setSignupId(e.target.value)} placeholder={isDemoMode ? "아이디 입력" : "이메일 입력"} className="h-9" /></div>
-                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">비밀번호</label><Input type="password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} placeholder="비밀번호 입력" className="h-9" /></div>
+                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">업체명</label><Input value={signupCompanyName} onChange={(e) => setSignupCompanyName(e.target.value)} placeholder="업체명 입력" className="h-10" /></div>
+                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">이름</label><Input value={signupName} onChange={(e) => setSignupName(e.target.value)} placeholder="이름 입력" className="h-10" /></div>
+                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">{isDemoMode ? "아이디" : "아이디(이메일)"}</label><Input value={signupId} onChange={(e) => setSignupId(e.target.value)} placeholder={isDemoMode ? "아이디 입력" : "이메일 입력"} className="h-10" /></div>
+                <div className="space-y-2"><label className="text-xs font-medium text-slate-600">비밀번호</label><Input type="password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} placeholder="비밀번호 입력" className="h-10" /></div>
               </div>
-              <div className="space-y-2"><label className="text-xs font-medium text-slate-600">회원 등급 신청</label><select value={signupRole} onChange={(e) => setSignupRole(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"><option value="general">협력사</option><option value="admin">현대건설</option></select><div className="text-xs text-slate-500">협력사는 마스터 또는 현대건설이 승인 가능, 현대건설 계정은 마스터만 승인 가능합니다.</div></div>
+              <div className="space-y-2"><label className="text-xs font-medium text-slate-600">회원 등급 신청</label><select value={signupRole} onChange={(e) => setSignupRole(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"><option value="general">협력사</option><option value="admin">현대건설</option></select><div className="text-xs text-slate-500">협력사는 마스터 또는 현대건설이 승인 가능, 현대건설 계정은 마스터만 승인 가능합니다.</div></div>
               <div className="flex justify-end"><Button className="w-full lg:w-auto" onClick={handleSignup}>가입 신청</Button></div>
               {signupMessage && <div className="text-sm text-slate-600">{signupMessage}</div>}
             </CardContent>
@@ -7461,6 +7756,70 @@ const posY = adjustedPosition?.y ?? marker.y;
   const renderMenuScreen = () => (
     <div className="space-y-4 sm:space-y-6">
       {renderTopBar()}
+
+      <div className="grid gap-3 sm:grid-cols-[1.4fr_1fr] sm:gap-4">
+        <button
+          type="button"
+          onClick={() => goToDabsTab("highRisk")}
+          aria-label={`${formatShortDate(previousDateObject)} 기준 고위험작업 ${homeStats.highRiskCount}개 업체, 눌러서 바로 확인`}
+          className="group flex flex-col justify-between rounded-[24px] border border-orange-200 bg-gradient-to-br from-orange-50 to-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 sm:p-6"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-orange-700">
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+              {formatShortDate(previousDateObject)} 고위험작업
+            </div>
+            <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-bold text-orange-700">
+              최우선 확인
+            </span>
+          </div>
+
+          <div className="mt-3 flex items-end justify-between gap-2">
+            <div className="text-4xl font-extrabold leading-none text-slate-900 sm:text-5xl">
+              {homeStats.highRiskCount}
+              <span className="ml-1 text-base font-semibold text-slate-500">개 업체</span>
+            </div>
+            <div className="flex items-center gap-1 text-sm font-semibold text-orange-600 group-hover:underline">
+              바로 확인
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            </div>
+          </div>
+        </button>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => goToDabsTab("soloWorker")}
+            aria-label={`${formatShortDate(previousDateObject)} 기준 단독작업 ${homeStats.soloWorkerCount}명, 눌러서 바로 확인`}
+            className="flex flex-col justify-between rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+          >
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+              <Users className="h-3.5 w-3.5" aria-hidden="true" />
+              {formatShortDate(previousDateObject)} 단독작업
+            </div>
+            <div className="mt-2 text-2xl font-extrabold leading-none text-slate-900 sm:text-3xl">
+              {homeStats.soloWorkerCount}
+              <span className="ml-1 text-sm font-semibold text-slate-500">명</span>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => goToDabsTab("materialsAfter0")}
+            aria-label={`${formatShortDate(previousDateObject)} 기준 자재반입 ${homeStats.materialsCount}건, 눌러서 바로 확인`}
+            className="flex flex-col justify-between rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+          >
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+              <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" />
+              {formatShortDate(previousDateObject)} 자재반입
+            </div>
+            <div className="mt-2 text-2xl font-extrabold leading-none text-slate-900 sm:text-3xl">
+              {homeStats.materialsCount}
+              <span className="ml-1 text-sm font-semibold text-slate-500">건</span>
+            </div>
+          </button>
+        </div>
+      </div>
 
       {canManualChangeSelectedDate && (
         <Card className="border-slate-200 shadow-none">
@@ -7544,9 +7903,9 @@ const posY = adjustedPosition?.y ?? marker.y;
     </CardContent>
   </Card>
 )}
-      <div className="grid gap-4 md:grid-cols-3 md:gap-6">{menuItems.map((item) => { const Icon = item.icon; return <button key={item.key} onClick={() => {
+      <div className="grid gap-4 md:grid-cols-3 md:gap-6">{menuItems.map((item) => { const Icon = item.icon; const tint = menuItemTints[item.key] || menuItemTints.activityLog; return <button key={item.key} type="button" onClick={() => {
   setCurrentPage(item.key);
-}} className="rounded-[24px] border border-black bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md sm:p-6"><div className="flex items-center gap-3"><div className="rounded-2xl bg-slate-100 p-3 text-slate-700"><Icon className="h-6 w-6" /></div><div><div className="text-base font-semibold text-slate-900 lg:text-lg">{item.title}</div><div className="mt-1 text-sm text-slate-500">{item.description}</div></div></div></button>; })}</div>
+}} className="rounded-[24px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 sm:p-6"><div className="flex items-center gap-3"><div className={cn("rounded-2xl p-3", tint.bg, tint.text)}><Icon className="h-6 w-6" aria-hidden="true" /></div><div><div className="text-base font-semibold text-slate-900 lg:text-lg">{item.title}</div><div className="mt-1 text-sm text-slate-500">{item.description}</div></div></div></button>; })}</div>
     </div>
   );
 
@@ -7604,7 +7963,7 @@ const posY = adjustedPosition?.y ?? marker.y;
               className={cn(
                 "min-h-[72px] rounded-xl border p-1.5 text-left transition sm:min-h-[82px] sm:p-2",
                 isSelected
-                  ? "border-slate-900 bg-slate-100"
+                  ? "border-blue-600 bg-slate-100"
                   : isCurrentMonth
                     ? "border-slate-200 bg-white shadow-sm"
                     : "border-slate-100 bg-slate-50 text-slate-400"
@@ -7614,7 +7973,7 @@ const posY = adjustedPosition?.y ?? marker.y;
                 <div
                   className={cn(
                     "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold lg:h-6 lg:w-6 lg:text-xs",
-                    isToday ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"
+                    isToday ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700"
                   )}
                 >
                   {date.getDate()}
@@ -7803,22 +8162,22 @@ const renderSectionMobileCards = (
   }, {});
 
   return (
-    <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
+    <div className="hidden overflow-x-auto rounded-2xl border border-slate-300 lg:block">
       <table className={TABLE_BASE_CLASS}>
         <thead>
           <tr className="bg-slate-100 text-slate-700">
-            <th className="border border-black px-3 py-2 text-left w-[16%]">업체명</th>
-            <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
-            <th className="border border-black px-3 py-2 text-left w-[16%]">성명</th>
-            <th className="border border-black px-3 py-2 text-left">작업 내용</th>
-            <th className="border border-black px-3 py-2 text-left w-[10%]">고령자</th>
+            <th className="border border-slate-300 px-3 py-2 text-left w-[16%]">업체명</th>
+            <th className="border border-slate-300 px-3 py-2 text-left w-[9%]">동</th>
+            <th className="border border-slate-300 px-3 py-2 text-left w-[16%]">성명</th>
+            <th className="border border-slate-300 px-3 py-2 text-left">작업 내용</th>
+            <th className="border border-slate-300 px-3 py-2 text-left w-[10%]">고령자</th>
           </tr>
         </thead>
 
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td className="border border-black px-3 py-2 text-center text-slate-300" colSpan={5}>
+              <td className="border border-slate-300 px-3 py-2 text-center text-slate-300" colSpan={5}>
                 입력 없음
               </td>
             </tr>
@@ -7837,7 +8196,7 @@ const renderSectionMobileCards = (
                       <td
                         rowSpan={list.length}
                         className={cn(
-                          "border border-black px-3 py-2 align-top font-semibold",
+                          "border border-slate-300 px-3 py-2 align-top font-semibold",
                           color.bg,
                           color.text
                         )}
@@ -7846,15 +8205,15 @@ const renderSectionMobileCards = (
                       </td>
                     )}
 
-                    <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
+                    <td className="border border-slate-300 px-3 py-2 align-top font-medium text-slate-700">
                       {item.building}
                     </td>
 
-                    <td className="border border-black px-3 py-2 align-top">
+                    <td className="border border-slate-300 px-3 py-2 align-top">
                       {item.name}
                     </td>
 
-                    <td className="border border-black px-3 py-2 align-top">
+                    <td className="border border-slate-300 px-3 py-2 align-top">
                       <div className="flex items-center justify-between gap-2">
                         <span className="whitespace-pre-wrap break-all leading-relaxed">
                           {item.content}
@@ -7899,7 +8258,7 @@ const renderSectionMobileCards = (
                       </div>
                     </td>
 
-                    <td className={cn("border border-black px-3 py-2 align-top", elderlyHighlight)}>
+                    <td className={cn("border border-slate-300 px-3 py-2 align-top", elderlyHighlight)}>
                       {item.elderly}
                     </td>
                   </tr>
@@ -7927,7 +8286,7 @@ const renderSectionMobileCards = (
           const color = getCompanyColorByList(item.company || "-", soloCompanyColorList);
 
           return (
-            <div key={item.id} className="rounded-2xl border border-black bg-white p-4 shadow-sm">
+            <div key={item.id} className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">{item.building}</div>
@@ -8026,7 +8385,7 @@ const renderEditPopups = () => (
               onChange={(e) =>
                 setEditSectionPopup((prev) => ({ ...prev, building: e.target.value }))
               }
-              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="">동 선택</option>
               {getDabsColumnsByTabKey(activeDabsKey).map((column) => (
@@ -8152,7 +8511,7 @@ const renderEditPopups = () => (
               onChange={(e) =>
                 setEditHighRiskTablePopup((prev) => ({ ...prev, building: e.target.value }))
               }
-              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="">동 선택</option>
               {HIGH_RISK_BUILDINGS.filter((building) => building !== ALL_BUILDING_LABEL).map((building) => (
@@ -8239,7 +8598,7 @@ const renderEditPopups = () => (
               onChange={(e) =>
                 setEditMaterialPopup((prev) => ({ ...prev, gate: e.target.value }))
               }
-              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="1">1게이트</option>
               <option value="7">7게이트</option>
@@ -8253,7 +8612,7 @@ const renderEditPopups = () => (
               onChange={(e) =>
                 setEditMaterialPopup((prev) => ({ ...prev, time: e.target.value }))
               }
-              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               {MATERIAL_TIMES.map((time) => (
                 <option key={time} value={time}>
@@ -8418,7 +8777,7 @@ const renderEditPopups = () => (
               onChange={(e) =>
                 setEditSoloPopup((prev) => ({ ...prev, building: e.target.value }))
               }
-              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="">동 선택</option>
               {SOLO_WORKER_COLUMNS.map((column) => (
@@ -8469,7 +8828,7 @@ const renderEditPopups = () => (
               onChange={(e) =>
                 setEditSoloPopup((prev) => ({ ...prev, elderly: e.target.value }))
               }
-              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               <option value="o">고령자 o</option>
               <option value="x">고령자 x</option>
@@ -8635,7 +8994,7 @@ return (
 )}
 
         {fullscreenOverlay && (
-          <div className="fixed inset-0 z-[60] flex flex-col bg-black">
+          <div className="fixed inset-0 z-[100] flex h-[100dvh] w-screen flex-col bg-black">
             <div className="flex items-center justify-between px-3 py-2">
               <div className="text-sm font-semibold text-white">사진 확대 보기</div>
               <button
@@ -8675,7 +9034,7 @@ return (
             onChange={(e) =>
               setImagePopup((prev) => ({ ...prev, building: e.target.value }))
             }
-            className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           >
             <option value="">동 선택</option>
             {HIGH_RISK_BUILDINGS.map((building) => (
@@ -8695,7 +9054,7 @@ return (
             onChange={(e) =>
               setImagePopup((prev) => ({ ...prev, equipmentType: e.target.value }))
             }
-            className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           >
             {EQUIPMENT_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -8723,7 +9082,7 @@ return (
                       : getDefaultEndTime(nextStart),
                 }));
               }}
-              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               {MATERIAL_TIMES.map((time) => (
                 <option key={time} value={time}>
@@ -8740,7 +9099,7 @@ return (
               onChange={(e) =>
                 setImagePopup((prev) => ({ ...prev, endTime: e.target.value }))
               }
-              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             >
               {MATERIAL_END_TIMES.filter((time) => parseInt(time, 10) > parseInt(imagePopup.time, 10)).map((time) => (
                 <option key={time} value={time}>
@@ -8821,7 +9180,7 @@ return (
           <CardContent className="space-y-5">
             <div
   className={cn(
-    "fixed bottom-3 left-1/2 z-40 flex w-[calc(100%-24px)] max-w-md -translate-x-1/2 flex-wrap justify-center gap-2 rounded-2xl border border-black bg-white/95 p-2 shadow-xl backdrop-blur lg:static lg:w-auto lg:max-w-none lg:translate-x-0 lg:justify-start lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none",
+    "sticky top-0 z-30 -mx-1 flex gap-2 overflow-x-auto rounded-2xl border border-slate-300 bg-white/95 p-2 shadow-sm backdrop-blur [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:static lg:mx-0 lg:flex-wrap lg:overflow-visible lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none",
     imagePopup.open && "hidden lg:flex"
   )}
 >
@@ -8830,9 +9189,9 @@ return (
       key={tab.key}
       onClick={() => setDabsTabIndex(index)}
       className={cn(
-        "rounded-2xl px-3 py-2 text-sm font-medium transition lg:px-4",
+        "shrink-0 whitespace-nowrap rounded-2xl px-3 py-2 text-sm font-medium transition lg:px-4",
         dabsTabIndex === index
-          ? "bg-slate-900 text-white"
+          ? "bg-blue-600 text-white"
           : "bg-slate-100 text-slate-600 hover:bg-slate-200"
       )}
     >
@@ -9050,7 +9409,7 @@ return (
       <select
         value={highRiskTableInput.building}
         onChange={(e) => setHighRiskTableInput({ ...highRiskTableInput, building: e.target.value })}
-        className="h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+        className="h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
       >
         <option value="">동 선택</option>
         {HIGH_RISK_BUILDINGS.filter((building) => building !== ALL_BUILDING_LABEL).map((building) => (
@@ -9097,7 +9456,7 @@ return (
       </div>
 
       <div className="w-full">
-        <div className="overflow-x-auto rounded-xl border border-black bg-white md:rounded-2xl">
+        <div className="overflow-x-auto rounded-xl border border-slate-300 bg-white md:rounded-2xl">
           <table className="w-full table-fixed border-collapse text-[22px] md:text-2xl">
             <colgroup>
               <col style={{ width: "10%" }} />
@@ -9108,22 +9467,22 @@ return (
 
             <thead>
               <tr className="bg-slate-100 text-slate-700">
-                <th className="border border-black px-1 py-1 text-center">위치</th>
-                <th className="border border-black px-1 py-1 text-center">업체명</th>
-                <th className="border border-black px-1 py-1 text-center">작업내용</th>
-                <th className="border border-black px-1 py-1 text-center">안전대책</th>
+                <th className="border border-slate-300 px-1 py-1 text-center">위치</th>
+                <th className="border border-slate-300 px-1 py-1 text-center">업체명</th>
+                <th className="border border-slate-300 px-1 py-1 text-center">작업내용</th>
+                <th className="border border-slate-300 px-1 py-1 text-center">안전대책</th>
               </tr>
             </thead>
 
             <tbody>
               {highRiskTableRows.map((item) => (
                 <tr key={item.id}>
-                  <td className="border border-black px-1 py-1 align-top break-all">{item.building}</td>
-                  <td className="border border-black px-1 py-1 align-top break-all">{item.company}</td>
-                  <td className="border border-black px-1 py-1 align-top whitespace-pre-wrap break-all">
+                  <td className="border border-slate-300 px-1 py-1 align-top break-all">{item.building}</td>
+                  <td className="border border-slate-300 px-1 py-1 align-top break-all">{item.company}</td>
+                  <td className="border border-slate-300 px-1 py-1 align-top whitespace-pre-wrap break-all">
                     {item.content}
                   </td>
-                  <td className="border border-black px-1 py-1 align-top whitespace-pre-wrap break-all">
+                  <td className="border border-slate-300 px-1 py-1 align-top whitespace-pre-wrap break-all">
                     <div className="flex items-start justify-between gap-1">
                       <span className="block w-full whitespace-pre-wrap break-all">{item.safety}</span>
 
@@ -9165,10 +9524,10 @@ return (
 
               {Array.from({ length: highRiskTableEmptyRowCount }).map((_, index) => (
                 <tr key={`highrisk-empty-${index}`}>
-                  <td className="border border-black px-1 py-1">&nbsp;</td>
-                  <td className="border border-black px-1 py-1">&nbsp;</td>
-                  <td className="border border-black px-1 py-1">&nbsp;</td>
-                  <td className="border border-black px-1 py-1">&nbsp;</td>
+                  <td className="border border-slate-300 px-1 py-1">&nbsp;</td>
+                  <td className="border border-slate-300 px-1 py-1">&nbsp;</td>
+                  <td className="border border-slate-300 px-1 py-1">&nbsp;</td>
+                  <td className="border border-slate-300 px-1 py-1">&nbsp;</td>
                 </tr>
               ))}
             </tbody>
@@ -9213,7 +9572,7 @@ return (
   <select
     value={sectionInput.building}
     onChange={(e) => setSectionInput({ ...sectionInput, building: e.target.value })}
-    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
   >
     <option value="">동 선택</option>
     {activeColumns.map((column) => (
@@ -9310,7 +9669,7 @@ return (
 
   <div
     className={cn(
-  "hidden rounded-2xl border border-black bg-white lg:block",
+  "hidden rounded-2xl border border-slate-300 bg-white lg:block",
   !isCapturingImage && "overflow-x-auto"
 )}
     
@@ -9327,9 +9686,9 @@ return (
 
       <thead>
         <tr className="bg-slate-100 text-slate-700">
-          <th className="border border-black px-3 py-2 text-left">동</th>
-          <th className="border border-black px-3 py-2 text-left">업체명</th>
-          <th className="border border-black px-3 py-2 text-left">작업내용</th>
+          <th className="border border-slate-300 px-3 py-2 text-left">동</th>
+          <th className="border border-slate-300 px-3 py-2 text-left">업체명</th>
+          <th className="border border-slate-300 px-3 py-2 text-left">작업내용</th>
         </tr>
       </thead>
 
@@ -9340,15 +9699,15 @@ return (
     if (list.length === 0) {
       return [
         <tr key={col}>
-          <td className="border border-black px-3 py-2 font-medium text-slate-700">
+          <td className="border border-slate-300 px-3 py-2 font-medium text-slate-700">
             {col}
           </td>
 
-          <td className="border border-black px-3 py-2 text-slate-300">
+          <td className="border border-slate-300 px-3 py-2 text-slate-300">
             -
           </td>
 
-          <td className="border border-black px-3 py-2 text-slate-300">
+          <td className="border border-slate-300 px-3 py-2 text-slate-300">
             -
           </td>
         </tr>,
@@ -9360,7 +9719,7 @@ return (
         {index === 0 && (
           <td
             rowSpan={list.length}
-            className="border border-black px-3 py-2 align-top font-medium text-slate-700"
+            className="border border-slate-300 px-3 py-2 align-top font-medium text-slate-700"
           >
             {col}
           </td>
@@ -9368,8 +9727,8 @@ return (
 
         <td
           className={cn(
-            "border border-black px-3 py-2 align-top",
-            index > 0 && "border-t border-dashed border-black"
+            "border border-slate-300 px-3 py-2 align-top",
+            index > 0 && "border-t border-dashed border-slate-300"
           )}
         >
           {item.company}
@@ -9377,8 +9736,8 @@ return (
 
         <td
           className={cn(
-            "border border-black px-3 py-2 align-top",
-            index > 0 && "border-t border-dashed border-black"
+            "border border-slate-300 px-3 py-2 align-top",
+            index > 0 && "border-t border-dashed border-slate-300"
           )}
         >
           <div className="flex items-start justify-between gap-2">
@@ -9431,11 +9790,11 @@ return (
   </div>
 </div></>}
                 {isMaterialTab && <><div className="space-y-3">
-  <div className="grid gap-2 md:grid-cols-[120px_100px_160px_1fr_1fr_70px_1fr_1fr_1fr]">
+  <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[120px_100px_160px_1fr_1fr_70px_1fr_1fr_1fr]">
     <select
       value={materialsInput.gate}
       onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })}
-      className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+      className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
     >
       <option value="1">1게이트</option>
       <option value="7">7게이트</option>
@@ -9444,7 +9803,7 @@ return (
     <select
       value={materialsInput.time}
       onChange={(e) => setMaterialsInput({ ...materialsInput, time: e.target.value })}
-      className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+      className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
     >
       {MATERIAL_TIMES.map((time) => (
         <option key={time} value={time}>{time}시</option>
@@ -9532,7 +9891,7 @@ return (
   </div>
 </div><div ref={dabsCaptureRef} className="bg-white">
   {renderMaterialsMobileCards(materialList)}
-  <div className="hidden overflow-x-auto rounded-2xl border border-black bg-white lg:block">
+  <div className="hidden overflow-x-auto rounded-2xl border border-slate-300 bg-white lg:block">
     <table className={TABLE_BASE_CLASS}>
       <colgroup>
         <col style={{ width: "6%" }} />
@@ -9547,15 +9906,15 @@ return (
       </colgroup>
       <thead>
         <tr className="bg-slate-100 text-slate-700">
-          <th className="border border-black px-2 py-2 text-left">시간</th>
-          <th className="border border-black px-2 py-2 text-left">게이트</th>
-          <th className="border border-black px-2 py-2 text-left">업체명</th>
-          <th className="border border-black px-2 py-2 text-left">자재명</th>
-          <th className="border border-black px-2 py-2 text-left">차종</th>
-          <th className="border border-black px-2 py-2 text-left">대수</th>
-          <th className="border border-black px-2 py-2 text-left">하역장소</th>
-          <th className="border border-black px-2 py-2 text-left">담당자</th>
-          <th className="border border-black px-2 py-2 text-left">연락처</th>
+          <th className="border border-slate-300 px-2 py-2 text-left">시간</th>
+          <th className="border border-slate-300 px-2 py-2 text-left">게이트</th>
+          <th className="border border-slate-300 px-2 py-2 text-left">업체명</th>
+          <th className="border border-slate-300 px-2 py-2 text-left">자재명</th>
+          <th className="border border-slate-300 px-2 py-2 text-left">차종</th>
+          <th className="border border-slate-300 px-2 py-2 text-left">대수</th>
+          <th className="border border-slate-300 px-2 py-2 text-left">하역장소</th>
+          <th className="border border-slate-300 px-2 py-2 text-left">담당자</th>
+          <th className="border border-slate-300 px-2 py-2 text-left">연락처</th>
         </tr>
       </thead>
       <tbody>
@@ -9584,13 +9943,13 @@ return (
 
           const renderDataRow = (item: DabsRowItem) => (
             <>
-              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.company}</td>
-              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.material}</td>
-              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicle}</td>
-              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicleCount}</td>
-              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.location}</td>
-              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.manager || ""}</td>
-              <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>
+              <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.company}</td>
+              <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.material}</td>
+              <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicle}</td>
+              <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicleCount}</td>
+              <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.location}</td>
+              <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.manager || ""}</td>
+              <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>
                 <div className="flex items-start justify-between gap-1">
                   <span>{item.phone || ""}</span>
                   {actionBtns(item)}
@@ -9601,7 +9960,7 @@ return (
 
           const emptyDataCells = (
             <>
-              <td colSpan={7} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>
+              <td colSpan={7} className="border border-slate-300 px-2 py-2 text-slate-300">입력 없음</td>
             </>
           );
 
@@ -9622,12 +9981,12 @@ return (
             rows.push(
               <tr key={`${time}-g1-${idx}`} className={item && isYellow(item) ? "bg-yellow-100" : ""}>
                 {idx === 0 && (
-                  <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">
+                  <td rowSpan={totalRows} className="border border-slate-300 px-2 py-2 font-semibold align-middle text-center">
                     {time}시
                   </td>
                 )}
                 {idx === 0 && (
-                  <td rowSpan={gate1Rows} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">
+                  <td rowSpan={gate1Rows} className="border border-slate-300 px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">
                     1게이트
                   </td>
                 )}
@@ -9642,7 +10001,7 @@ return (
             rows.push(
               <tr key={`${time}-g7-${idx}`} className={item && isYellow(item) ? "bg-yellow-100" : ""}>
                 {idx === 0 && (
-                  <td rowSpan={gate7Rows} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">
+                  <td rowSpan={gate7Rows} className="border border-slate-300 px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">
                     7게이트
                   </td>
                 )}
@@ -9680,7 +10039,7 @@ return (
                       </Button>
                     </div>
 
-                    <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
+                    <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[140px_180px_150px_1fr_120px_auto]">
                       <select
                         value={soloWorkerInput.building}
                         onChange={(e) =>
@@ -9689,7 +10048,7 @@ return (
                             building: e.target.value,
                           })
                         }
-                        className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+                        className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
                       >
                         <option value="">동 선택</option>
                         {SOLO_WORKER_COLUMNS.map((column) => (
@@ -9743,7 +10102,7 @@ return (
                             elderly: e.target.value,
                           })
                         }
-                        className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+                        className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
                       >
                         <option value="x">고령자 x</option>
                         <option value="o">고령자 o</option>
@@ -9771,7 +10130,7 @@ return (
                 {dabsMessage && <div className="text-sm text-slate-600">{dabsMessage}</div>}
               </CardContent>
             </Card>
-            <Card className="border-slate-200 shadow-none mb-44 lg:mb-0"><CardHeader><CardTitle className="text-base">하단 달력</CardTitle></CardHeader><CardContent><div className="grid grid-cols-7 gap-1 text-xs">{weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}{monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}</div></CardContent></Card>
+            <Card className="border-slate-200 shadow-none"><CardHeader><CardTitle className="text-base">하단 달력</CardTitle></CardHeader><CardContent><div className="grid grid-cols-7 gap-1 text-xs">{weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}{monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-blue-600 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}</div></CardContent></Card>
           </CardContent>
         </Card>
       </div>
@@ -9828,7 +10187,7 @@ const renderPortfolioInputPanel = () => {
     !isSoloTab && (inputKey === "materialsAfter0" || inputKey === "materialsAfter1");
 
   return (
-    <div className="shrink-0 border-b border-black bg-slate-50 p-2 text-slate-900">
+    <div className="shrink-0 border-b border-slate-300 bg-slate-50 p-2 text-slate-900">
       {isSectionTab && (
         <div className="grid gap-2 md:grid-cols-[130px_160px_1fr_auto]">
           <select
@@ -9881,7 +10240,7 @@ const renderPortfolioInputPanel = () => {
 
       {isMaterialTab && (
         <div className="space-y-2">
-          <div className="grid gap-2 md:grid-cols-[100px_100px_140px_1fr_1fr_70px_1fr_1fr_1fr]">
+          <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[100px_100px_140px_1fr_1fr_70px_1fr_1fr_1fr]">
             <select value={materialsInput.gate} onChange={(e) => setMaterialsInput({ ...materialsInput, gate: e.target.value })} className="h-9 rounded-xl border border-slate-300 bg-white px-2 text-sm">
               <option value="1">1게이트</option>
               <option value="7">7게이트</option>
@@ -9914,7 +10273,7 @@ const renderPortfolioInputPanel = () => {
       )}
 
       {isSoloTab && (
-        <div className="grid gap-2 md:grid-cols-[110px_150px_130px_1fr_110px_auto]">
+        <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[110px_150px_130px_1fr_110px_auto]">
           <select
             value={soloWorkerInput.building}
             onChange={(e) =>
@@ -9997,9 +10356,9 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[], title: s
 
         <thead>
           <tr className="bg-slate-100 text-slate-800">
-            <th className="border border-black px-3 py-2 text-left">동</th>
-            <th className="border border-black px-3 py-2 text-left">업체명</th>
-            <th className="border border-black px-3 py-2 text-left">작업내용</th>
+            <th className="border border-slate-300 px-3 py-2 text-left">동</th>
+            <th className="border border-slate-300 px-3 py-2 text-left">업체명</th>
+            <th className="border border-slate-300 px-3 py-2 text-left">작업내용</th>
           </tr>
         </thead>
 
@@ -10010,11 +10369,11 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[], title: s
             if (list.length === 0) {
               return [
                 <tr key={col}>
-                  <td className="border border-black px-3 py-2 font-semibold text-slate-700">
+                  <td className="border border-slate-300 px-3 py-2 font-semibold text-slate-700">
                     {col}
                   </td>
-                  <td className="border border-black px-3 py-2 text-slate-300">-</td>
-                  <td className="border border-black px-3 py-2 text-slate-300">-</td>
+                  <td className="border border-slate-300 px-3 py-2 text-slate-300">-</td>
+                  <td className="border border-slate-300 px-3 py-2 text-slate-300">-</td>
                 </tr>,
               ];
             }
@@ -10024,7 +10383,7 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[], title: s
                 {index === 0 && (
                   <td
                     rowSpan={list.length}
-                    className="border border-black px-3 py-2 align-top font-semibold text-slate-700"
+                    className="border border-slate-300 px-3 py-2 align-top font-semibold text-slate-700"
                   >
                     {col}
                   </td>
@@ -10032,8 +10391,8 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[], title: s
 
                 <td
                   className={cn(
-                    "border border-black px-3 py-2 align-top font-semibold",
-                    index > 0 && "border-t border-dashed border-black"
+                    "border border-slate-300 px-3 py-2 align-top font-semibold",
+                    index > 0 && "border-t border-dashed border-slate-300"
                   )}
                 >
                   {item.company}
@@ -10041,8 +10400,8 @@ const renderPortfolioSectionTable = (tabKey: string, columns: string[], title: s
 
                 <td
                   className={cn(
-                    "border border-black px-3 py-2 align-top",
-                    index > 0 && "border-t border-dashed border-black"
+                    "border border-slate-300 px-3 py-2 align-top",
+                    index > 0 && "border-t border-dashed border-slate-300"
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -10103,15 +10462,15 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
         </colgroup>
         <thead>
           <tr className="bg-slate-100 text-slate-800">
-            <th className="border border-black px-2 py-2 text-left">시간</th>
-            <th className="border border-black px-2 py-2 text-left">게이트</th>
-            <th className="border border-black px-2 py-2 text-left">업체명</th>
-            <th className="border border-black px-2 py-2 text-left">자재명</th>
-            <th className="border border-black px-2 py-2 text-left">차종</th>
-            <th className="border border-black px-2 py-2 text-left">대수</th>
-            <th className="border border-black px-2 py-2 text-left">하역장소</th>
-            <th className="border border-black px-2 py-2 text-left">담당자</th>
-            <th className="border border-black px-2 py-2 text-left">연락처</th>
+            <th className="border border-slate-300 px-2 py-2 text-left">시간</th>
+            <th className="border border-slate-300 px-2 py-2 text-left">게이트</th>
+            <th className="border border-slate-300 px-2 py-2 text-left">업체명</th>
+            <th className="border border-slate-300 px-2 py-2 text-left">자재명</th>
+            <th className="border border-slate-300 px-2 py-2 text-left">차종</th>
+            <th className="border border-slate-300 px-2 py-2 text-left">대수</th>
+            <th className="border border-slate-300 px-2 py-2 text-left">하역장소</th>
+            <th className="border border-slate-300 px-2 py-2 text-left">담당자</th>
+            <th className="border border-slate-300 px-2 py-2 text-left">연락처</th>
           </tr>
         </thead>
         <tbody>
@@ -10133,13 +10492,13 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
 
             const renderDataCells = (item: DabsRowItem) => (
               <>
-                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.company}</td>
-                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.material}</td>
-                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicle}</td>
-                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicleCount}</td>
-                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.location}</td>
-                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.manager || ""}</td>
-                <td className={cn("border border-black px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>
+                <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.company}</td>
+                <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.material}</td>
+                <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicle}</td>
+                <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.vehicleCount}</td>
+                <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.location}</td>
+                <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>{item.manager || ""}</td>
+                <td className={cn("border border-slate-300 px-2 py-2 align-top", isYellow(item) && "bg-yellow-100")}>
                   <div className="flex items-start justify-between gap-1">
                     <span>{item.phone || ""}</span>
                     {renderActionBtns(item)}
@@ -10148,7 +10507,7 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
               </>
             );
 
-            const emptyDataCells = <td colSpan={7} className="border border-black px-2 py-2 text-slate-300">입력 없음</td>;
+            const emptyDataCells = <td colSpan={7} className="border border-slate-300 px-2 py-2 text-slate-300">입력 없음</td>;
 
             const rows: React.ReactNode[] = [];
 
@@ -10156,8 +10515,8 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
             if (gate1.length === 0) {
               rows.push(
                 <tr key={`${time}-g1-empty`}>
-                  <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>
-                  <td className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">1게이트</td>
+                  <td rowSpan={totalRows} className="border border-slate-300 px-2 py-2 font-semibold align-middle text-center">{time}시</td>
+                  <td className="border border-slate-300 px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">1게이트</td>
                   {emptyDataCells}
                 </tr>
               );
@@ -10165,8 +10524,8 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
               gate1.forEach((item, idx) => {
                 rows.push(
                   <tr key={item.id} className={isYellow(item) ? "bg-yellow-100" : ""}>
-                    {idx === 0 && <td rowSpan={totalRows} className="border border-black px-2 py-2 font-semibold align-middle text-center">{time}시</td>}
-                    {idx === 0 && <td rowSpan={gate1.length} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">1게이트</td>}
+                    {idx === 0 && <td rowSpan={totalRows} className="border border-slate-300 px-2 py-2 font-semibold align-middle text-center">{time}시</td>}
+                    {idx === 0 && <td rowSpan={gate1.length} className="border border-slate-300 px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">1게이트</td>}
                     {renderDataCells(item)}
                   </tr>
                 );
@@ -10178,7 +10537,7 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
               rows.push(
                 <tr key={`${time}-g7-empty`}>
                   {gate1.length === 0 && <>{/* 시간 셀은 위에서 rowspan으로 이미 처리 */}</>}
-                  <td className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">7게이트</td>
+                  <td className="border border-slate-300 px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">7게이트</td>
                   {emptyDataCells}
                 </tr>
               );
@@ -10186,7 +10545,7 @@ const renderPortfolioMaterialTable = (tabKey: string, title: string) => {
               gate7.forEach((item, idx) => {
                 rows.push(
                   <tr key={item.id} className={isYellow(item) ? "bg-yellow-100" : ""}>
-                    {idx === 0 && <td rowSpan={gate7.length} className="border border-black px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">7게이트</td>}
+                    {idx === 0 && <td rowSpan={gate7.length} className="border border-slate-300 px-2 py-2 align-middle text-center text-2xl font-medium text-slate-600 bg-slate-50">7게이트</td>}
                     {renderDataCells(item)}
                   </tr>
                 );
@@ -10232,11 +10591,11 @@ const renderPortfolioSoloWorkerTable = (
 
         <thead>
           <tr className="bg-slate-100 text-slate-800">
-            <th className="border border-black px-3 py-2 text-left">업체명</th>
-            <th className="border border-black px-3 py-2 text-left">동</th>
-            <th className="border border-black px-3 py-2 text-left">성명</th>
-            <th className="border border-black px-3 py-2 text-left">작업내용</th>
-            <th className="border border-black px-3 py-2 text-left">고령자</th>
+            <th className="border border-slate-300 px-3 py-2 text-left">업체명</th>
+            <th className="border border-slate-300 px-3 py-2 text-left">동</th>
+            <th className="border border-slate-300 px-3 py-2 text-left">성명</th>
+            <th className="border border-slate-300 px-3 py-2 text-left">작업내용</th>
+            <th className="border border-slate-300 px-3 py-2 text-left">고령자</th>
           </tr>
         </thead>
 
@@ -10244,7 +10603,7 @@ const renderPortfolioSoloWorkerTable = (
           {items.length === 0 ? (
             <tr>
               <td
-                className="border border-black px-3 py-2 text-center text-slate-300"
+                className="border border-slate-300 px-3 py-2 text-center text-slate-300"
                 colSpan={5}
               >
                 입력 없음
@@ -10257,21 +10616,21 @@ const renderPortfolioSoloWorkerTable = (
                   {index === 0 && (
                     <td
                       rowSpan={list.length}
-                      className="border border-black px-3 py-2 align-top font-semibold"
+                      className="border border-slate-300 px-3 py-2 align-top font-semibold"
                     >
                       {company}
                     </td>
                   )}
 
-                  <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
+                  <td className="border border-slate-300 px-3 py-2 align-top font-medium text-slate-700">
                     {item.building}
                   </td>
 
-                  <td className="border border-black px-3 py-2 align-top">
+                  <td className="border border-slate-300 px-3 py-2 align-top">
                     {item.name}
                   </td>
 
-                  <td className="border border-black px-3 py-2 align-top">
+                  <td className="border border-slate-300 px-3 py-2 align-top">
                     <div className="flex items-start justify-between gap-2">
   <span className="whitespace-pre-wrap break-all leading-relaxed">
     {item.content}
@@ -10297,7 +10656,7 @@ const renderPortfolioSoloWorkerTable = (
 
                   <td
                     className={cn(
-                      "border border-black px-3 py-2 align-top",
+                      "border border-slate-300 px-3 py-2 align-top",
                       item.elderly === "o"
                         ? "bg-amber-50 font-semibold text-amber-700"
                         : "text-slate-600"
@@ -10391,7 +10750,7 @@ const renderPortfolioPage = () => {
     </div>
 
     <div className="flex min-h-0 flex-col lg:w-2/5">
-      <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-black">
+      <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-slate-300">
         <table className="w-full table-fixed border-collapse text-lg">
           <colgroup>
             <col style={{ width: "10%" }} />
@@ -10402,29 +10761,29 @@ const renderPortfolioPage = () => {
 
           <thead>
             <tr className="bg-slate-100 text-slate-700">
-              <th className="border border-black px-3 py-2 text-center">위치</th>
-              <th className="border border-black px-3 py-2 text-center">업체명</th>
-              <th className="border border-black px-3 py-2 text-center">작업내용</th>
-              <th className="border border-black px-3 py-2 text-center">안전대책</th>
+              <th className="border border-slate-300 px-3 py-2 text-center">위치</th>
+              <th className="border border-slate-300 px-3 py-2 text-center">업체명</th>
+              <th className="border border-slate-300 px-3 py-2 text-center">작업내용</th>
+              <th className="border border-slate-300 px-3 py-2 text-center">안전대책</th>
             </tr>
           </thead>
 
           <tbody>
             {(slide.highRiskTableItems || []).length === 0 ? (
               <tr>
-                <td colSpan={4} className="border border-black px-3 py-4 text-center text-slate-300">
+                <td colSpan={4} className="border border-slate-300 px-3 py-4 text-center text-slate-300">
                   입력된 내용이 없습니다.
                 </td>
               </tr>
             ) : (
               (slide.highRiskTableItems || []).map((item) => (
                 <tr key={item.id}>
-                  <td className="border border-black px-3 py-2 align-top break-all">{item.building}</td>
-                  <td className="border border-black px-3 py-2 align-top break-all">{item.company}</td>
-                  <td className="border border-black px-3 py-2 align-top whitespace-pre-wrap break-all">
+                  <td className="border border-slate-300 px-3 py-2 align-top break-all">{item.building}</td>
+                  <td className="border border-slate-300 px-3 py-2 align-top break-all">{item.company}</td>
+                  <td className="border border-slate-300 px-3 py-2 align-top whitespace-pre-wrap break-all">
                     {item.content}
                   </td>
-                  <td className="border border-black px-3 py-2 align-top whitespace-pre-wrap break-all">
+                  <td className="border border-slate-300 px-3 py-2 align-top whitespace-pre-wrap break-all">
                     {item.safety}
                   </td>
                 </tr>
@@ -10507,14 +10866,14 @@ const myComplete = myImageTarget &&
         </button>
       </div>
 
-      <div className="mt-4 overflow-x-auto rounded-2xl border border-black">
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-300">
         <table className="w-full table-fixed border-collapse text-sm">
           <thead>
             <tr className="bg-slate-100 text-slate-700">
-              <th className="w-[30%] border border-black px-3 py-2 text-left">업체명</th>
-              <th className="w-[25%] border border-black px-3 py-2 text-left">온습도계 사진</th>
-              <th className="w-[25%] border border-black px-3 py-2 text-left">온습도계 관리대장</th>
-              <th className="border border-black px-3 py-2 text-left">상태</th>
+              <th className="w-[30%] border border-slate-300 px-3 py-2 text-left">업체명</th>
+              <th className="w-[25%] border border-slate-300 px-3 py-2 text-left">온습도계 사진</th>
+              <th className="w-[25%] border border-slate-300 px-3 py-2 text-left">온습도계 관리대장</th>
+              <th className="border border-slate-300 px-3 py-2 text-left">상태</th>
             </tr>
           </thead>
 
@@ -10529,19 +10888,19 @@ const myComplete = myImageTarget &&
 
                 return (
                   <tr key={companyName}>
-                    <td className="border border-black px-3 py-2 font-semibold">
+                    <td className="border border-slate-300 px-3 py-2 font-semibold">
                       {companyName}
                     </td>
 
-                    <td className={cn("border border-black px-3 py-2 font-semibold", imageTarget && status.thermoPhotoCount >= 4 ? "bg-green-100 text-green-700" : imageTarget ? "bg-red-50 text-red-700" : "")}>
+                    <td className={cn("border border-slate-300 px-3 py-2 font-semibold", imageTarget && status.thermoPhotoCount >= 4 ? "bg-green-100 text-green-700" : imageTarget ? "bg-red-50 text-red-700" : "")}>
                       {imageTarget ? `${Math.min(status.thermoPhotoCount, 4)}/4` : "대상 아님"}
                     </td>
 
-                    <td className={cn("border border-black px-3 py-2 font-semibold", imageTarget && status.thermoLedgerCount >= 1 ? "bg-green-100 text-green-700" : imageTarget ? "bg-red-50 text-red-700" : "")}>
+                    <td className={cn("border border-slate-300 px-3 py-2 font-semibold", imageTarget && status.thermoLedgerCount >= 1 ? "bg-green-100 text-green-700" : imageTarget ? "bg-red-50 text-red-700" : "")}>
                       {imageTarget ? `${Math.min(status.thermoLedgerCount, 1)}/1` : "대상 아님"}
                     </td>
 
-                    <td className="border border-black px-3 py-2 font-semibold">
+                    <td className="border border-slate-300 px-3 py-2 font-semibold">
                       {complete ? "완료" : "미완료"}
                     </td>
                   </tr>
@@ -10593,7 +10952,7 @@ const myComplete = myImageTarget &&
                 className={cn(
                   "rounded-2xl px-4 py-2 text-sm font-medium transition",
                   heatwaveActiveTab === tab.key
-                    ? "bg-slate-900 text-white"
+                    ? "bg-blue-600 text-white"
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 )}
               >
@@ -10789,7 +11148,7 @@ const myComplete = myImageTarget &&
                             key={companyName}
                             className={cn(
                               "flex cursor-pointer items-center justify-between gap-3 rounded-2xl border p-3 text-sm transition",
-                              imageChecked ? "border-slate-900 bg-white" : "border-slate-200 bg-slate-50"
+                              imageChecked ? "border-blue-600 bg-white" : "border-slate-200 bg-slate-50"
                             )}
                           >
                             <span className="truncate font-semibold">{companyName}</span>
@@ -10833,13 +11192,13 @@ const myComplete = myImageTarget &&
                   선택 날짜: {formatMonthDay(selectedDate)}
                 </div>
 
-                <div className="grid gap-3 xl:grid-cols-[140px_180px_150px_1fr_auto]">
+                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[140px_180px_150px_1fr_auto]">
                   <select
                     value={heatSensitiveInput.building}
                     onChange={(e) =>
                       setHeatSensitiveInput({ ...heatSensitiveInput, building: e.target.value })
                     }
-                    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+                    className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
                   >
                     <option value="">동 선택</option>
                     {SOLO_WORKER_COLUMNS.map((column) => (
@@ -10911,7 +11270,7 @@ const myComplete = myImageTarget &&
                         const color = getCompanyColorByList(item.company || "-", heatSensitiveCompanyColorList);
 
                         return (
-                          <div key={item.id} className="rounded-2xl border border-black bg-white p-4 shadow-sm">
+                          <div key={item.id} className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm">
                             <div className="mb-3 flex items-start justify-between gap-3">
                               <div>
                                 <div className="text-sm font-semibold text-slate-900">{item.building}</div>
@@ -10981,14 +11340,14 @@ const myComplete = myImageTarget &&
                     )}
                   </div>
 
-                  <div className="hidden overflow-x-auto rounded-2xl border border-black lg:block">
+                  <div className="hidden overflow-x-auto rounded-2xl border border-slate-300 lg:block">
                     <table className={TABLE_BASE_CLASS}>
                       <thead>
                         <tr className="bg-slate-100 text-slate-700">
-                          <th className="border border-black px-3 py-2 text-left w-[16%]">업체명</th>
-                          <th className="border border-black px-3 py-2 text-left w-[9%]">동</th>
-                          <th className="border border-black px-3 py-2 text-left w-[16%]">성명</th>
-                          <th className="border border-black px-3 py-2 text-left">작업 내용</th>
+                          <th className="border border-slate-300 px-3 py-2 text-left w-[16%]">업체명</th>
+                          <th className="border border-slate-300 px-3 py-2 text-left w-[9%]">동</th>
+                          <th className="border border-slate-300 px-3 py-2 text-left w-[16%]">성명</th>
+                          <th className="border border-slate-300 px-3 py-2 text-left">작업 내용</th>
                           
                         </tr>
                       </thead>
@@ -10996,7 +11355,7 @@ const myComplete = myImageTarget &&
                       <tbody>
                         {heatSensitiveList.length === 0 ? (
                           <tr>
-                            <td className="border border-black px-3 py-2 text-center text-slate-300" colSpan={4}>
+                            <td className="border border-slate-300 px-3 py-2 text-center text-slate-300" colSpan={4}>
                               입력 없음
                             </td>
                           </tr>
@@ -11012,7 +11371,7 @@ const myComplete = myImageTarget &&
                                     <td
                                       rowSpan={list.length}
                                       className={cn(
-                                        "border border-black px-3 py-2 align-top font-semibold",
+                                        "border border-slate-300 px-3 py-2 align-top font-semibold",
                                         color.bg,
                                         color.text
                                       )}
@@ -11021,15 +11380,15 @@ const myComplete = myImageTarget &&
                                     </td>
                                   )}
 
-                                  <td className="border border-black px-3 py-2 align-top font-medium text-slate-700">
+                                  <td className="border border-slate-300 px-3 py-2 align-top font-medium text-slate-700">
                                     {item.building}
                                   </td>
 
-                                  <td className="border border-black px-3 py-2 align-top">
+                                  <td className="border border-slate-300 px-3 py-2 align-top">
                                     {item.name}
                                   </td>
 
-                                  <td className="border border-black px-3 py-2 align-top">
+                                  <td className="border border-slate-300 px-3 py-2 align-top">
                                     <div className="flex items-center justify-between gap-2">
                                       <span className="whitespace-pre-wrap break-all leading-relaxed">
                                         {item.content}
@@ -11105,7 +11464,7 @@ const myComplete = myImageTarget &&
           </div>
           <div className="grid grid-cols-7 gap-1 text-xs">
             {weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}
-            {monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}
+            {monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-blue-600 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}
           </div>
         </CardContent>
       </Card>
@@ -11160,7 +11519,7 @@ const myComplete = myImageTarget &&
               startTime: e.target.value,
             }))
           }
-          className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+          className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         >
           {timeOptions.map((time) => (
             <option key={time} value={time}>
@@ -11216,11 +11575,11 @@ const myComplete = myImageTarget &&
 </div>
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr] lg:gap-6"><div className="space-y-6"><div ref={educationCaptureRef} className="bg-white">
   {renderBottomCalendar()}
-</div></div><div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>일정 입력</CardTitle></CardHeader><CardContent className="space-y-4">{!currentUser ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">일정 등록은 승인된 계정으로 로그인한 뒤 사용할 수 있습니다.</div> : <><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><label className="text-xs font-medium text-slate-600">일자 선택</label><Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9" /></div><div className="space-y-2"><label className="text-xs font-medium text-slate-600">시간 선택</label><select value={effectiveSelectedTime} onChange={(e) => setSelectedTime(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100" disabled={availableTimes.length === 0}>{availableTimes.length === 0 ? <option value="">선택 가능한 시간이 없습니다</option> : availableTimes.map((time) => <option key={time} value={time}>{time}</option>)}</select><div className="text-xs text-slate-500">{availableTimes.length === 0 ? "해당 일자는 선택 가능한 시간이 없습니다" : `자동 표기 시간: ${effectiveSelectedTime} ~ ${effectiveEndTime}`}</div></div></div><div className="flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-slate-500">작성자: {currentUser.name} · {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}</div><Button className="w-full lg:w-auto" onClick={addEntry} disabled={availableTimes.length === 0}>일정 등록</Button></div></>}{entryMessage && (
+</div></div><div className="space-y-6"><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>일정 입력</CardTitle></CardHeader><CardContent className="space-y-4">{!currentUser ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">일정 등록은 승인된 계정으로 로그인한 뒤 사용할 수 있습니다.</div> : <><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><label className="text-xs font-medium text-slate-600">일자 선택</label><Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="h-9" /></div><div className="space-y-2"><label className="text-xs font-medium text-slate-600">시간 선택</label><select value={effectiveSelectedTime} onChange={(e) => setSelectedTime(e.target.value)} className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100" disabled={availableTimes.length === 0}>{availableTimes.length === 0 ? <option value="">선택 가능한 시간이 없습니다</option> : availableTimes.map((time) => <option key={time} value={time}>{time}</option>)}</select><div className="text-xs text-slate-500">{availableTimes.length === 0 ? "해당 일자는 선택 가능한 시간이 없습니다" : `자동 표기 시간: ${effectiveSelectedTime} ~ ${effectiveEndTime}`}</div></div></div><div className="flex flex-wrap items-center justify-between gap-3"><div className="text-xs text-slate-500">작성자: {currentUser.name} · {currentUser.companyName} · {getRoleLabel(currentUser.role || "general")}</div><Button className="w-full lg:w-auto" onClick={addEntry} disabled={availableTimes.length === 0}>일정 등록</Button></div></>}{entryMessage && (
   <div className="text-sm text-slate-600">{entryMessage}</div>
 )}
 
-<div className="mt-2 text-xs text-slate-400">시간 중복 불가</div></CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>선택 일자 등록 목록</CardTitle></CardHeader><CardContent className="space-y-3"><div><div className="text-sm text-slate-500">현재 선택 일자</div><div className="text-xl font-bold text-slate-900">{formatMonthDay(selectedDate)}</div></div>{dayEntries.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">등록된 일정이 없습니다.</div> : dayEntries.map((entry) => <motion.div key={entry.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-black bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-4"><div><div className="text-base font-semibold text-slate-900">{entry.companyName}</div><div className="mt-1 text-sm text-slate-600">{formatMonthDay(entry.date)}</div><div className="mt-1 text-sm text-slate-600">{entry.startTime} ~ {entry.endTime}</div><div className="mt-1 text-xs text-slate-500">작성자: {entry.createdByName || "-"} ({getRoleLabel(entry.createdByRole || "general")})</div></div><div className="flex shrink-0 gap-1">
+<div className="mt-2 text-xs text-slate-400">시간 중복 불가</div></CardContent></Card><Card className="rounded-[24px] border-0 shadow-sm"><CardHeader><CardTitle>선택 일자 등록 목록</CardTitle></CardHeader><CardContent className="space-y-3"><div><div className="text-sm text-slate-500">현재 선택 일자</div><div className="text-xl font-bold text-slate-900">{formatMonthDay(selectedDate)}</div></div>{dayEntries.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">등록된 일정이 없습니다.</div> : dayEntries.map((entry) => <motion.div key={entry.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-4"><div><div className="text-base font-semibold text-slate-900">{entry.companyName}</div><div className="mt-1 text-sm text-slate-600">{formatMonthDay(entry.date)}</div><div className="mt-1 text-sm text-slate-600">{entry.startTime} ~ {entry.endTime}</div><div className="mt-1 text-xs text-slate-500">작성자: {entry.createdByName || "-"} ({getRoleLabel(entry.createdByRole || "general")})</div></div><div className="flex shrink-0 gap-1">
   <button
     type="button"
     onClick={(e) => {
@@ -11303,51 +11662,76 @@ const renderActivityLogPage = () => (
             기록된 로그가 없습니다.
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-black">
-            <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
-              <thead>
-                <tr className="bg-slate-100 text-slate-700">
-                  <th className="w-[17%] border border-black px-3 py-2 text-left">시간</th>
-                  <th className="w-[10%] border border-black px-3 py-2 text-left">구분</th>
-                  <th className="w-[14%] border border-black px-3 py-2 text-left">페이지</th>
-                  <th className="w-[18%] border border-black px-3 py-2 text-left">작성자</th>
-                  <th className="border border-black px-3 py-2 text-left">내용</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {activityLogs.map((log) => (
-                  <tr key={log.id}>
-                    <td className="border border-black px-3 py-2 align-top">
-                      {formatActivityLogTime(log.createdAt)}
-                    </td>
-
-                    <td className="border border-black px-3 py-2 align-top font-semibold">
-                      {log.action}
-                    </td>
-
-                    <td className="border border-black px-3 py-2 align-top">
-                      {log.page || "-"}
-                    </td>
-
-                    <td className="border border-black px-3 py-2 align-top">
-                      <div className="font-medium">{log.actorName || "-"}</div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {log.actorCompany || "-"} · {getRoleLabel(log.actorRole || "general")}
-                      </div>
-                    </td>
-
-                    <td className="border border-black px-3 py-2 align-top">
-                      <div className="font-medium">{log.target || "-"}</div>
-                      <div className="mt-1 whitespace-pre-wrap break-all text-xs text-slate-600">
-                        {log.detail || "-"}
-                      </div>
-                    </td>
+          <>
+            <div className="space-y-3 lg:hidden">
+              {activityLogs.map((log) => (
+                <div key={log.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-slate-500">{formatActivityLogTime(log.createdAt)}</span>
+                    <Badge>{log.action}</Badge>
+                  </div>
+                  <div className="mt-2 text-sm font-medium">{log.page || "-"}</div>
+                  <div className="mt-2 border-t border-slate-100 pt-2">
+                    <div className="font-medium">{log.actorName || "-"}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {log.actorCompany || "-"} · {getRoleLabel(log.actorRole || "general")}
+                    </div>
+                  </div>
+                  <div className="mt-2 border-t border-slate-100 pt-2">
+                    <div className="font-medium">{log.target || "-"}</div>
+                    <div className="mt-1 whitespace-pre-wrap break-all text-xs text-slate-600">
+                      {log.detail || "-"}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto rounded-2xl border border-slate-300 lg:block">
+              <table className="w-full min-w-[760px] table-fixed border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-700">
+                    <th className="w-[17%] border border-slate-300 px-3 py-2 text-left">시간</th>
+                    <th className="w-[10%] border border-slate-300 px-3 py-2 text-left">구분</th>
+                    <th className="w-[14%] border border-slate-300 px-3 py-2 text-left">페이지</th>
+                    <th className="w-[18%] border border-slate-300 px-3 py-2 text-left">작성자</th>
+                    <th className="border border-slate-300 px-3 py-2 text-left">내용</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+
+                <tbody>
+                  {activityLogs.map((log) => (
+                    <tr key={log.id}>
+                      <td className="border border-slate-300 px-3 py-2 align-top">
+                        {formatActivityLogTime(log.createdAt)}
+                      </td>
+
+                      <td className="border border-slate-300 px-3 py-2 align-top font-semibold">
+                        {log.action}
+                      </td>
+
+                      <td className="border border-slate-300 px-3 py-2 align-top">
+                        {log.page || "-"}
+                      </td>
+
+                      <td className="border border-slate-300 px-3 py-2 align-top">
+                        <div className="font-medium">{log.actorName || "-"}</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {log.actorCompany || "-"} · {getRoleLabel(log.actorRole || "general")}
+                        </div>
+                      </td>
+
+                      <td className="border border-slate-300 px-3 py-2 align-top">
+                        <div className="font-medium">{log.target || "-"}</div>
+                        <div className="mt-1 whitespace-pre-wrap break-all text-xs text-slate-600">
+                          {log.detail || "-"}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
@@ -11390,7 +11774,7 @@ const renderApprovalPage = () => (
                 return (
                   <div
                     key={user.uid}
-                    className="rounded-2xl border border-black bg-white p-4 shadow-sm"
+                    className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm"
                   >
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                       <div className="space-y-1">
@@ -11451,7 +11835,7 @@ const renderApprovalPage = () => (
             return (
               <div
                 key={user.uid}
-                className="rounded-2xl border border-black bg-white p-3 text-sm shadow-sm"
+                className="rounded-2xl border border-slate-300 bg-white p-3 text-sm shadow-sm"
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -11666,7 +12050,7 @@ const renderSupplementWorkPage = () => (
               className={cn(
                 "rounded-2xl px-4 py-2 text-sm font-medium transition",
                 supplementTab === tab.key
-                  ? "bg-slate-900 text-white"
+                  ? "bg-blue-600 text-white"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               )}
             >
@@ -11712,7 +12096,7 @@ const renderSupplementWorkPage = () => (
               )}
 
               {(supplementNoticeText || supplementNoticeImage) && (
-                <div className="space-y-3 rounded-2xl border border-black bg-white p-4">
+                <div className="space-y-3 rounded-2xl border border-slate-300 bg-white p-4">
                   <div className="text-sm font-semibold text-slate-900">
                     공지
                   </div>
@@ -11777,80 +12161,132 @@ const renderSupplementWorkPage = () => (
   </div>
 )}
 
-<div className="overflow-x-auto rounded-2xl border border-black">
-  <table className="w-full min-w-[900px] table-fixed border-collapse text-sm">
-    <thead>
-      <tr className="bg-slate-100 text-slate-700">
-        <th className="w-[150px] border border-black px-3 py-2 text-left">업체명</th>
-        <th className="border border-black px-3 py-2 text-left">금일 야간</th>
-        <th className="border border-black px-3 py-2 text-left">명일 조출</th>
-        <th className="w-[100px] border border-black px-3 py-2 text-left">관리</th>
-      </tr>
-    </thead>
+{supplementNightMorningRows.length === 0 ? (
+  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
+    입력 없음
+  </div>
+) : (
+  <>
+    <div className="space-y-3 lg:hidden">
+      {supplementNightMorningRows.map((row) => (
+        <div key={row.id} className="rounded-2xl border border-slate-300 bg-white p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="font-semibold">{row.company}</div>
+            <div className="flex flex-wrap gap-1">
+              {canAdminEditDabsItem && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditSupplementNightMorningPopup({
+                      open: true,
+                      id: row.id,
+                      company: row.company || "",
+                      nightText: row.nightText || "",
+                      morningText: row.morningText || "",
+                    })
+                  }
+                  className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                >
+                  수정
+                </button>
+              )}
 
-    <tbody>
-      {supplementNightMorningRows.length === 0 ? (
-        <tr>
-          <td className="border border-black px-3 py-3 text-center text-slate-400" colSpan={4}>
-            입력 없음
-          </td>
-        </tr>
-      ) : (
-        supplementNightMorningRows.map((row) => (
-          <tr key={row.id}>
-            <td className="border border-black px-3 py-2 align-top font-semibold">
-              {row.company}
-            </td>
-
-            <td className="border border-black px-3 py-2 align-top">
-              <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+              {canDeleteOwnItem(row) && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSupplementNightMorningRow(row.id)}
+                  className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                >
+                  삭제
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div>
+              <div className="text-xs font-medium text-slate-500">금일 야간</div>
+              <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">
                 {row.nightText || "입력 없음"}
               </pre>
-            </td>
-
-            <td className="border border-black px-3 py-2 align-top">
-              <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+            </div>
+            <div>
+              <div className="text-xs font-medium text-slate-500">명일 조출</div>
+              <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed">
                 {row.morningText || "입력 없음"}
               </pre>
-            </td>
-
-            <td className="border border-black px-3 py-2 align-top">
-              <div className="flex flex-wrap gap-1">
-                {canAdminEditDabsItem && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditSupplementNightMorningPopup({
-                        open: true,
-                        id: row.id,
-                        company: row.company || "",
-                        nightText: row.nightText || "",
-                        morningText: row.morningText || "",
-                      })
-                    }
-                    className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-                  >
-                    수정
-                  </button>
-                )}
-
-                {canDeleteOwnItem(row) && (
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteSupplementNightMorningRow(row.id)}
-                    className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-                  >
-                    삭제
-                  </button>
-                )}
-              </div>
-            </td>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+    <div className="hidden overflow-x-auto rounded-2xl border border-slate-300 lg:block">
+      <table className="w-full min-w-[900px] table-fixed border-collapse text-sm">
+        <thead>
+          <tr className="bg-slate-100 text-slate-700">
+            <th className="w-[150px] border border-slate-300 px-3 py-2 text-left">업체명</th>
+            <th className="border border-slate-300 px-3 py-2 text-left">금일 야간</th>
+            <th className="border border-slate-300 px-3 py-2 text-left">명일 조출</th>
+            <th className="w-[100px] border border-slate-300 px-3 py-2 text-left">관리</th>
           </tr>
-        ))
-      )}
-    </tbody>
-  </table>
-</div>
+        </thead>
+
+        <tbody>
+          {supplementNightMorningRows.map((row) => (
+            <tr key={row.id}>
+              <td className="border border-slate-300 px-3 py-2 align-top font-semibold">
+                {row.company}
+              </td>
+
+              <td className="border border-slate-300 px-3 py-2 align-top">
+                <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+                  {row.nightText || "입력 없음"}
+                </pre>
+              </td>
+
+              <td className="border border-slate-300 px-3 py-2 align-top">
+                <pre className="whitespace-pre-wrap break-words font-sans leading-relaxed">
+                  {row.morningText || "입력 없음"}
+                </pre>
+              </td>
+
+              <td className="border border-slate-300 px-3 py-2 align-top">
+                <div className="flex flex-wrap gap-1">
+                  {canAdminEditDabsItem && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditSupplementNightMorningPopup({
+                          open: true,
+                          id: row.id,
+                          company: row.company || "",
+                          nightText: row.nightText || "",
+                          morningText: row.morningText || "",
+                        })
+                      }
+                      className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                    >
+                      수정
+                    </button>
+                  )}
+
+                  {canDeleteOwnItem(row) && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSupplementNightMorningRow(row.id)}
+                      className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                    >
+                      삭제
+                    </button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </>
+)}
             </CardContent>
           </Card>
         )}
@@ -11892,7 +12328,7 @@ const renderSupplementWorkPage = () => (
       )}
 
       {(supplementTomorrowNoticeText || supplementTomorrowNoticeImage) && (
-        <div className="space-y-3 rounded-2xl border border-black bg-white p-4">
+        <div className="space-y-3 rounded-2xl border border-slate-300 bg-white p-4">
           <div className="text-sm font-semibold text-slate-900">
             공지
           </div>
@@ -11913,13 +12349,13 @@ const renderSupplementWorkPage = () => (
         </div>
       )}
 
-      <div className="grid gap-2 xl:grid-cols-[110px_1fr_100px_110px_1fr_1fr_auto]">
+      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[110px_1fr_100px_110px_1fr_1fr_auto]">
         <select
           value={supplementTomorrowInput.workType}
           onChange={(e) =>
             setSupplementTomorrowInput((prev) => ({ ...prev, workType: e.target.value }))
           }
-          className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500"
+          className="h-10 rounded-2xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
         >
           <option value="조출">조출</option>
           <option value="점심">점심</option>
@@ -11986,79 +12422,140 @@ const renderSupplementWorkPage = () => (
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-2xl border border-black">
-        <table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
-          <thead>
-            <tr className="bg-slate-100 text-slate-700">
-              <th className="w-[90px] border border-black px-2 py-2 text-left">작업구분</th>
-              <th className="w-[140px] border border-black px-2 py-2 text-left">업체명</th>
-              <th className="w-[150px] border border-black px-2 py-2 text-left">작업위치</th>
-              <th className="w-[90px] border border-black px-2 py-2 text-left">작업인원</th>
-              <th className="w-[100px] border border-black px-2 py-2 text-left">관리감독자</th>
-              <th className="border border-black px-2 py-2 text-left">작업내용</th>
-              <th className="border border-black px-2 py-2 text-left">안전대책, 조치사항</th>
-              <th className="w-[100px] border border-black px-2 py-2 text-left">관리</th>
-            </tr>
-          </thead>
+      {supplementTomorrowRows.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
+          입력 없음
+        </div>
+      ) : (
+        <>
+          <div className="space-y-3 lg:hidden">
+            {supplementTomorrowRows.map((row) => (
+              <div key={row.id} className="rounded-2xl border border-slate-300 bg-white p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Badge>{row.workType}</Badge>
+                  <div className="flex flex-wrap gap-1">
+                    {canAdminEditDabsItem && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditSupplementTomorrowPopup({
+                            open: true,
+                            id: row.id,
+                            workType: row.workType || "조출",
+                            company: row.company || "",
+                            location: row.location || "",
+                            workerCount: row.workerCount || "",
+                            supervisorCount: row.supervisorCount || "",
+                            content: row.content || "",
+                            safetyAction: row.safetyAction || "",
+                          })
+                        }
+                        className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                      >
+                        수정
+                      </button>
+                    )}
 
-          <tbody>
-            {supplementTomorrowRows.length === 0 ? (
-              <tr>
-                <td className="border border-black px-3 py-3 text-center text-slate-400" colSpan={8}>
-                  입력 없음
-                </td>
-              </tr>
-            ) : (
-              supplementTomorrowRows.map((row) => (
-                <tr key={row.id}>
-                  <td className="border border-black px-2 py-2 align-top">{row.workType}</td>
-                  <td className="border border-black px-2 py-2 align-top">{row.company}</td>
-                  <td className="border border-black px-2 py-2 align-top">{row.location}</td>
-                  <td className="border border-black px-2 py-2 align-top">{row.workerCount}</td>
-                  <td className="border border-black px-2 py-2 align-top">{row.supervisorCount}</td>
-                  <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.content}</td>
-                  <td className="whitespace-pre-wrap break-words border border-black px-2 py-2 align-top">{row.safetyAction}</td>
-                  <td className="border border-black px-2 py-2 align-top">
-                    <div className="flex flex-wrap gap-1">
-                      {canAdminEditDabsItem && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditSupplementTomorrowPopup({
-                              open: true,
-                              id: row.id,
-                              workType: row.workType || "조출",
-                              company: row.company || "",
-                              location: row.location || "",
-                              workerCount: row.workerCount || "",
-                              supervisorCount: row.supervisorCount || "",
-                              content: row.content || "",
-                              safetyAction: row.safetyAction || "",
-                            })
-                          }
-                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-                        >
-                          수정
-                        </button>
-                      )}
-
-                      {canDeleteOwnItem(row) && (
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteSupplementTomorrowRow(row.id)}
-                          className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
-                        >
-                          삭제
-                        </button>
-                      )}
-                    </div>
-                  </td>
+                    {canDeleteOwnItem(row) && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSupplementTomorrowRow(row.id)}
+                        className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                      >
+                        삭제
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-2 font-semibold">{row.company}</div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs font-medium text-slate-500">작업위치</div>
+                    <div className="text-sm">{row.location}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium text-slate-500">작업인원 / 관리감독자</div>
+                    <div className="text-sm">{row.workerCount} / {row.supervisorCount}</div>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <div className="text-xs font-medium text-slate-500">작업내용</div>
+                  <div className="whitespace-pre-wrap break-words text-sm">{row.content}</div>
+                </div>
+                <div className="mt-2">
+                  <div className="text-xs font-medium text-slate-500">안전대책, 조치사항</div>
+                  <div className="whitespace-pre-wrap break-words text-sm">{row.safetyAction}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto rounded-2xl border border-slate-300 lg:block">
+            <table className="w-full min-w-[1100px] table-fixed border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-100 text-slate-700">
+                  <th className="w-[90px] border border-slate-300 px-2 py-2 text-left">작업구분</th>
+                  <th className="w-[140px] border border-slate-300 px-2 py-2 text-left">업체명</th>
+                  <th className="w-[150px] border border-slate-300 px-2 py-2 text-left">작업위치</th>
+                  <th className="w-[90px] border border-slate-300 px-2 py-2 text-left">작업인원</th>
+                  <th className="w-[100px] border border-slate-300 px-2 py-2 text-left">관리감독자</th>
+                  <th className="border border-slate-300 px-2 py-2 text-left">작업내용</th>
+                  <th className="border border-slate-300 px-2 py-2 text-left">안전대책, 조치사항</th>
+                  <th className="w-[100px] border border-slate-300 px-2 py-2 text-left">관리</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+
+              <tbody>
+                {supplementTomorrowRows.map((row) => (
+                  <tr key={row.id}>
+                    <td className="border border-slate-300 px-2 py-2 align-top">{row.workType}</td>
+                    <td className="border border-slate-300 px-2 py-2 align-top">{row.company}</td>
+                    <td className="border border-slate-300 px-2 py-2 align-top">{row.location}</td>
+                    <td className="border border-slate-300 px-2 py-2 align-top">{row.workerCount}</td>
+                    <td className="border border-slate-300 px-2 py-2 align-top">{row.supervisorCount}</td>
+                    <td className="whitespace-pre-wrap break-words border border-slate-300 px-2 py-2 align-top">{row.content}</td>
+                    <td className="whitespace-pre-wrap break-words border border-slate-300 px-2 py-2 align-top">{row.safetyAction}</td>
+                    <td className="border border-slate-300 px-2 py-2 align-top">
+                      <div className="flex flex-wrap gap-1">
+                        {canAdminEditDabsItem && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditSupplementTomorrowPopup({
+                                open: true,
+                                id: row.id,
+                                workType: row.workType || "조출",
+                                company: row.company || "",
+                                location: row.location || "",
+                                workerCount: row.workerCount || "",
+                                supervisorCount: row.supervisorCount || "",
+                                content: row.content || "",
+                                safetyAction: row.safetyAction || "",
+                              })
+                            }
+                            className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                          >
+                            수정
+                          </button>
+                        )}
+
+                        {canDeleteOwnItem(row) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSupplementTomorrowRow(row.id)}
+                            className="rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100"
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </CardContent>
   </Card>
 )}
@@ -12139,7 +12636,7 @@ const renderSupplementWorkPage = () => (
             </div>
             <div className="grid grid-cols-7 gap-1 text-xs">
               {weekLabels.map((label) => <div key={label} className="rounded-lg bg-slate-100 py-2 text-center font-medium text-slate-600">{label}</div>)}
-              {monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-slate-900 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}
+              {monthGrid.map((date) => { const key = formatDateKey(date); const isSelected = key === selectedDate; const isCurrentMonth = date.getMonth() === currentDate.getMonth(); return <button key={key} onClick={() => setSelectedDate(key)} className={cn("rounded-lg p-2 text-center transition", isSelected ? "bg-blue-600 text-white" : isCurrentMonth ? "bg-slate-100 text-slate-700 hover:bg-slate-200" : "bg-slate-50 text-slate-400")}>{date.getDate()}</button>; })}
             </div>
           </CardContent>
         </Card>
@@ -12152,7 +12649,15 @@ const renderSupplementWorkPage = () => (
   if (!mounted) return null;
 
 return (
-  <div className="min-h-screen bg-slate-50 p-2 pb-28 sm:p-4 md:p-8">
+  <div
+    className={cn(
+      "min-h-screen bg-slate-50 p-2 pb-28 transition-[padding-left] duration-200 ease-in-out sm:p-4 md:p-8",
+      currentUser && (sidebarCollapsed ? "lg:pl-[100px]" : "lg:pl-[264px]")
+    )}
+  >
+    {renderSidebar()}
+    {renderBottomNav()}
+    {renderMoreSheet()}
     {editOverlayPopup.open && (
       <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/40 p-3 sm:items-center sm:p-4">
         <div className="w-full max-w-sm rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
@@ -12175,7 +12680,7 @@ return (
                     building: e.target.value,
                   }))
                 }
-                className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
                 <option value="">동 선택</option>
                 {HIGH_RISK_BUILDINGS.map((building) => (
@@ -12198,7 +12703,7 @@ return (
                     equipmentType: e.target.value,
                   }))
                 }
-                className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               >
                 {EQUIPMENT_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -12226,7 +12731,7 @@ return (
                           : getDefaultEndTime(nextStart),
                     }));
                   }}
-                  className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 >
                   {MATERIAL_TIMES.map((time) => (
                     <option key={time} value={time}>
@@ -12246,7 +12751,7 @@ return (
                       endTime: e.target.value,
                     }))
                   }
-                  className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  className="flex h-10 w-full rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 >
                   {MATERIAL_END_TIMES.filter((time) => parseInt(time, 10) > parseInt(editOverlayPopup.time, 10)).map((time) => (
                     <option key={time} value={time}>
