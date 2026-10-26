@@ -3738,6 +3738,45 @@ const previousDateObject = useMemo(() => {
 
 const previousDateKey = useMemo(() => formatDateKey(previousDateObject), [previousDateObject]);
 
+useEffect(() => {
+  if (isDemoMode || !db || !currentUser) return undefined;
+
+  const unsubscribePrevDabs = onSnapshot(doc(db, "dabsMeetings", previousDateKey), (snap) => {
+    if (!snap.exists()) return;
+
+    const data = snap.data() as DabsDateValue;
+
+    setDabsData((prev) => ({
+      ...prev,
+      [previousDateKey]: {
+        ...(prev[previousDateKey] || {}),
+        ...data,
+      },
+    }));
+  });
+
+  const unsubscribePrevSolo = onSnapshot(doc(db, "soloWorkers", previousDateKey), (snap) => {
+    if (!snap.exists()) return;
+
+    const data = snap.data() as { rows?: Record<string, DabsRowItem[]> };
+
+    setDabsData((prev) => ({
+      ...prev,
+      [previousDateKey]: {
+        ...(prev[previousDateKey] || {}),
+        soloWorker: {
+          rows: data.rows || {},
+        },
+      },
+    }));
+  });
+
+  return () => {
+    unsubscribePrevDabs();
+    unsubscribePrevSolo();
+  };
+}, [db, isDemoMode, currentUser, previousDateKey]);
+
   const dabsTabs = useMemo(() => [
   { key: "highRisk", label: "고위험작업" },
   { key: "buildingDetail", label: "동별 상세도" },
